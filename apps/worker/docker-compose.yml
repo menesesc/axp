@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Watcher: Monitorea WebDAV y encola archivos
+  axp-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: axp-watcher
+    environment:
+      WORKER_MODE: watcher
+      DATABASE_URL: ${DATABASE_URL}
+      WEBDAV_DIR: /srv/webdav/data
+      PROCESSED_DIR: /srv/webdav/processed
+      FAILED_DIR: /srv/webdav/failed
+      PREFIX_MAP_PATH: /etc/axp/prefix-map.json
+      WATCHER_POLL_INTERVAL: "2000"
+      FILE_STABLE_CHECKS: "3"
+    volumes:
+      # WebDAV directories (read/write)
+      - /srv/webdav/data:/srv/webdav/data
+      - /srv/webdav/processed:/srv/webdav/processed
+      - /srv/webdav/failed:/srv/webdav/failed
+      # Configuration (readonly)
+      - ./prefix-map.json:/etc/axp/prefix-map.json:ro
+    restart: unless-stopped
+    networks:
+      - axp-network
+    depends_on:
+      - postgres
+
+  # Processor: Procesa cola y sube a R2
+  axp-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: axp-processor
+    environment:
+      WORKER_MODE: processor
+      DATABASE_URL: ${DATABASE_URL}
+      PROCESSED_DIR: /srv/webdav/processed
+      MAX_CONCURRENT_JOBS: "5"
+      PROCESSOR_POLL_INTERVAL: "5000"
+      MAX_RETRY_ATTEMPTS: "5"
+      # Cloudflare R2
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
+    volumes:
+      # Solo lectura del directorio processed
+      - /srv/webdav/processed:/srv/webdav/processed:ro
+    restart: unless-stopped
+    networks:
+      - axp-network
+    depends_on:
+      - postgres
+
+  # PostgreSQL (opcional, si no usas Supabase)
+  postgres:
+    image: postgres:15-alpine
+    container_name: axp-postgres
+    environment:
+      POSTGRES_USER: axp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: axp
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - axp-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+
+networks:
+  axp-network:
+    driver: bridge

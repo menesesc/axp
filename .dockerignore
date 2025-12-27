@@ -1,0 +1,7 @@
+# Dockerfiles para cada app (opcional)
+# Crear estos archivos cuando necesites deployar
+
+# apps/web/Dockerfile
+# apps/api/Dockerfile  
+# apps/worker/Dockerfile
+# docker-compose.yml (para desarrollo local con DB)

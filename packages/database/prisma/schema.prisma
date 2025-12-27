@@ -1,0 +1,331 @@
+// AXP - Schema Prisma para PostgreSQL (Supabase)
+// Administración + Compras + Stock + Automatización de documentos
+// Multi-tenant B2B con OCR, pagos y auditoría completa
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum RolUsuario {
+  SUPERADMIN  // Global, clienteId NULL, ve todo
+  ADMIN       // Pertenece a un cliente, puede todo en su tenant
+  USER        // Pertenece a un cliente, operador
+}
+
+enum TipoDocumento {
+  FACTURA
+  REMITO
+  NOTA_CREDITO
+}
+
+enum LetraFactura {
+  A
+  B
+  C
+}
+
+enum EstadoRevision {
+  PENDIENTE    // OCR completado, pendiente de revisión
+  CONFIRMADO   // Humano confirmó, listo para usar
+  ERROR        // Tiene errores críticos
+  DUPLICADO    // Hash duplicado detectado
+}
+
+enum SourceDocumento {
+  SFTP
+  DRIVE
+  MANUAL
+}
+
+enum AccionRevision {
+  SET_FIELD      // Cambió un campo
+  SET_PROVIDER   // Asignó proveedor
+  EDIT_ITEM      // Editó un item
+  CONFIRM        // Confirmó documento completo
+}
+
+enum EstadoPago {
+  BORRADOR
+  PAGADO
+  ANULADO
+}
+
+enum TipoPagoMetodo {
+  EFECTIVO
+  TRANSFERENCIA
+  CHEQUE
+}
+
+enum StatusIngestQueue {
+  PENDING
+  PROCESSING
+  DONE
+  ERROR
+}
+
+enum SourceIngestQueue {
+  SFTP
+  DRIVE
+}
+
+// ============================================================================
+// MODELO: CLIENTE (Multi-tenant root)
+// ============================================================================
+
+model Cliente {
+  id           String   @id @default(uuid()) @db.Uuid
+  razonSocial  String   @db.VarChar(255)
+  cuit         String   @unique @db.VarChar(11)
+  r2Prefix     String   @db.VarChar(50)  // Carpeta en R2: "30719238692"
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  // Relaciones
+  usuarios     Usuario[]
+  proveedores  Proveedor[]
+  documentos   Documento[]
+  pagos        Pago[]
+  ingestQueue  IngestQueue[]
+
+  @@map("clientes")
+}
+
+// ============================================================================
+// MODELO: USUARIO (con roles y multi-tenant)
+// ============================================================================
+
+model Usuario {
+  id        String      @id @default(uuid()) @db.Uuid
+  email     String      @unique @db.VarChar(255)
+  nombre    String      @db.VarChar(255)
+  rol       RolUsuario
+  clienteId String?     @db.Uuid  // NULL solo para SUPERADMIN
+  activo    Boolean     @default(true)
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(3)
+
+  // Relaciones
+  cliente   Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  revisiones DocumentoRevision[]
+
+  @@index([clienteId])
+  @@index([rol])
+  @@map("usuarios")
+}
+
+// ============================================================================
+// MODELO: PROVEEDOR (por cliente, para consolidar OCR)
+// ============================================================================
+
+model Proveedor {
+  id           String   @id @default(uuid()) @db.Uuid
+  clienteId    String   @db.Uuid
+  razonSocial  String   @db.VarChar(255)
+  cuit         String?  @db.VarChar(11)
+  alias        Json     @default("[]")  // Array de nombres alternativos del OCR
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  // Relaciones
+  cliente      Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  documentos   Documento[]
+  pagos        Pago[]
+
+  @@unique([clienteId, cuit], name: "proveedor_cliente_cuit_unique")
+  @@index([clienteId, razonSocial])
+  @@index([clienteId])
+  @@map("proveedores")
+}
+
+// ============================================================================
+// MODELO: DOCUMENTO (Facturas, Remitos, NC)
+// ============================================================================
+
+model Documento {
+  id                String          @id @default(uuid()) @db.Uuid
+  clienteId         String          @db.Uuid
+  proveedorId       String?         @db.Uuid  // Nullable hasta confirmar
+  tipo              TipoDocumento
+  letra             LetraFactura?   // Solo para facturas
+  puntoVenta        String?         @db.VarChar(10)
+  numero            String?         @db.VarChar(20)
+  numeroCompleto    String?         @db.VarChar(50)  // "0001-00000001" o "A00004-00164715"
+  fechaEmision      DateTime?       @db.Date
+  fechaVencimiento  DateTime?       @db.Date
+  moneda            String          @default("ARS") @db.VarChar(3)
+  subtotal          Decimal?        @db.Decimal(14, 2)
+  iva               Decimal?        @db.Decimal(14, 2)
+  total             Decimal?        @db.Decimal(14, 2)
+  confidenceScore   Int?            // 0-100 del OCR
+  estadoRevision    EstadoRevision  @default(PENDIENTE)
+  missingFields     Json            @default("[]")  // ["proveedor", "total"]
+  jsonNormalizado   Json            @default("{}")  // Output parseado para trazabilidad
+  source            SourceDocumento
+  hashSha256        String          @db.VarChar(64)  // Idempotencia
+  pdfRawKey         String          @db.VarChar(500) // R2 key original
+  pdfFinalKey       String?         @db.VarChar(500) // R2 key renombrado
+  textractRawKey    String?         @db.VarChar(500) // R2 key del raw output
+  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
+
+  // Relaciones
+  cliente           Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  proveedor         Proveedor?      @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  items             DocumentoItem[]
+  revisiones        DocumentoRevision[]
+  pagosAplicados    PagoDocumento[]
+
+  @@unique([clienteId, hashSha256], name: "documento_cliente_hash_unique")
+  @@index([clienteId, fechaEmision])
+  @@index([clienteId, estadoRevision])
+  @@index([clienteId, proveedorId])
+  @@index([clienteId, numeroCompleto])
+  @@index([hashSha256])
+  @@map("documentos")
+}
+
+// ============================================================================
+// MODELO: DOCUMENTO_ITEM (Detalle de artículos)
+// ============================================================================
+
+model DocumentoItem {
+  id              String    @id @default(uuid()) @db.Uuid
+  documentoId     String    @db.Uuid
+  linea           Int       // Orden en el documento
+  descripcion     String    @db.Text
+  codigo          String?   @db.VarChar(100)
+  cantidad        Decimal?  @db.Decimal(14, 3)
+  unidad          String?   @db.VarChar(20)
+  precioUnitario  Decimal?  @db.Decimal(14, 2)
+  subtotal        Decimal?  @db.Decimal(14, 2)
+
+  // Relaciones
+  documento       Documento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@index([documentoId])
+  @@map("documento_items")
+}
+
+// ============================================================================
+// MODELO: DOCUMENTO_REVISION (Auditoría de cambios humanos)
+// ============================================================================
+
+model DocumentoRevision {
+  id          String          @id @default(uuid()) @db.Uuid
+  documentoId String          @db.Uuid
+  usuarioId   String          @db.Uuid
+  accion      AccionRevision
+  path        String          @db.VarChar(255)  // "total", "items[3].cantidad"
+  before      Json?           // Valor anterior
+  after       Json?           // Valor nuevo
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+
+  // Relaciones
+  documento   Documento       @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  usuario     Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([documentoId, createdAt(sort: Desc)])
+  @@map("documento_revisiones")
+}
+
+// ============================================================================
+// MODELO: PAGO (por proveedor, multi-método)
+// ============================================================================
+
+model Pago {
+  id           String      @id @default(uuid()) @db.Uuid
+  clienteId    String      @db.Uuid
+  proveedorId  String      @db.Uuid
+  fecha        DateTime    @db.Date
+  estado       EstadoPago  @default(BORRADOR)
+  moneda       String      @default("ARS") @db.VarChar(3)
+  montoTotal   Decimal     @db.Decimal(14, 2)
+  nota         String?     @db.Text
+  comprobanteKey String?   @db.VarChar(500)  // R2 key
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+
+  // Relaciones
+  cliente      Cliente           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  proveedor    Proveedor         @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  metodos      PagoMetodo[]
+  documentos   PagoDocumento[]
+
+  @@index([clienteId, proveedorId])
+  @@index([clienteId, fecha])
+  @@map("pagos")
+}
+
+// ============================================================================
+// MODELO: PAGO_METODO (1 pago puede tener varios métodos)
+// ============================================================================
+
+model PagoMetodo {
+  id      String         @id @default(uuid()) @db.Uuid
+  pagoId  String         @db.Uuid
+  tipo    TipoPagoMetodo
+  monto   Decimal        @db.Decimal(14, 2)
+  meta    Json           @default("{}")  // Transferencia: {banco, cbu, ref}, Cheque: {nro, banco, vencimiento}
+
+  // Relaciones
+  pago    Pago           @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+
+  @@index([pagoId])
+  @@map("pago_metodos")
+}
+
+// ============================================================================
+// MODELO: PAGO_DOCUMENTO (Aplicación a documentos con montos parciales)
+// ============================================================================
+
+model PagoDocumento {
+  pagoId        String    @db.Uuid
+  documentoId   String    @db.Uuid
+  montoAplicado Decimal   @db.Decimal(14, 2)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  // Relaciones
+  pago          Pago      @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  documento     Documento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@id([pagoId, documentoId])
+  @@map("pago_documentos")
+}
+
+// ============================================================================
+// MODELO: INGEST_QUEUE (Cola en DB para worker)
+// ============================================================================
+
+model IngestQueue {
+  id          String              @id @default(uuid()) @db.Uuid
+  clienteId   String              @db.Uuid
+  source      SourceIngestQueue
+  sourceRef   String              @db.VarChar(500)  // Path o ID archivo
+  sha256      String?             @db.VarChar(64)
+  status      StatusIngestQueue   @default(PENDING)
+  attempts    Int                 @default(0)
+  nextRetryAt DateTime?           @db.Timestamptz(3)
+  lastError   String?             @db.Text
+  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime            @updatedAt @db.Timestamptz(3)
+
+  // Relaciones
+  cliente     Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, source, sourceRef], name: "ingest_queue_unique")
+  @@index([status, nextRetryAt])
+  @@index([clienteId, status])
+  @@map("ingest_queue")
+}

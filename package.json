@@ -1,0 +1,35 @@
+{
+  "name": "axp-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:web": "bun run --filter web dev",
+    "dev:api": "bun run --filter api dev",
+    "dev:worker": "bun run --filter worker dev",
+    "build": "bun run --filter '*' build",
+    "build:web": "bun run --filter web build",
+    "build:api": "bun run --filter api build",
+    "build:worker": "bun run --filter worker build",
+    "lint": "bun run --filter '*' lint",
+    "type-check": "bun run --filter '*' type-check",
+    "db:generate": "cd packages/database && bunx prisma generate",
+    "db:push": "cd packages/database && bunx prisma db push",
+    "db:migrate": "cd packages/database && bunx prisma migrate dev",
+    "db:studio": "cd packages/database && bunx prisma studio",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/.next apps/*/dist packages/*/dist"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,6 @@
+# Prisma
+.env
+migrations/
+
+# Keep migration directory structure but ignore migration files
+!migrations/.gitkeep
