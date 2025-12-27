@@ -4,8 +4,8 @@ services:
   # Watcher: Monitorea WebDAV y encola archivos
   axp-watcher:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
     container_name: axp-watcher
     environment:
       WORKER_MODE: watcher
@@ -32,8 +32,8 @@ services:
   # Processor: Procesa cola y sube a R2
   axp-processor:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
     container_name: axp-processor
     environment:
       WORKER_MODE: processor
