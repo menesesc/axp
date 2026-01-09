@@ -111,17 +111,38 @@ export function extractDateFromFilename(filename: string): Date {
 }
 
 /**
- * Genera una key de R2 organizada por cliente/fecha
- * Formato: ${r2Prefix}/${YYYY}/${MM}/${DD}/${filename}
- * Si r2Prefix está vacío, omite el prefijo inicial
+ * Genera una key de R2 organizada por cliente
+ * 
+ * FASE 1: Todos los archivos van a inbox/ (sin procesar por OCR)
+ * Formato: ${r2Prefix}/inbox/${filename}
+ * 
+ * FASE 2: El OCR Worker moverá de inbox/ a carpetas por fecha real
+ * Formato final: ${r2Prefix}/${YYYY}/${MM}/${DD}/${filename}
+ * 
+ * @param r2Prefix - Prefijo del bucket (puede ser vacío)
+ * @param filename - Nombre del archivo
+ * @param useInbox - true = inbox (por defecto), false = organizar por fecha
+ * @param date - Fecha para organizar (solo si useInbox = false)
  */
-export function generateR2Key(r2Prefix: string, filename: string, date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  // Si r2Prefix está vacío, no agregar la barra inicial
+export function generateR2Key(
+  r2Prefix: string, 
+  filename: string, 
+  useInbox: boolean = true,
+  date?: Date
+): string {
   const prefix = r2Prefix ? `${r2Prefix}/` : '';
+  
+  if (useInbox) {
+    // FASE 1: Subir a inbox
+    return `${prefix}inbox/${filename}`;
+  }
+  
+  // FASE 2: Organizar por fecha (usado por OCR Worker)
+  const fileDate = date || new Date();
+  const year = fileDate.getFullYear();
+  const month = String(fileDate.getMonth() + 1).padStart(2, '0');
+  const day = String(fileDate.getDate()).padStart(2, '0');
+  
   return `${prefix}${year}/${month}/${day}/${filename}`;
 }
 

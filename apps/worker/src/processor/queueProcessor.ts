@@ -107,16 +107,13 @@ async function processQueueItem(item: QueueItem): Promise<void> {
     logger.info(`🏢 Cliente: ${clienteConfig.cuit}`);
     logger.info(`📦 R2 Bucket: ${clienteConfig.r2Bucket}`);
 
-    // Extraer fecha del filename (ej: weiss_20251226_231633.pdf → 2025/12/26)
-    const fileDate = extractDateFromFilename(item.sourceRef);
-    logger.info(`📅 Fecha del archivo: ${fileDate.toISOString().split('T')[0]}`);
-
-    // Generar clave R2 usando la fecha del archivo (no la fecha de proceso)
-    const r2Key = generateR2Key(clienteConfig.r2Prefix, item.sourceRef, fileDate);
-    logger.info(`🔑 R2 key: ${r2Key}`);
+    // FASE 1: Subir a inbox (sin procesar OCR todavía)
+    // El OCR Worker (Fase 2) lo procesará y moverá a carpetas por fecha real
+    const r2Key = generateR2Key(clienteConfig.r2Prefix, item.sourceRef, true); // true = inbox
+    logger.info(`🔑 R2 key (inbox): ${r2Key}`);
 
     // Subir a R2 (ahora pasamos el bucket específico del cliente)
-    logger.info(`☁️  Uploading to R2...`);
+    logger.info(`☁️  Uploading to R2 inbox...`);
     await uploadToR2(clienteConfig.r2Bucket, r2Key, fileBuffer, 'application/pdf');
     logger.info(`✅ Upload successful: ${clienteConfig.r2Bucket}/${r2Key}`);
 
