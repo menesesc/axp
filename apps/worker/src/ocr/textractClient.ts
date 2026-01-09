@@ -126,6 +126,43 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   const iva = parseTextractAmount(getFieldValue('TAX'));
   const total = parseTextractAmount(getFieldValue('TOTAL'));
 
+  // Extraer TODO el texto raw para usar extractores legacy como fallback
+  const allText: string[] = [];
+  summaryFields.forEach(field => {
+    if (field.ValueDetection?.Text) {
+      allText.push(field.ValueDetection.Text);
+    }
+    if (field.LabelDetection?.Text) {
+      allText.push(field.LabelDetection.Text);
+    }
+  });
+  lineItems.forEach((group: any) => {
+    (group.LineItems || []).forEach((item: any) => {
+      (item.LineItemExpenseFields || []).forEach((field: any) => {
+        if (field.ValueDetection?.Text) {
+          allText.push(field.ValueDetection.Text);
+        }
+        if (field.LabelDetection?.Text) {
+          allText.push(field.LabelDetection.Text);
+        }
+      });
+    });
+  });
+
+  // Fallbacks usando extractores legacy
+  const letra = extractLetra(allText);
+  const proveedorCUIT = extractProveedorCUIT(allText);
+  const fechaVencimientoFallback = fechaVencimiento || extractFechaVencimiento(allText);
+
+  // Debug logging
+  logger.info(`🔍 Extracted fields:`);
+  logger.info(`   Proveedor: ${proveedor || 'N/A'}`);
+  logger.info(`   CUIT: ${proveedorCUIT || 'N/A'}`);
+  logger.info(`   Letra: ${letra || 'N/A'}`);
+  logger.info(`   Total: ${total || 'N/A'}`);
+  logger.info(`   Fecha emisión: ${fechaEmision || 'N/A'}`);
+  logger.info(`   Fecha vencimiento: ${fechaVencimientoFallback || 'N/A'}`);
+
   // Extraer items
   const items = extractExpenseLineItems(lineItems);
   
@@ -141,18 +178,18 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
 
   const parsed = {
     tipo: 'FACTURA',
-    letra: null, // AnalyzeExpense no detecta letra, lo haremos manualmente después
+    letra: letra, // Detectada con extractor legacy
     puntoVenta: null,
     numero: null,
     numeroCompleto: numeroCompleto,
     fechaEmision: fechaEmision,
-    fechaVencimiento: fechaVencimiento,
+    fechaVencimiento: fechaVencimientoFallback, // Con fallback al extractor legacy
     subtotal: subtotal,
     iva: iva,
     total: total,
     moneda: 'ARS', // Por defecto, se puede mejorar
     proveedor: proveedor,
-    proveedorCUIT: null, // Lo extraeremos del texto raw si es necesario
+    proveedorCUIT: proveedorCUIT, // Detectado con extractor legacy
     items: items,
     confidenceScore: confidenceScore,
     missingFields: [] as string[],
@@ -214,11 +251,12 @@ function extractExpenseLineItems(lineItemGroups: any[]): any[] {
         return field?.ValueDetection?.Text || null;
       };
 
-      const descripcion = getItemField('ITEM') || getItemField('PRODUCT_CODE') || `Item ${i + 1}`;
+      const descripcion = getItemField('ITEM') || getItemField('DESCRIPTION') || getItemField('PRODUCT_CODE') || `Item ${i + 1}`;
       const codigo = getItemField('PRODUCT_CODE');
       const cantidadStr = getItemField('QUANTITY');
       const precioStr = getItemField('UNIT_PRICE') || getItemField('PRICE');
-      const subtotalStr = getItemField('EXPENSE_ROW');
+      // Buscar subtotal: primero AMOUNT (total de línea), luego EXPENSE_ROW
+      const subtotalStr = getItemField('AMOUNT') || getItemField('LINE_ITEM_TOTAL') || getItemField('EXPENSE_ROW');
 
       items.push({
         linea: i + 1,
