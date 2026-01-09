@@ -23,8 +23,9 @@
    - **Repository**: `https://github.com/menesesc/axp` (o tu repo)
    - **Branch**: `main`
    - **Compose File Path**: `apps/worker/docker-compose.prod.yml`
-   - **Build Context**: `.` (root del repo, importante para monorepo)
    - **Auto Deploy**: ✅ Activado (opcional)
+
+⚠️ **IMPORTANTE**: Dokploy automáticamente clona el repo completo en `/app` dentro del contenedor, por eso el compose NO necesita montar el código.
 
 ### 3. Configurar variables de entorno
 
@@ -67,18 +68,26 @@ FILE_STABLE_CHECKS=3
 ## Estructura de volúmenes
 
 ```
-Servidor (host)          →  Contenedor (docker)
+Dokploy automáticamente clona el repo completo en /app dentro del contenedor:
+
+/app/                    (root del monorepo - clonado por Dokploy)
+├── package.json         (workspace root)
+├── apps/
+│   └── worker/
+│       ├── src/
+│       ├── prefix-map.json
+│       └── package.json
+├── packages/
+│   ├── database/        (workspace dependency)
+│   └── shared/          (workspace dependency)
+
+Volúmenes adicionales montados:
 /srv/webdav/data         →  /data          (watcher: lectura/escritura)
 /srv/webdav/processed    →  /processed     (ambos: lectura/escritura)
 /srv/webdav/failed       →  /failed        (watcher: escritura)
-
-Monorepo completo        →  /app           (ambos: solo lectura)
-  ├── apps/worker/       →  /app/apps/worker/     (working_dir)
-  ├── packages/database/ →  /app/packages/database/
-  └── packages/shared/   →  /app/packages/shared/
 ```
 
-**Nota:** El monorepo se monta completo para que Bun pueda resolver los workspaces (`database@workspace:*` y `shared@workspace:*`).
+**Nota:** El comando del contenedor primero hace `bun install` desde `/app` (root del monorepo) para resolver los workspaces, luego ejecuta el worker desde `/app/apps/worker`.
 
 ## Comandos útiles en Dokploy
 
