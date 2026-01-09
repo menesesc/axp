@@ -14,6 +14,7 @@
  */
 
 import { prisma } from 'database';
+import type { EstadoRevision } from 'database';
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
@@ -31,6 +32,34 @@ interface InboxFile {
   key: string;
   clienteId: string;
   filename: string;
+}
+
+/**
+ * Determina el estado de revisión basado en los campos detectados
+ */
+function determineEstadoRevision(parsed: any, proveedorId: string | null): EstadoRevision {
+  // Campos críticos: fechaEmision, total, y proveedor (o al menos CUIT)
+  const hasCriticalFields = 
+    parsed.fechaEmision && 
+    parsed.total && 
+    (proveedorId || parsed.proveedorCUIT);
+  
+  if (!hasCriticalFields) {
+    return 'PENDIENTE'; // Falta información crítica, requiere revisión manual
+  }
+  
+  // Campos opcionales importantes: letra, numeroCompleto, subtotal, iva
+  const hasOptionalFields = 
+    parsed.letra && 
+    parsed.numeroCompleto && 
+    parsed.subtotal && 
+    parsed.iva;
+  
+  if (hasOptionalFields) {
+    return 'CONFIRMADO'; // Tiene todos los campos importantes
+  }
+  
+  return 'PENDIENTE'; // Tiene campos críticos pero faltan opcionales
 }
 
 /**
@@ -228,6 +257,9 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     // 9. Crear documento en BD
     logger.info(`💾 Creating Documento record...`);
+    const estadoRevision = determineEstadoRevision(parsed, proveedorId);
+    logger.info(`📋 Estado de revisión: ${estadoRevision}`);
+    
     const documento = await prisma.documento.create({
       data: {
         clienteId: file.clienteId,
@@ -244,7 +276,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         iva: parsed.iva,
         total: parsed.total,
         confidenceScore: parsed.confidenceScore,
-        estadoRevision: 'PENDIENTE',
+        estadoRevision: estadoRevision,
         missingFields: parsed.missingFields || [],
         jsonNormalizado: {
           tipo: parsed.tipo,

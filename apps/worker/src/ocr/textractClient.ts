@@ -102,8 +102,9 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   const doc = expenseDocuments[0]; // Tomar el primer documento
   const summaryFields = doc.SummaryFields || [];
   const lineItems = doc.LineItemGroups || [];
+  const blocks = doc.Blocks || [];
 
-  logger.info(`📝 Found ${summaryFields.length} summary fields and ${lineItems.length} line item groups`);
+  logger.info(`📝 Found ${summaryFields.length} summary fields, ${lineItems.length} line item groups, and ${blocks.length} total blocks`);
 
   // Función helper para buscar campo por tipo
   const getFieldValue = (type: string): string | null => {
@@ -132,8 +133,13 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   const iva = parseTextractAmount(getFieldValue('TAX'));
   const total = parseTextractAmount(getFieldValue('TOTAL'));
 
-  // Extraer TODO el texto raw para usar extractores legacy como fallback
+  // ========================================================================
+  // MEJORAR EXTRACCIÓN: Usar TODOS los Blocks (LINE y WORD)
+  // Esto nos da acceso a TODO el texto del documento en orden
+  // ========================================================================
   const allText: string[] = [];
+  
+  // 1. Extraer de SummaryFields
   summaryFields.forEach(field => {
     if (field.ValueDetection?.Text) {
       allText.push(field.ValueDetection.Text);
@@ -142,6 +148,8 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
       allText.push(field.LabelDetection.Text);
     }
   });
+  
+  // 2. Extraer de LineItems
   lineItems.forEach((group: any) => {
     (group.LineItems || []).forEach((item: any) => {
       (item.LineItemExpenseFields || []).forEach((field: any) => {
@@ -154,10 +162,18 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
       });
     });
   });
+  
+  // 3. NUEVO: Extraer de TODOS los Blocks (LINE type)
+  // Esto nos da acceso a texto que no está en SummaryFields ni LineItems
+  blocks.forEach((block: Block) => {
+    if (block.BlockType === 'LINE' && block.Text) {
+      allText.push(block.Text);
+    }
+  });
 
   // Debug: mostrar primeras líneas de texto para verificar extractores
-  logger.info(`📝 Raw text (first 20 lines):`);
-  allText.slice(0, 20).forEach((line, i) => logger.info(`   ${i + 1}: "${line}"`));
+  logger.info(`📝 Raw text from all sources (first 30 lines):`);
+  allText.slice(0, 30).forEach((line, i) => logger.info(`   ${i + 1}: "${line}"`));
   
   // También buscar específicamente "FACTURA", "A", "B", "C" en todo el texto
   const hasFactura = allText.some(line => /FACTURA/i.test(line));
