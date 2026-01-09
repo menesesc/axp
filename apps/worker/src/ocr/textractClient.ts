@@ -154,11 +154,19 @@ function detectTipoDocumento(lines: string[]): 'FACTURA' | 'REMITO' | 'NOTA_CRED
 }
 
 function extractLetra(lines: string[]): 'A' | 'B' | 'C' | null {
-  // Buscar "FACTURA A", "FACTURA B", etc
-  for (const line of lines) {
-    const match = line.match(/FACTURA\s+([ABC])/i);
-    if (match) {
-      return match[1].toUpperCase() as 'A' | 'B' | 'C';
+  // Buscar "FACTURA A", "FACTURAS A", "Factura A", o línea con solo "A"
+  for (let i = 0; i < Math.min(10, lines.length); i++) {
+    const line = lines[i] || '';
+    
+    // Patrón 1: "FACTURA A" o "FACTURAS A"
+    const match1 = line.match(/FACTURAS?\s+([ABC])/i);
+    if (match1 && match1[1]) {
+      return match1[1].toUpperCase() as 'A' | 'B' | 'C';
+    }
+
+    // Patrón 2: Línea que solo contiene "A", "B" o "C"
+    if (/^[ABC]$/i.test(line.trim())) {
+      return line.trim().toUpperCase() as 'A' | 'B' | 'C';
     }
   }
   return null;
@@ -385,12 +393,58 @@ function calculateConfidence(blocks: Block[]): number {
 
 function parseAmount(str: string): number | null {
   try {
-    // Normalizar: remover puntos de miles, reemplazar coma por punto
-    const normalized = str
-      .replace(/\./g, '') // Remover puntos de miles
-      .replace(',', '.'); // Coma decimal a punto
+    // Detectar formato:
+    // - Si tiene COMA: formato argentino (1.234,56 → miles con punto, decimal con coma)
+    // - Si NO tiene COMA: puede ser formato con punto decimal (10642.402) o entero (10)
+    
+    if (str.includes(',')) {
+      // Formato argentino: 1.234,56 o 734.451,45
+      const normalized = str
+        .replace(/\./g, '') // Remover puntos de miles
+        .replace(',', '.'); // Coma decimal a punto
+      const parsed = parseFloat(normalized);
+      return isNaN(parsed) ? null : parsed;
+    } else {
+      // Sin coma: verificar si es formato con punto decimal o miles
+      const parts = str.split('.');
+      
+      if (parts.length === 1) {
+        // Sin punto: número entero (ej: "10", "42")
+        const parsed = parseFloat(str);
+        return isNaN(parsed) ? null : parsed;
+      } else if (parts.length === 2) {
+        // Con punto: verificar si es decimal o separador de miles
+        const decimalPart = parts[1] || '';
+        
+        // Si la parte decimal tiene 3 dígitos y el siguiente tiene más de 2,
+        // probablemente es separador de miles (ej: 106.424.02 → 106424.02)
+        // Si la parte decimal tiene 1-3 dígitos al final, es decimal (ej: 10642.402)
+        
+        // Heurística: Si último grupo tiene exactamente 2 dígitos → es decimal money format
+        // Si último grupo tiene 3 dígitos → puede ser miles
+        // Si hay más de un punto → definitivamente miles
+        
+        if (parts.length > 2) {
+          // Múltiples puntos: separador de miles (ej: 1.234.567,89)
+          const normalized = str.replace(/\./g, '');
+          const parsed = parseFloat(normalized);
+          return isNaN(parsed) ? null : parsed;
+        }
+        
+        // Un solo punto: verificar longitud de parte decimal
+        if (decimalPart.length === 2 && parseFloat(parts[0] || '0') < 100) {
+          // Probablemente formato money (ej: 10.50, 21.00)
+          const parsed = parseFloat(str);
+          return isNaN(parsed) ? null : parsed;
+        } else {
+          // Probablemente decimal de precio unitario (ej: 10642.402)
+          const parsed = parseFloat(str);
+          return isNaN(parsed) ? null : parsed;
+        }
+      }
+    }
 
-    const parsed = parseFloat(normalized);
+    const parsed = parseFloat(str);
     return isNaN(parsed) ? null : parsed;
   } catch {
     return null;
@@ -401,7 +455,7 @@ function parseAmount(str: string): number | null {
  * Extrae items de productos desde las líneas de texto
  * Busca patrones de productos entre "Descripción" y "Subtotal:"
  */
-function extractItemsFromTables(blocks: Block[], lines: string[]): any[] {
+function extractItemsFromTables(_blocks: Block[], lines: string[]): any[] {
   const items: any[] = [];
   
   // Estrategia: buscar líneas que empiecen con código numérico
@@ -409,9 +463,10 @@ function extractItemsFromTables(blocks: Block[], lines: string[]): any[] {
   let inProductSection = false;
   let currentItem: any = null;
   let lineNumber = 0;
+  let numbersSeen = 0; // Contador de números vistos después del código
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = (lines[i] || '').trim();
 
     // Detectar inicio de sección de productos
     if (line.match(/Descripción|Descripcion|Detalle/i)) {
@@ -421,7 +476,7 @@ function extractItemsFromTables(blocks: Block[], lines: string[]): any[] {
 
     // Detectar fin de sección de productos
     if (line.match(/^Subtotal:/i) || line.match(/^El % de descuento/i)) {
-      if (currentItem) {
+      if (currentItem && numbersSeen >= 2) {
         items.push(currentItem);
       }
       break;
@@ -429,11 +484,11 @@ function extractItemsFromTables(blocks: Block[], lines: string[]): any[] {
 
     if (!inProductSection) continue;
 
-    // Patrón: línea que empieza con código de producto (números)
+    // Patrón: línea que empieza con código de producto (números de 4-6 dígitos)
     const codigoMatch = line.match(/^(\d{4,6})\s+(.+)/);
     if (codigoMatch) {
-      // Guardar item anterior si existe
-      if (currentItem) {
+      // Guardar item anterior si existe y tiene datos completos
+      if (currentItem && numbersSeen >= 2) {
         items.push(currentItem);
       }
 
@@ -448,49 +503,69 @@ function extractItemsFromTables(blocks: Block[], lines: string[]): any[] {
         precioUnitario: null,
         subtotal: null,
       };
+      numbersSeen = 0;
       continue;
     }
 
     // Si tenemos un item activo, buscar más datos
     if (currentItem) {
-      // Marca (suele estar sola en una línea)
-      if (line.match(/^[A-Z][a-z]/)) {
-        // Probablemente una marca
+      // Marca (suele estar sola en una línea, texto capitalizado)
+      if (line.match(/^[A-Z][a-z]/) && !line.match(/\d/)) {
+        // Probablemente una marca (Mc Cain, etc.)
         continue;
       }
 
-      // Presentación/Unidad (ej: "2 Kgr", "2.500 Kgr")
-      const unidadMatch = line.match(/^([\d.,]+)\s*(Kgr|Kg|Lt|Un|Unidad)/i);
+      // Presentación/Unidad con cantidad (ej: "2 Kgr", "2.500 Kgr 42")
+      const unidadConCantidad = line.match(/^([\d.,]+)\s*(Kgr|Kg|Lt|Un|Unidad)\s+(\d+)/i);
+      if (unidadConCantidad) {
+        currentItem.unidad = `${unidadConCantidad[1]} ${unidadConCantidad[2]}`;
+        currentItem.cantidad = parseAmount(unidadConCantidad[3]);
+        continue;
+      }
+
+      // Solo presentación/unidad (ej: "2 Kgr")
+      const unidadMatch = line.match(/^([\d.,]+)\s*(Kgr|Kg|Lt|Un|Unidad)$/i);
       if (unidadMatch) {
         currentItem.unidad = line;
         continue;
       }
 
-      // Línea con números (cantidad, precio, subtotal)
-      // Ej: "10" o "42" (cantidad)
+      // Cantidad sola (ej: "10" o "42")
       if (/^\d{1,4}$/.test(line) && !currentItem.cantidad) {
         currentItem.cantidad = parseAmount(line);
         continue;
       }
 
-      // Precio unitario (ej: "10642.402")
-      if (/^[\d.,]+$/.test(line) && currentItem.cantidad && !currentItem.precioUnitario) {
-        currentItem.precioUnitario = parseAmount(line);
-        continue;
-      }
-
-      // Subtotal (último número grande)
-      if (/^[\d.,]+$/.test(line) && currentItem.precioUnitario && !currentItem.subtotal) {
+      // Línea con número decimal (puede ser precio o subtotal)
+      if (/^[\d.,]+$/.test(line)) {
         const amount = parseAmount(line);
-        if (amount && amount > 1000) {
+        
+        if (!amount) continue;
+
+        // Ignorar porcentajes (< 100 con punto decimal)
+        if (amount < 100 && line.includes('.')) {
+          continue; // Probablemente descuento % o alícuota IVA
+        }
+
+        numbersSeen++;
+
+        // Primer número grande: precio unitario
+        if (!currentItem.precioUnitario && amount > 100) {
+          currentItem.precioUnitario = amount;
+          continue;
+        }
+
+        // Segundo número grande: subtotal
+        if (currentItem.precioUnitario && !currentItem.subtotal && amount > 1000) {
           currentItem.subtotal = amount;
+          continue;
         }
       }
     }
   }
 
-  // Guardar último item si existe
-  if (currentItem) {
+  // Guardar último item si existe y está completo
+  if (currentItem && numbersSeen >= 2) {
     items.push(currentItem);
   }
 
