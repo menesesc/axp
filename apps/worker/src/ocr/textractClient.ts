@@ -159,7 +159,9 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   logger.info(`   Proveedor: ${proveedor || 'N/A'}`);
   logger.info(`   CUIT: ${proveedorCUIT || 'N/A'}`);
   logger.info(`   Letra: ${letra || 'N/A'}`);
-  logger.info(`   Total: ${total || 'N/A'}`);
+  logger.info(`   Subtotal (raw): "${getFieldValue('SUBTOTAL')}" → ${subtotal || 'N/A'}`);
+  logger.info(`   IVA (raw): "${getFieldValue('TAX')}" → ${iva || 'N/A'}`);
+  logger.info(`   Total (raw): "${getFieldValue('TOTAL')}" → ${total || 'N/A'}`);
   logger.info(`   Fecha emisión: ${fechaEmision || 'N/A'}`);
   logger.info(`   Fecha vencimiento: ${fechaVencimientoFallback || 'N/A'}`);
 
@@ -257,6 +259,10 @@ function extractExpenseLineItems(lineItemGroups: any[]): any[] {
       const precioStr = getItemField('UNIT_PRICE') || getItemField('PRICE');
       // Buscar subtotal: primero AMOUNT (total de línea), luego EXPENSE_ROW
       const subtotalStr = getItemField('AMOUNT') || getItemField('LINE_ITEM_TOTAL') || getItemField('EXPENSE_ROW');
+
+      // Debug: mostrar todos los campos del item
+      logger.info(`  📦 Item ${i + 1}: ${descripcion}`);
+      logger.info(`     Raw fields: cantidad="${cantidadStr}", precio="${precioStr}", subtotal="${subtotalStr}"`);
 
       items.push({
         linea: i + 1,
