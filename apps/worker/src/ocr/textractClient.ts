@@ -149,6 +149,10 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
     });
   });
 
+  // Debug: mostrar primeras líneas de texto para verificar extractores
+  logger.info(`📝 Raw text (first 10 lines):`);
+  allText.slice(0, 10).forEach((line, i) => logger.info(`   ${i + 1}: "${line}"`));
+
   // Fallbacks usando extractores legacy
   const letra = extractLetra(allText);
   const proveedorCUIT = extractProveedorCUIT(allText);
@@ -310,21 +314,36 @@ function detectTipoDocumento(lines: string[]): 'FACTURA' | 'REMITO' | 'NOTA_CRED
 }
 
 function extractLetra(lines: string[]): 'A' | 'B' | 'C' | null {
-  // Buscar "FACTURA A", "FACTURAS A", "Factura A", o línea con solo "A"
-  for (let i = 0; i < Math.min(10, lines.length); i++) {
-    const line = lines[i] || '';
+  // Buscar "FACTURA A", "FACTURAS A", "Factura A", o letra sola cerca de "FACTURA"
+  const text = lines.join('\n').toUpperCase();
+  
+  // Patrón 1: "FACTURA A", "FACTURAS A", "FACTURA: A"
+  const match1 = text.match(/FACTURAS?\s*:?\s*([ABC])\b/);
+  if (match1 && match1[1]) {
+    return match1[1] as 'A' | 'B' | 'C';
+  }
+  
+  // Patrón 2: Buscar "COD." seguido de letra (común en facturas argentinas)
+  const match2 = text.match(/COD\.\s*(\d+)\s*FACTURA\s+([ABC])/);
+  if (match2 && match2[2]) {
+    return match2[2] as 'A' | 'B' | 'C';
+  }
+  
+  // Patrón 3: Línea que contiene solo "A", "B" o "C" cerca de FACTURA
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const line = (lines[i] || '').trim().toUpperCase();
+    const prevLine = (lines[i - 1] || '').trim().toUpperCase();
+    const nextLine = (lines[i + 1] || '').trim().toUpperCase();
     
-    // Patrón 1: "FACTURA A" o "FACTURAS A"
-    const match1 = line.match(/FACTURAS?\s+([ABC])/i);
-    if (match1 && match1[1]) {
-      return match1[1].toUpperCase() as 'A' | 'B' | 'C';
-    }
-
-    // Patrón 2: Línea que solo contiene "A", "B" o "C"
-    if (/^[ABC]$/i.test(line.trim())) {
-      return line.trim().toUpperCase() as 'A' | 'B' | 'C';
+    // Si la línea es solo una letra y hay "FACTURA" cerca
+    if (/^[ABC]$/.test(line)) {
+      if (prevLine.includes('FACTURA') || nextLine.includes('FACTURA') || 
+          prevLine.includes('COD') || text.includes('FACTURA')) {
+        return line as 'A' | 'B' | 'C';
+      }
     }
   }
+  
   return null;
 }
 
@@ -376,16 +395,26 @@ function extractFechaEmision(lines: string[]): string | null {
 }
 
 function extractFechaVencimiento(lines: string[]): string | null {
-  // Buscar "Vto: 20/01/2026" o "Vencimiento: 20-01-2026"
-  for (const line of lines) {
-    const match = line.match(/(?:Vto\.?|Vencimiento)[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
-    if (match) {
+  // Buscar "Vto: 20/01/2026", "Vencimiento: 20-01-2026", "Vence: 06/01/2026"
+  const text = lines.join('\n');
+  
+  // Patrón 1: Vto, Venc, Vencimiento
+  const patterns = [
+    /(?:Vto\.?|Venc\.?|Vencimiento|Vence)[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i,
+    /(?:Due\s+Date|Payment\s+Due)[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i,
+    /(?:Fecha\s+de\s+)?Vencimiento[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[2] && match[3]) {
       const day = match[1].padStart(2, '0');
       const month = match[2].padStart(2, '0');
       const year = match[3];
       return `${year}-${month}-${day}`;
     }
   }
+  
   return null;
 }
 
