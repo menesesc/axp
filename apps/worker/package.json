@@ -6,15 +6,18 @@
     "dev": "bun run --hot src/index.ts",
     "dev:watcher": "WORKER_MODE=watcher bun run --hot src/index.ts",
     "dev:processor": "WORKER_MODE=processor bun run --hot src/index.ts",
+    "dev:ocr": "WORKER_MODE=ocr bun run --hot src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "start": "bun run dist/index.js",
     "start:watcher": "WORKER_MODE=watcher bun run dist/index.js",
     "start:processor": "WORKER_MODE=processor bun run dist/index.js",
+    "start:ocr": "WORKER_MODE=ocr bun run dist/index.js",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.958.0",
+    "@aws-sdk/client-textract": "^3.958.0",
     "database": "workspace:*",
     "shared": "workspace:*",
     "zod": "^3.22.4"

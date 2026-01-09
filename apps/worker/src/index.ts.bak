@@ -1,21 +1,5 @@
 /**
- * AXP Worker Entry Point
- * 
- * Este worker maneja tres modos de operación:
- * - WATCHER: Observa carpeta WebDAV y encola archivos en IngestQueue
- * - PROCESSOR: Consume IngestQueue y sube PDFs a R2 inbox/
- * - OCR: Procesa archivos de inbox/ con AWS Textract y organiza por fecha real
- * 
- * Modo seleccionado por env var: WORKER_MODE=watcher|processor|ocr
- */
-
-import { startWatcher } from './watcher/webdavWatcher';
-import { startProcessor } from './processor/queueProcessor';
-import { startOCRProcessor } from './ocr/ocrProcessor';
-
-const WORKER_MODE = process.env.WORKER_MODE || 'watcher';
-
-console.log(`🚀 AXP Worker starting in mode: ${WORKER_MODE}`);
+ * AXP Workconsole.log(`🚀 AXP Worker starting in mode: ${WORKER_MODE}`);
 console.log(`📅 Started at: ${new Date().toISOString()}`);
 
 // Manejo de señales para graceful shutdown
@@ -23,6 +7,31 @@ export let isShuttingDown = false;
 
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully...');
+  isShuttingDown = true;
+  process.exit(0);
+});
+oint
+ * 
+ * Este worker maneja dos modos de operación:
+ * - WATCHER: Observa carpeta WebDAV y encola archivos en IngestQueue
+ * - PROCESSOR: Consume IngestQueue y procesa PDFs (sube a R2, prepara para Textract)
+ * 
+ * Modo seleccionado por env var: WORKER_MODE=watcher|processor
+ */
+
+import { startWatcher } from './watcher/webdavWatcher';
+import { startProcessor } from './processor/queueProcessor';
+
+const WORKER_MODE = process.env.WORKER_MODE || 'watcher';
+
+console.log(`🚀 AXP Worker starting in mode: ${WORKER_MODE}`);
+console.log(`📅 Started at: ${new Date().toISOString()}`);
+
+// Manejo de señales para graceful shutdown
+let isShuttingDown = false;
+
+process.on('SIGTERM', () => {
+  console.log('� SIGTERM received, shutting down gracefully...');
   isShuttingDown = true;
   process.exit(0);
 });
@@ -51,11 +60,9 @@ async function main() {
       await startWatcher();
     } else if (WORKER_MODE === 'processor') {
       await startProcessor();
-    } else if (WORKER_MODE === 'ocr') {
-      await startOCRProcessor();
     } else {
       console.error(`❌ Invalid WORKER_MODE: ${WORKER_MODE}`);
-      console.error('   Valid values: watcher, processor, ocr');
+      console.error('   Valid values: watcher, processor');
       process.exit(1);
     }
   } catch (error) {
@@ -65,3 +72,5 @@ async function main() {
 }
 
 main();
+
+export { isShuttingDown };
