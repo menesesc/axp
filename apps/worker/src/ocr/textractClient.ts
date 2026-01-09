@@ -7,9 +7,9 @@
 
 import {
   TextractClient,
-  AnalyzeDocumentCommand,
-  AnalyzeDocumentCommandInput,
-  AnalyzeDocumentCommandOutput,
+  AnalyzeExpenseCommand,
+  AnalyzeExpenseCommandInput,
+  AnalyzeExpenseCommandOutput,
   Block,
 } from '@aws-sdk/client-textract';
 import { createLogger } from '../utils/fileUtils';
@@ -39,31 +39,30 @@ function createTextractClient(region: string): TextractClient {
 }
 
 /**
- * Procesa un PDF con AWS Textract
+ * Procesa un PDF con AWS Textract usando AnalyzeExpense (específico para facturas)
  */
 export async function processWithTextract(
   pdfBuffer: Buffer,
   region: string = 'us-east-1'
-): Promise<AnalyzeDocumentCommandOutput> {
+): Promise<AnalyzeExpenseCommandOutput> {
   const client = createTextractClient(region);
 
-  const input: AnalyzeDocumentCommandInput = {
+  const input: AnalyzeExpenseCommandInput = {
     Document: {
       Bytes: pdfBuffer,
     },
-    FeatureTypes: ['TABLES', 'FORMS'], // Detectar tablas y formularios
   };
 
   try {
-    logger.info(`🤖 Sending document to Textract (${(pdfBuffer.length / 1024).toFixed(2)} KB)...`);
+    logger.info(`🤖 Sending document to Textract AnalyzeExpense (${(pdfBuffer.length / 1024).toFixed(2)} KB)...`);
     const startTime = Date.now();
 
-    const command = new AnalyzeDocumentCommand(input);
+    const command = new AnalyzeExpenseCommand(input);
     const response = await client.send(command);
 
     const duration = Date.now() - startTime;
     logger.info(`✅ Textract completed (${duration}ms)`);
-    logger.info(`📄 Blocks detected: ${response.Blocks?.length || 0}`);
+    logger.info(`📄 Expense documents detected: ${response.ExpenseDocuments?.length || 0}`);
 
     return response;
   } catch (error) {
@@ -73,60 +72,90 @@ export async function processWithTextract(
 }
 
 /**
- * Parsea resultado de Textract y extrae campos relevantes
+ * Parsea resultado de Textract AnalyzeExpense y extrae campos relevantes
  */
-export function parseTextractResult(result: AnalyzeDocumentCommandOutput): any {
-  const blocks = result.Blocks || [];
+export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
+  const expenseDocuments = result.ExpenseDocuments || [];
+  
+  if (expenseDocuments.length === 0) {
+    logger.warn('⚠️  No expense documents found in Textract result');
+    return {
+      tipo: 'FACTURA',
+      letra: null,
+      puntoVenta: null,
+      numero: null,
+      numeroCompleto: null,
+      fechaEmision: null,
+      fechaVencimiento: null,
+      subtotal: null,
+      iva: null,
+      total: null,
+      moneda: 'ARS',
+      proveedor: null,
+      proveedorCUIT: null,
+      items: [],
+      confidenceScore: 0,
+      missingFields: ['fechaEmision', 'total', 'proveedor'],
+    };
+  }
 
-  // Extraer todo el texto
-  const lines = blocks
-    .filter((b: Block) => b.BlockType === 'LINE')
-    .map((b: Block) => b.Text || '')
-    .filter((t: string) => t.trim().length > 0);
+  const doc = expenseDocuments[0]; // Tomar el primer documento
+  const summaryFields = doc.SummaryFields || [];
+  const lineItems = doc.LineItemGroups || [];
 
-  logger.info(`📝 Extracted ${lines.length} lines of text`);
+  logger.info(`📝 Found ${summaryFields.length} summary fields and ${lineItems.length} line item groups`);
 
-  // Extraer items de productos desde las tablas
-  const items = extractItemsFromTables(blocks, lines);
-  logger.info(`📦 Extracted ${items.length} product items`);
+  // Función helper para buscar campo por tipo
+  const getFieldValue = (type: string): string | null => {
+    const field = summaryFields.find(f => f.Type?.Text === type);
+    return field?.ValueDetection?.Text || null;
+  };
 
-  // TODO: Implementar parsers específicos para cada campo
+  // No necesitamos getFieldConfidence por ahora
+  // const getFieldConfidence = (type: string): number => {
+  //   const field = summaryFields.find(f => f.Type?.Text === type);
+  //   return field?.ValueDetection?.Confidence || 0;
+  // };
+
+  // Extraer campos del summary
+  const proveedor = getFieldValue('VENDOR_NAME');
+  const fechaEmision = parseTextractDate(getFieldValue('INVOICE_RECEIPT_DATE'));
+  const fechaVencimiento = parseTextractDate(getFieldValue('DUE_DATE'));
+  const numeroCompleto = getFieldValue('INVOICE_RECEIPT_ID');
+  const subtotal = parseTextractAmount(getFieldValue('SUBTOTAL'));
+  const iva = parseTextractAmount(getFieldValue('TAX'));
+  const total = parseTextractAmount(getFieldValue('TOTAL'));
+
+  // Extraer items
+  const items = extractExpenseLineItems(lineItems);
+  
+  logger.info(`📦 Extracted ${items.length} line items`);
+
+  // Calcular confianza promedio
+  const confidences = summaryFields
+    .map(f => f.ValueDetection?.Confidence || 0)
+    .filter(c => c > 0);
+  const confidenceScore = confidences.length > 0
+    ? Math.round(confidences.reduce((sum, c) => sum + c, 0) / confidences.length)
+    : 0;
+
   const parsed = {
-    // Tipo de documento
-    tipo: detectTipoDocumento(lines),
-    letra: extractLetra(lines),
-
-    // Números
-    puntoVenta: extractPuntoVenta(lines),
-    numero: extractNumero(lines),
-    numeroCompleto: extractNumeroCompleto(lines),
-
-    // Fechas
-    fechaEmision: extractFechaEmision(lines),
-    fechaVencimiento: extractFechaVencimiento(lines),
-
-    // Montos
-    subtotal: extractSubtotal(lines),
-    iva: extractIVA(lines),
-    total: extractTotal(lines),
-    moneda: extractMoneda(lines) || 'ARS',
-
-    // Proveedor (nombre y CUIT)
-    proveedor: extractProveedor(lines),
-    proveedorCUIT: extractProveedorCUIT(lines),
-
-    // Items de productos
+    tipo: 'FACTURA',
+    letra: null, // AnalyzeExpense no detecta letra, lo haremos manualmente después
+    puntoVenta: null,
+    numero: null,
+    numeroCompleto: numeroCompleto,
+    fechaEmision: fechaEmision,
+    fechaVencimiento: fechaVencimiento,
+    subtotal: subtotal,
+    iva: iva,
+    total: total,
+    moneda: 'ARS', // Por defecto, se puede mejorar
+    proveedor: proveedor,
+    proveedorCUIT: null, // Lo extraeremos del texto raw si es necesario
     items: items,
-
-    // Confianza
-    confidenceScore: calculateConfidence(blocks),
-
-    // Campos faltantes
+    confidenceScore: confidenceScore,
     missingFields: [] as string[],
-
-    // Raw data para debugging
-    _rawLines: lines,
-    _blockCount: blocks.length,
   };
 
   // Detectar campos faltantes
@@ -138,8 +167,80 @@ export function parseTextractResult(result: AnalyzeDocumentCommandOutput): any {
 }
 
 // ============================================================================
-// EXTRACTORS (implementación básica - mejorar con regex más específicos)
+// HELPERS para AnalyzeExpense
 // ============================================================================
+
+/**
+ * Parsea fecha de Textract (varios formatos)
+ */
+function parseTextractDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+
+  // Formatos comunes: "30/12/2025", "2025-12-30", "12/30/2025"
+  const match1 = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (match1 && match1[1] && match1[2] && match1[3]) {
+    const day = match1[1].padStart(2, '0');
+    const month = match1[2].padStart(2, '0');
+    const year = match1[3];
+    return `${year}-${month}-${day}`; // ISO format
+  }
+
+  return null;
+}
+
+/**
+ * Parsea monto de Textract
+ */
+function parseTextractAmount(amountStr: string | null): number | null {
+  if (!amountStr) return null;
+  return parseAmount(amountStr);
+}
+
+/**
+ * Extrae line items del resultado de AnalyzeExpense
+ */
+function extractExpenseLineItems(lineItemGroups: any[]): any[] {
+  const items: any[] = [];
+
+  for (const group of lineItemGroups) {
+    const lineItems = group.LineItems || [];
+
+    for (let i = 0; i < lineItems.length; i++) {
+      const item = lineItems[i];
+      const fields = item.LineItemExpenseFields || [];
+
+      const getItemField = (type: string): string | null => {
+        const field = fields.find((f: any) => f.Type?.Text === type);
+        return field?.ValueDetection?.Text || null;
+      };
+
+      const descripcion = getItemField('ITEM') || getItemField('PRODUCT_CODE') || `Item ${i + 1}`;
+      const codigo = getItemField('PRODUCT_CODE');
+      const cantidadStr = getItemField('QUANTITY');
+      const precioStr = getItemField('UNIT_PRICE') || getItemField('PRICE');
+      const subtotalStr = getItemField('EXPENSE_ROW');
+
+      items.push({
+        linea: i + 1,
+        descripcion: descripcion,
+        codigo: codigo,
+        cantidad: cantidadStr ? parseAmount(cantidadStr) : null,
+        unidad: null, // AnalyzeExpense no detecta unidad
+        precioUnitario: precioStr ? parseAmount(precioStr) : null,
+        subtotal: subtotalStr ? parseAmount(subtotalStr) : null,
+      });
+    }
+  }
+
+  return items;
+}
+
+// ============================================================================
+// EXTRACTORS LEGACY (ya no se usan con AnalyzeExpense)
+// TODO: Eliminar estas funciones después de validar que AnalyzeExpense funciona correctamente
+// ============================================================================
+
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 function detectTipoDocumento(lines: string[]): 'FACTURA' | 'REMITO' | 'NOTA_CREDITO' {
   const text = lines.join(' ').toUpperCase();
