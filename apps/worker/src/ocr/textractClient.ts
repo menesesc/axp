@@ -552,21 +552,51 @@ function parseAmount(str: string): number | null {
     // Limpiar espacios
     str = str.trim();
     
-    // Estrategia simple: el último punto o coma es el separador decimal
-    const lastDot = str.lastIndexOf('.');
-    const lastComma = str.lastIndexOf(',');
+    // Contar separadores
+    const dotCount = (str.match(/\./g) || []).length;
+    const commaCount = (str.match(/,/g) || []).length;
     
     let normalized: string;
     
-    if (lastDot === -1 && lastComma === -1) {
+    if (dotCount === 0 && commaCount === 0) {
       // Sin separadores: número entero
       normalized = str;
-    } else if (lastDot > lastComma) {
-      // El punto es el separador decimal: 1,234.56 o 1234.56
-      normalized = str.replace(/,/g, ''); // Remover todas las comas
+    } else if (dotCount > 1) {
+      // Múltiples puntos: son separadores de miles (734.451.45)
+      // Si también hay coma, la coma es decimal
+      if (commaCount > 0) {
+        normalized = str.replace(/\./g, '').replace(',', '.');
+      } else {
+        // Solo puntos: el último es decimal
+        normalized = str.replace(/\./g, '');
+      }
+    } else if (commaCount > 1) {
+      // Múltiples comas: son separadores de miles (734,451,45)
+      // Si también hay punto, el punto es decimal
+      if (dotCount > 0) {
+        normalized = str.replace(/,/g, '');
+      } else {
+        // Solo comas: la última es decimal
+        normalized = str.replace(/,/g, '');
+      }
     } else {
-      // La coma es el separador decimal: 1.234,56 o 1234,56
-      normalized = str.replace(/\./g, '').replace(',', '.'); // Remover puntos, coma → punto
+      // Un solo separador (o uno de cada)
+      const lastDot = str.lastIndexOf('.');
+      const lastComma = str.lastIndexOf(',');
+      
+      if (lastDot > lastComma) {
+        // Punto después de coma: punto es decimal
+        normalized = str.replace(/,/g, '');
+      } else if (lastComma > lastDot) {
+        // Coma después de punto: coma es decimal
+        normalized = str.replace(/\./g, '').replace(',', '.');
+      } else if (lastDot >= 0) {
+        // Solo punto: es decimal
+        normalized = str;
+      } else {
+        // Solo coma: es decimal
+        normalized = str.replace(',', '.');
+      }
     }
     
     const parsed = parseFloat(normalized);
