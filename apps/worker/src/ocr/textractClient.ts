@@ -12,9 +12,44 @@ import {
   AnalyzeExpenseCommandOutput,
   Block,
 } from '@aws-sdk/client-textract';
+import { PDFDocument } from 'pdf-lib';
 import { createLogger } from '../utils/fileUtils';
 
 const logger = createLogger('TEXTRACT');
+
+/**
+ * Extrae solo la primera página de un PDF
+ * Esto evita problemas con PDFs de múltiples páginas (factura + remito + detalles)
+ */
+async function extractFirstPage(pdfBuffer: Buffer): Promise<Buffer> {
+  try {
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const pageCount = pdfDoc.getPageCount();
+    
+    logger.info(`📄 PDF has ${pageCount} page(s), extracting first page only`);
+    
+    if (pageCount === 1) {
+      // Ya es de 1 página, devolver tal cual
+      return pdfBuffer;
+    }
+    
+    // Crear nuevo PDF con solo la primera página
+    const newPdf = await PDFDocument.create();
+    const [firstPage] = await newPdf.copyPages(pdfDoc, [0]);
+    newPdf.addPage(firstPage);
+    
+    const newPdfBytes = await newPdf.save();
+    const newBuffer = Buffer.from(newPdfBytes);
+    
+    logger.info(`✂️  Extracted first page: ${(pdfBuffer.length / 1024).toFixed(2)} KB → ${(newBuffer.length / 1024).toFixed(2)} KB`);
+    
+    return newBuffer;
+  } catch (error) {
+    logger.error(`❌ Error extracting first page, using full PDF:`, error);
+    // Si falla, devolver el PDF original
+    return pdfBuffer;
+  }
+}
 
 /**
  * Crea cliente de Textract
@@ -40,21 +75,25 @@ function createTextractClient(region: string): TextractClient {
 
 /**
  * Procesa un PDF con AWS Textract usando AnalyzeExpense (específico para facturas)
+ * Extrae automáticamente solo la primera página para evitar problemas con PDFs multipágina
  */
 export async function processWithTextract(
   pdfBuffer: Buffer,
   region: string = 'us-east-1'
 ): Promise<AnalyzeExpenseCommandOutput> {
+  // Extraer solo la primera página
+  const firstPageBuffer = await extractFirstPage(pdfBuffer);
+  
   const client = createTextractClient(region);
 
   const input: AnalyzeExpenseCommandInput = {
     Document: {
-      Bytes: pdfBuffer,
+      Bytes: firstPageBuffer,
     },
   };
 
   try {
-    logger.info(`🤖 Sending document to Textract AnalyzeExpense (${(pdfBuffer.length / 1024).toFixed(2)} KB)...`);
+    logger.info(`🤖 Sending document to Textract AnalyzeExpense (${(firstPageBuffer.length / 1024).toFixed(2)} KB)...`);
     const startTime = Date.now();
 
     const command = new AnalyzeExpenseCommand(input);

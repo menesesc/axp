@@ -128,7 +128,31 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     // 4. Procesar con AWS Textract
     logger.info(`🤖 Processing with AWS Textract...`);
-    const textractResult = await processWithTextract(pdfBuffer, TEXTRACT_REGION);
+    let textractResult;
+    
+    try {
+      textractResult = await processWithTextract(pdfBuffer, TEXTRACT_REGION);
+    } catch (textractError: any) {
+      // Manejar errores específicos de Textract
+      if (textractError.name === 'UnsupportedDocumentException') {
+        logger.error(`❌ Unsupported document format: ${file.filename}`);
+        logger.error(`   Possible causes:`);
+        logger.error(`   - Multiple invoices in one PDF (not supported by AnalyzeExpense)`);
+        logger.error(`   - Corrupted or protected PDF`);
+        logger.error(`   - Scanned document with poor quality`);
+        
+        // Mover a carpeta error/ para revisión manual
+        const errorKey = file.key.replace('inbox/', 'error/unsupported_');
+        logger.info(`📦 Moving to error folder: ${errorKey}`);
+        await moveR2Object(file.bucket, file.key, errorKey);
+        
+        logger.warn(`⚠️  File moved to error/ for manual review`);
+        return;
+      }
+      
+      // Re-throw otros errores para que se manejen abajo
+      throw textractError;
+    }
     
     // 5. Parsear resultados
     logger.info(`📊 Parsing OCR results...`);
@@ -336,11 +360,29 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     logger.info(`📂 Final location: ${file.bucket}/${finalKey}`);
     logger.info(`📊 Summary: ${parsed.items?.length || 0} items, confidence: ${parsed.confidenceScore}%`);
     
-  } catch (error) {
+  } catch (error: any) {
     logger.error(`❌ Error processing OCR for ${file.key}:`, error);
     
-    // TODO: Mover a failed/ si hay error persistente
-    // Por ahora dejamos en inbox para reintentar
+    // Determinar si es un error recuperable o no
+    const isRecoverable = !error.name?.includes('UnsupportedDocument') && 
+                          !error.name?.includes('InvalidParameter') &&
+                          !error.code?.includes('InvalidParameter');
+    
+    if (!isRecoverable) {
+      // Error no recuperable: mover a error/ para no reintentar
+      const errorKey = file.key.replace('inbox/', 'error/failed_');
+      logger.warn(`⚠️  Non-recoverable error, moving to: ${errorKey}`);
+      
+      try {
+        await moveR2Object(file.bucket, file.key, errorKey);
+        logger.info(`✅ File moved to error/ folder`);
+      } catch (moveError) {
+        logger.error(`❌ Failed to move file to error/:`, moveError);
+      }
+    } else {
+      // Error recuperable: dejar en inbox para reintentar
+      logger.warn(`⚠️  Recoverable error, leaving in inbox/ for retry`);
+    }
   }
 }
 
