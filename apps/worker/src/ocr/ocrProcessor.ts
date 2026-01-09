@@ -15,7 +15,7 @@
 
 import { prisma } from 'database';
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
-import { listR2Objects, downloadFromR2, uploadToR2, moveR2Object, deleteR2Object } from './r2Client';
+import { listR2Objects, downloadFromR2, uploadToR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
 import { isShuttingDown } from '../index';
 
