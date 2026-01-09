@@ -15,7 +15,7 @@
 
 import { prisma } from 'database';
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
-import { listR2Objects, downloadFromR2, uploadToR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
+import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
 import { isShuttingDown } from '../index';
 
@@ -138,21 +138,47 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     logger.info(`🔑 Final key: ${finalKey}`);
     
-    // 8. Guardar JSON de Textract en R2 (opcional, para auditoría)
-    const textractKey = finalKey.replace('.pdf', '_textract.json');
-    await uploadToR2(
-      file.bucket,
-      textractKey,
-      Buffer.from(JSON.stringify(textractResult, null, 2)),
-      'application/json'
-    );
+    // 8. Buscar o crear proveedor
+    let proveedorId: string | null = null;
+    if (parsed.proveedor) {
+      logger.info(`🏢 Looking up/creating proveedor: ${parsed.proveedor}`);
+      
+      // Buscar proveedor existente por razón social (case-insensitive)
+      let proveedor = await prisma.proveedor.findFirst({
+        where: {
+          clienteId: file.clienteId,
+          razonSocial: {
+            equals: parsed.proveedor,
+            mode: 'insensitive',
+          },
+        },
+      });
+
+      // Si no existe, crear nuevo proveedor
+      if (!proveedor) {
+        logger.info(`➕ Creating new proveedor: ${parsed.proveedor}`);
+        proveedor = await prisma.proveedor.create({
+          data: {
+            clienteId: file.clienteId,
+            razonSocial: parsed.proveedor,
+            alias: [parsed.proveedor], // Guardar variaciones detectadas por OCR
+            activo: true,
+          },
+        });
+        logger.info(`✅ Proveedor created: ${proveedor.id}`);
+      } else {
+        logger.info(`✅ Proveedor found: ${proveedor.id}`);
+      }
+
+      proveedorId = proveedor.id;
+    }
     
     // 9. Crear documento en BD
     logger.info(`💾 Creating Documento record...`);
     const documento = await prisma.documento.create({
       data: {
         clienteId: file.clienteId,
-        proveedorId: null, // Se asignará después en revisión
+        proveedorId: proveedorId,
         tipo: parsed.tipo || 'FACTURA',
         letra: parsed.letra,
         puntoVenta: parsed.puntoVenta,
@@ -167,22 +193,55 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         confidenceScore: parsed.confidenceScore,
         estadoRevision: 'PENDIENTE',
         missingFields: parsed.missingFields || [],
-        jsonNormalizado: parsed,
+        jsonNormalizado: {
+          tipo: parsed.tipo,
+          letra: parsed.letra,
+          numeroCompleto: parsed.numeroCompleto,
+          fechaEmision: parsed.fechaEmision,
+          fechaVencimiento: parsed.fechaVencimiento,
+          proveedor: parsed.proveedor,
+          subtotal: parsed.subtotal,
+          iva: parsed.iva,
+          total: parsed.total,
+          moneda: parsed.moneda,
+          confidence: parsed.confidenceScore,
+          itemsCount: parsed.items?.length || 0,
+        }, // Solo metadatos, no el JSON completo de Textract (ahorra espacio)
         source: 'DRIVE', // Asumimos DRIVE (ajustar según source real)
         hashSha256: sha256,
         pdfRawKey: file.key,
         pdfFinalKey: null, // Se actualiza después del move
-        textractRawKey: textractKey,
+        textractRawKey: null, // NO guardamos el JSON de Textract (ahorra 455KB por factura)
       },
     });
     
     logger.info(`✅ Documento created: ${documento.id}`);
     
-    // 10. Mover archivo en R2 de inbox/ a carpeta final
+    // 10. Crear items de productos si existen
+    if (parsed.items && parsed.items.length > 0) {
+      logger.info(`📦 Creating ${parsed.items.length} documento items...`);
+      
+      await prisma.documentoItem.createMany({
+        data: parsed.items.map((item: any) => ({
+          documentoId: documento.id,
+          linea: item.linea,
+          descripcion: item.descripcion,
+          codigo: item.codigo,
+          cantidad: item.cantidad,
+          unidad: item.unidad,
+          precioUnitario: item.precioUnitario,
+          subtotal: item.subtotal,
+        })),
+      });
+      
+      logger.info(`✅ Items created successfully`);
+    }
+    
+    // 11. Mover archivo en R2 de inbox/ a carpeta final
     logger.info(`📦 Moving file: ${file.key} → ${finalKey}`);
     await moveR2Object(file.bucket, file.key, finalKey);
     
-    // 11. Actualizar documento con pdfFinalKey
+    // 12. Actualizar documento con pdfFinalKey
     await prisma.documento.update({
       where: { id: documento.id },
       data: { pdfFinalKey: finalKey },
@@ -190,6 +249,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     logger.info(`✅ OCR processing complete: ${file.filename}`);
     logger.info(`📂 Final location: ${file.bucket}/${finalKey}`);
+    logger.info(`📊 Summary: ${parsed.items?.length || 0} items, confidence: ${parsed.confidenceScore}%`);
     
   } catch (error) {
     logger.error(`❌ Error processing OCR for ${file.key}:`, error);

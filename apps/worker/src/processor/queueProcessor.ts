@@ -101,6 +101,12 @@ async function processQueueItem(item: QueueItem): Promise<void> {
     // Leer el archivo
     logger.info(`📖 Reading file: ${filePath}`);
     const fileBuffer = await readFile(filePath);
+    logger.info(`📏 File size: ${fileBuffer.length} bytes (${(fileBuffer.length / 1024).toFixed(2)} KB)`);
+
+    // Verificar que el archivo no esté vacío
+    if (fileBuffer.length < 1000) {
+      throw new Error(`File too small to be valid PDF: ${fileBuffer.length} bytes`);
+    }
 
     // Obtener configuración del cliente
     const clienteConfig = await getClienteConfig(item.clienteId);

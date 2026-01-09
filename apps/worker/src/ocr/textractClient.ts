@@ -86,6 +86,10 @@ export function parseTextractResult(result: AnalyzeDocumentCommandOutput): any {
 
   logger.info(`📝 Extracted ${lines.length} lines of text`);
 
+  // Extraer items de productos desde las tablas
+  const items = extractItemsFromTables(blocks, lines);
+  logger.info(`📦 Extracted ${items.length} product items`);
+
   // TODO: Implementar parsers específicos para cada campo
   const parsed = {
     // Tipo de documento
@@ -109,6 +113,9 @@ export function parseTextractResult(result: AnalyzeDocumentCommandOutput): any {
 
     // Proveedor (nombre, no ID todavía)
     proveedor: extractProveedor(lines),
+
+    // Items de productos
+    items: items,
 
     // Confianza
     confidenceScore: calculateConfidence(blocks),
@@ -190,9 +197,9 @@ function extractNumeroCompleto(lines: string[]): string | null {
 }
 
 function extractFechaEmision(lines: string[]): string | null {
-  // Buscar "Fecha: 20/12/2025" o "Emisión: 20-12-2025"
+  // Buscar "Fecha: 20/12/2025", "Emisión: 20-12-2025", "Fecha Comprobante: 30/12/2025"
   for (const line of lines) {
-    const match = line.match(/(?:Fecha|Emisión|Emision)[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+    const match = line.match(/(?:Fecha(?:\s+Comprobante)?|Emisión|Emision)[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
     if (match) {
       const day = match[1].padStart(2, '0');
       const month = match[2].padStart(2, '0');
@@ -218,35 +225,82 @@ function extractFechaVencimiento(lines: string[]): string | null {
 }
 
 function extractSubtotal(lines: string[]): number | null {
-  // Buscar "Subtotal: $ 1.234,56" o "Neto: 1234.56"
+  // Estrategia 1: Buscar "Subtotal: $ 1.234,56" o "Neto: 1234.56" en la misma línea
   for (const line of lines) {
-    const match = line.match(/(?:Subtotal|Neto|Sub\s*Total)[:.\s]*\$?\s*([\d.,]+)/i);
+    const match = line.match(/^(?:Subtotal|Neto|Sub\s*Total)[:.\s]*\$?\s*([\d.,]+)/i);
     if (match) {
       return parseAmount(match[1]);
     }
   }
+
+  // Estrategia 2: Buscar palabra clave y número en línea siguiente
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (/^(?:Subtotal|Neto):?\s*$/i.test(lines[i]?.trim() || '')) {
+      const nextLine = lines[i + 1]?.trim() || '';
+      const match = nextLine.match(/^([\d.,]+)$/);
+      if (match && match[1]) {
+        const amount = parseAmount(match[1]);
+        if (amount && amount > 0 && amount < 1000000000) {
+          return amount;
+        }
+      }
+    }
+  }
+
   return null;
 }
 
 function extractIVA(lines: string[]): number | null {
-  // Buscar "IVA 21%: $ 259,26" o "IVA: 259.26"
+  // Estrategia 1: Buscar "IVA 21%: $ 259,26" o "IVA: 259.26" en la misma línea
   for (const line of lines) {
-    const match = line.match(/IVA(?:\s*\d+%)?[:.\s]*\$?\s*([\d.,]+)/i);
+    const match = line.match(/^IVA(?:\s*\d+[.,]?\d*%)?[:.\s]*\$?\s*([\d.,]+)/i);
     if (match) {
       return parseAmount(match[1]);
     }
   }
+
+  // Estrategia 2: Buscar "IVA 21,0%:" y número en línea siguiente
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (/^IVA.*:?\s*$/i.test(lines[i]?.trim() || '')) {
+      const nextLine = lines[i + 1]?.trim() || '';
+      const match = nextLine.match(/^([\d.,]+)$/);
+      if (match && match[1]) {
+        const amount = parseAmount(match[1]);
+        if (amount && amount > 0 && amount < 1000000000) {
+          return amount;
+        }
+      }
+    }
+  }
+
   return null;
 }
 
 function extractTotal(lines: string[]): number | null {
-  // Buscar "Total: $ 1.493,82" o "TOTAL: 1493.82"
+  // Estrategia 1: Buscar "Total: $ 1.493,82" o "TOTAL: 1493.82" en la misma línea
   for (const line of lines) {
-    const match = line.match(/Total[:.\s]*\$?\s*([\d.,]+)/i);
+    const match = line.match(/^Total[:.\s]*\$?\s*([\d.,]+)/i);
     if (match) {
       return parseAmount(match[1]);
     }
   }
+
+  // Estrategia 2: Buscar "Total:" en una línea y el número en la siguiente
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (/^Total:?\s*$/i.test(lines[i].trim())) {
+      const nextLine = lines[i + 1].trim();
+      // Verificar que la siguiente línea sea un número con formato argentino
+      const match = nextLine.match(/^([\d.,]+)$/);
+      if (match) {
+        const amount = parseAmount(match[1]);
+        // Validar que sea un monto razonable (> 0 y < 1 billón)
+        if (amount && amount > 0 && amount < 1000000000) {
+          return amount;
+        }
+      }
+    }
+  }
+
   return null;
 }
 
@@ -302,4 +356,104 @@ function parseAmount(str: string): number | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Extrae items de productos desde las líneas de texto
+ * Busca patrones de productos entre "Descripción" y "Subtotal:"
+ */
+function extractItemsFromTables(blocks: Block[], lines: string[]): any[] {
+  const items: any[] = [];
+  
+  // Estrategia: buscar líneas que empiecen con código numérico
+  // seguidas de descripción, marca, cantidad, precio, subtotal
+  let inProductSection = false;
+  let currentItem: any = null;
+  let lineNumber = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Detectar inicio de sección de productos
+    if (line.match(/Descripción|Descripcion|Detalle/i)) {
+      inProductSection = true;
+      continue;
+    }
+
+    // Detectar fin de sección de productos
+    if (line.match(/^Subtotal:/i) || line.match(/^El % de descuento/i)) {
+      if (currentItem) {
+        items.push(currentItem);
+      }
+      break;
+    }
+
+    if (!inProductSection) continue;
+
+    // Patrón: línea que empieza con código de producto (números)
+    const codigoMatch = line.match(/^(\d{4,6})\s+(.+)/);
+    if (codigoMatch) {
+      // Guardar item anterior si existe
+      if (currentItem) {
+        items.push(currentItem);
+      }
+
+      // Nuevo item
+      lineNumber++;
+      currentItem = {
+        linea: lineNumber,
+        codigo: codigoMatch[1],
+        descripcion: codigoMatch[2],
+        cantidad: null,
+        unidad: null,
+        precioUnitario: null,
+        subtotal: null,
+      };
+      continue;
+    }
+
+    // Si tenemos un item activo, buscar más datos
+    if (currentItem) {
+      // Marca (suele estar sola en una línea)
+      if (line.match(/^[A-Z][a-z]/)) {
+        // Probablemente una marca
+        continue;
+      }
+
+      // Presentación/Unidad (ej: "2 Kgr", "2.500 Kgr")
+      const unidadMatch = line.match(/^([\d.,]+)\s*(Kgr|Kg|Lt|Un|Unidad)/i);
+      if (unidadMatch) {
+        currentItem.unidad = line;
+        continue;
+      }
+
+      // Línea con números (cantidad, precio, subtotal)
+      // Ej: "10" o "42" (cantidad)
+      if (/^\d{1,4}$/.test(line) && !currentItem.cantidad) {
+        currentItem.cantidad = parseAmount(line);
+        continue;
+      }
+
+      // Precio unitario (ej: "10642.402")
+      if (/^[\d.,]+$/.test(line) && currentItem.cantidad && !currentItem.precioUnitario) {
+        currentItem.precioUnitario = parseAmount(line);
+        continue;
+      }
+
+      // Subtotal (último número grande)
+      if (/^[\d.,]+$/.test(line) && currentItem.precioUnitario && !currentItem.subtotal) {
+        const amount = parseAmount(line);
+        if (amount && amount > 1000) {
+          currentItem.subtotal = amount;
+        }
+      }
+    }
+  }
+
+  // Guardar último item si existe
+  if (currentItem) {
+    items.push(currentItem);
+  }
+
+  return items;
 }
