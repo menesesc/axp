@@ -111,8 +111,9 @@ export function parseTextractResult(result: AnalyzeDocumentCommandOutput): any {
     total: extractTotal(lines),
     moneda: extractMoneda(lines) || 'ARS',
 
-    // Proveedor (nombre, no ID todavía)
+    // Proveedor (nombre y CUIT)
     proveedor: extractProveedor(lines),
+    proveedorCUIT: extractProveedorCUIT(lines),
 
     // Items de productos
     items: items,
@@ -326,6 +327,44 @@ function extractProveedor(lines: string[]): string | null {
     const clean = line.trim();
     if (clean.length > 3 && !ignoreWords.some(w => clean.toUpperCase().includes(w))) {
       return clean;
+    }
+  }
+
+  return null;
+}
+
+function extractProveedorCUIT(lines: string[]): string | null {
+  // Buscar CUIT en formato: XX-XXXXXXXX-X o XXXXXXXXXXXX
+  // Ejemplos: 30-53804819-0, 30-71215244-9, 33-71215244-9
+  
+  // ESTRATEGIA 1: Buscar en las primeras 15 líneas (zona del emisor/proveedor)
+  // El CUIT del proveedor suele estar en el encabezado, antes del CUIT del cliente
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const line = lines[i] || '';
+    
+    // Buscar líneas que contengan "C.U.I.T" en la zona del proveedor
+    if (line.match(/C\.?U\.?I\.?T\.?/i) && !line.match(/cliente|comprador/i)) {
+      // Patrón con guiones
+      const matchWithDashes = line.match(/\b(\d{2})[-\s]?(\d{8})[-\s]?(\d)\b/);
+      if (matchWithDashes) {
+        // Normalizar sin guiones (formato de 11 dígitos)
+        return `${matchWithDashes[1]}${matchWithDashes[2]}${matchWithDashes[3]}`;
+      }
+
+      // Patrón sin guiones (11 dígitos seguidos)
+      const matchNoDashes = line.match(/\b(\d{11})\b/);
+      if (matchNoDashes) {
+        return matchNoDashes[1];
+      }
+    }
+  }
+
+  // ESTRATEGIA 2: Buscar cualquier patrón XX-XXXXXXXX-X en las primeras líneas
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const line = lines[i] || '';
+    const matchWithDashes = line.match(/\b(\d{2})[-](\d{8})[-](\d)\b/);
+    if (matchWithDashes) {
+      return `${matchWithDashes[1]}${matchWithDashes[2]}${matchWithDashes[3]}`;
     }
   }
 

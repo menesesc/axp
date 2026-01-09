@@ -109,7 +109,11 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       fechaEmision: parsed.fechaEmision,
       fechaVencimiento: parsed.fechaVencimiento,
       proveedor: parsed.proveedor,
+      proveedorCUIT: parsed.proveedorCUIT,
       total: parsed.total,
+      subtotal: parsed.subtotal,
+      iva: parsed.iva,
+      items: parsed.items?.length || 0,
       confidence: parsed.confidenceScore,
     });
     
@@ -138,36 +142,85 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     logger.info(`🔑 Final key: ${finalKey}`);
     
-    // 8. Buscar o crear proveedor
+    // 8. Buscar o crear proveedor por CUIT (identificador único)
     let proveedorId: string | null = null;
-    if (parsed.proveedor) {
-      logger.info(`🏢 Looking up/creating proveedor: ${parsed.proveedor}`);
+    if (parsed.proveedorCUIT || parsed.proveedor) {
+      const cuit = parsed.proveedorCUIT;
+      const razonSocial = parsed.proveedor || 'Proveedor sin nombre';
       
-      // Buscar proveedor existente por razón social (case-insensitive)
-      let proveedor = await prisma.proveedor.findFirst({
-        where: {
-          clienteId: file.clienteId,
-          razonSocial: {
-            equals: parsed.proveedor,
-            mode: 'insensitive',
-          },
-        },
-      });
+      logger.info(`🏢 Looking up/creating proveedor...`);
+      logger.info(`   CUIT: ${cuit || 'No detectado'}`);
+      logger.info(`   Razón Social: ${razonSocial}`);
+      
+      let proveedor = null;
 
-      // Si no existe, crear nuevo proveedor
+      // ESTRATEGIA 1: Buscar por CUIT (identificador único legal)
+      if (cuit) {
+        proveedor = await prisma.proveedor.findFirst({
+          where: {
+            clienteId: file.clienteId,
+            cuit: cuit,
+          },
+        });
+
+        if (proveedor) {
+          logger.info(`✅ Proveedor found by CUIT: ${proveedor.id} (${proveedor.razonSocial})`);
+          
+          // Actualizar alias si la razón social detectada es diferente y no está en alias
+          const aliasArray = Array.isArray(proveedor.alias) ? proveedor.alias : [];
+          if (parsed.proveedor && 
+              proveedor.razonSocial !== parsed.proveedor && 
+              !aliasArray.includes(parsed.proveedor)) {
+            await prisma.proveedor.update({
+              where: { id: proveedor.id },
+              data: {
+                alias: [...aliasArray, parsed.proveedor],
+              },
+            });
+            logger.info(`   Updated alias: added "${parsed.proveedor}"`);
+          }
+        }
+      }
+
+      // ESTRATEGIA 2: Si no encontró por CUIT, buscar por razón social (case-insensitive)
+      if (!proveedor && parsed.proveedor) {
+        proveedor = await prisma.proveedor.findFirst({
+          where: {
+            clienteId: file.clienteId,
+            razonSocial: {
+              equals: parsed.proveedor,
+              mode: 'insensitive',
+            },
+          },
+        });
+
+        if (proveedor) {
+          logger.info(`✅ Proveedor found by razón social: ${proveedor.id}`);
+          
+          // Si ahora tenemos CUIT y el proveedor no lo tenía, actualizarlo
+          if (cuit && !proveedor.cuit) {
+            await prisma.proveedor.update({
+              where: { id: proveedor.id },
+              data: { cuit: cuit },
+            });
+            logger.info(`   Updated CUIT: ${cuit}`);
+          }
+        }
+      }
+
+      // ESTRATEGIA 3: Crear nuevo proveedor
       if (!proveedor) {
-        logger.info(`➕ Creating new proveedor: ${parsed.proveedor}`);
+        logger.info(`➕ Creating new proveedor...`);
         proveedor = await prisma.proveedor.create({
           data: {
             clienteId: file.clienteId,
-            razonSocial: parsed.proveedor,
-            alias: [parsed.proveedor], // Guardar variaciones detectadas por OCR
+            razonSocial: razonSocial,
+            cuit: cuit || null,
+            alias: parsed.proveedor ? [parsed.proveedor] : [],
             activo: true,
           },
         });
         logger.info(`✅ Proveedor created: ${proveedor.id}`);
-      } else {
-        logger.info(`✅ Proveedor found: ${proveedor.id}`);
       }
 
       proveedorId = proveedor.id;
