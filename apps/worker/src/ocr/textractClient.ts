@@ -273,10 +273,16 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
     missingFields: [] as string[],
   };
 
-  // Detectar campos faltantes
+  // Detectar campos faltantes (para missingFields en BD)
   if (!parsed.fechaEmision) parsed.missingFields.push('fechaEmision');
   if (!parsed.total) parsed.missingFields.push('total');
   if (!parsed.proveedor) parsed.missingFields.push('proveedor');
+  if (!parsed.proveedorCUIT) parsed.missingFields.push('proveedorCUIT');
+  if (!parsed.letra) parsed.missingFields.push('letra');
+  if (!parsed.numeroCompleto) parsed.missingFields.push('numeroCompleto');
+  if (!parsed.subtotal) parsed.missingFields.push('subtotal');
+  if (!parsed.iva) parsed.missingFields.push('iva');
+  if (!parsed.fechaVencimiento) parsed.missingFields.push('fechaVencimiento');
 
   return parsed;
 }
@@ -397,8 +403,8 @@ function extractLetra(lines: string[]): 'A' | 'B' | 'C' | null {
   // Buscar "FACTURA A", "FACTURAS A", "Factura A", o letra sola cerca de "FACTURA"
   const text = lines.join('\n').toUpperCase();
   
-  // Patrón 1: "FACTURA A", "FACTURAS A", "FACTURA: A"
-  const match1 = text.match(/FACTURAS?\s*:?\s*([ABC])\b/);
+  // Patrón 1: "FACTURA A", "FACTURAS A", "FACTURA: A", "FACTURA DE VENTA A"
+  const match1 = text.match(/FACTURAS?\s*(?:DE\s+VENTA)?\s*:?\s*([ABC])\b/);
   if (match1 && match1[1]) {
     return match1[1] as 'A' | 'B' | 'C';
   }
@@ -409,16 +415,15 @@ function extractLetra(lines: string[]): 'A' | 'B' | 'C' | null {
     return match2[2] as 'A' | 'B' | 'C';
   }
   
-  // Patrón 3: Línea que contiene solo "A", "B" o "C" cerca de FACTURA
-  for (let i = 0; i < Math.min(15, lines.length); i++) {
+  // Patrón 3: Línea que contiene solo "A", "B" o "C" cerca de FACTURA (buscar en más líneas)
+  for (let i = 0; i < Math.min(30, lines.length); i++) {
     const line = (lines[i] || '').trim().toUpperCase();
     const prevLine = (lines[i - 1] || '').trim().toUpperCase();
     const nextLine = (lines[i + 1] || '').trim().toUpperCase();
     
-    // Si la línea es solo una letra y hay "FACTURA" cerca
+    // Si la línea es solo una letra y hay "FACTURA" en las líneas adyacentes (no en todo el doc)
     if (/^[ABC]$/.test(line)) {
-      if (prevLine.includes('FACTURA') || nextLine.includes('FACTURA') || 
-          prevLine.includes('COD') || text.includes('FACTURA')) {
+      if (prevLine.includes('FACTURA') || nextLine.includes('FACTURA') || prevLine.includes('COD')) {
         return line as 'A' | 'B' | 'C';
       }
     }

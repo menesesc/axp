@@ -205,14 +205,31 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       logger.info(`   CUIT: ${cuit || 'No detectado'}`);
       logger.info(`   Razón Social: ${razonSocial}`);
       
+      // VALIDACIÓN CRÍTICA: El CUIT del proveedor NO puede ser igual al del cliente
+      if (cuit) {
+        const cliente = await prisma.cliente.findUnique({
+          where: { id: file.clienteId },
+          select: { cuit: true, razonSocial: true },
+        });
+        
+        if (cliente && cliente.cuit === cuit) {
+          logger.warn(`⚠️  WARNING: CUIT ${cuit} matches cliente CUIT!`);
+          logger.warn(`   This is likely the client's CUIT, not the supplier's.`);
+          logger.warn(`   Ignoring this CUIT and searching only by razón social.`);
+          
+          // Limpiar el CUIT para no usarlo (es del cliente, no del proveedor)
+          parsed.proveedorCUIT = null;
+        }
+      }
+      
       let proveedor = null;
 
       // ESTRATEGIA 1: Buscar por CUIT (identificador único legal)
-      if (cuit) {
+      if (parsed.proveedorCUIT) {
         proveedor = await prisma.proveedor.findFirst({
           where: {
             clienteId: file.clienteId,
-            cuit: cuit,
+            cuit: parsed.proveedorCUIT,
           },
         });
 
@@ -251,12 +268,12 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           logger.info(`✅ Proveedor found by razón social: ${proveedor.id}`);
           
           // Si ahora tenemos CUIT y el proveedor no lo tenía, actualizarlo
-          if (cuit && !proveedor.cuit) {
+          if (parsed.proveedorCUIT && !proveedor.cuit) {
             await prisma.proveedor.update({
               where: { id: proveedor.id },
-              data: { cuit: cuit },
+              data: { cuit: parsed.proveedorCUIT },
             });
-            logger.info(`   Updated CUIT: ${cuit}`);
+            logger.info(`   Updated CUIT: ${parsed.proveedorCUIT}`);
           }
         }
       }
@@ -268,7 +285,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           data: {
             clienteId: file.clienteId,
             razonSocial: razonSocial,
-            cuit: cuit || null,
+            cuit: parsed.proveedorCUIT || null,
             alias: parsed.proveedor ? [parsed.proveedor] : [],
             activo: true,
           },
