@@ -20,11 +20,20 @@ const logger = createLogger('TEXTRACT');
  * Crea cliente de Textract
  */
 function createTextractClient(region: string): TextractClient {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || '';
+  
+  // Log para debugging (solo primeros/últimos caracteres)
+  logger.info(`🔑 AWS Credentials check:`);
+  logger.info(`   AccessKeyId: ${accessKeyId ? `${accessKeyId.substring(0, 4)}...${accessKeyId.substring(accessKeyId.length - 4)} (length: ${accessKeyId.length})` : 'MISSING'}`);
+  logger.info(`   SecretAccessKey: ${secretAccessKey ? `${secretAccessKey.substring(0, 4)}...${secretAccessKey.substring(secretAccessKey.length - 4)} (length: ${secretAccessKey.length})` : 'MISSING'}`);
+  logger.info(`   Region: ${region}`);
+  
   return new TextractClient({
     region,
     credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+      accessKeyId: accessKeyId.trim(),
+      secretAccessKey: secretAccessKey.trim(),
     },
   });
 }
