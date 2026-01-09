@@ -85,6 +85,32 @@ export function extractPrefixFromFilename(filename: string): string | null {
 }
 
 /**
+ * Extrae la fecha del nombre de archivo (formato: prefix_YYYYMMDD_HHMMSS.ext)
+ * Ejemplo: "weiss_20251226_231633.pdf" => Date(2025, 11, 26)
+ * Si no puede extraer la fecha, retorna la fecha actual
+ */
+export function extractDateFromFilename(filename: string): Date {
+  // Patrón: prefix_YYYYMMDD_HHMMSS.ext
+  const match = filename.match(/_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  
+  if (match) {
+    const [, year, month, day, hour, minute, second] = match;
+    // Crear fecha en timezone local (o UTC si prefieres)
+    return new Date(
+      parseInt(year),
+      parseInt(month) - 1, // Mes es 0-indexed
+      parseInt(day),
+      parseInt(hour),
+      parseInt(minute),
+      parseInt(second)
+    );
+  }
+  
+  // Fallback: fecha actual si no se puede parsear
+  return new Date();
+}
+
+/**
  * Genera una key de R2 organizada por cliente/fecha
  * Formato: ${r2Prefix}/${YYYY}/${MM}/${DD}/${filename}
  * Si r2Prefix está vacío, omite el prefijo inicial

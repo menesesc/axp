@@ -9,7 +9,7 @@ import { prisma } from 'database';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { createLogger, calculateNextRetry, generateR2Key, sleep } from '../utils/fileUtils';
+import { createLogger, calculateNextRetry, generateR2Key, extractDateFromFilename, sleep } from '../utils/fileUtils';
 import { uploadToR2 } from './r2Client';
 import { getClienteByPrefix } from '../config/prefixMap';
 import { isShuttingDown } from '../index';
@@ -107,8 +107,12 @@ async function processQueueItem(item: QueueItem): Promise<void> {
     logger.info(`🏢 Cliente: ${clienteConfig.cuit}`);
     logger.info(`📦 R2 Bucket: ${clienteConfig.r2Bucket}`);
 
-    // Generar clave R2 (usa fecha de creación del registro)
-    const r2Key = generateR2Key(clienteConfig.r2Prefix, item.sourceRef, item.createdAt);
+    // Extraer fecha del filename (ej: weiss_20251226_231633.pdf → 2025/12/26)
+    const fileDate = extractDateFromFilename(item.sourceRef);
+    logger.info(`📅 Fecha del archivo: ${fileDate.toISOString().split('T')[0]}`);
+
+    // Generar clave R2 usando la fecha del archivo (no la fecha de proceso)
+    const r2Key = generateR2Key(clienteConfig.r2Prefix, item.sourceRef, fileDate);
     logger.info(`🔑 R2 key: ${r2Key}`);
 
     // Subir a R2 (ahora pasamos el bucket específico del cliente)
