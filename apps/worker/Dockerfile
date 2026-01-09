@@ -1,36 +1,22 @@
-# syntax=docker/dockerfile:1
+# Dockerfile para Worker AXP (Monorepo)
+# Build desde el ROOT del monorepo: docker build -f apps/worker/Dockerfile .
 
-FROM oven/bun:1 AS base
+FROM oven/bun:latest
+
 WORKDIR /app
 
-# Install dependencies into temp directory
-# This will cache them and speed up future builds
-FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lock /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
+# Copiar archivos de configuración del monorepo
+COPY package.json bun.lockb* ./
 
-# Install with --production (exclude devDependencies)
-RUN mkdir -p /temp/prod
-COPY package.json bun.lock /temp/prod/
-RUN cd /temp/prod && bun install --frozen-lockfile --production
+# Copiar workspaces necesarios
+COPY packages ./packages
+COPY apps/worker ./apps/worker
 
-# Copy node_modules from temp directory
-# Then copy all (non-ignored) project files into the image
-FROM base AS prerelease
-COPY --from=install /temp/dev/node_modules node_modules
-COPY . .
+# Instalar dependencias (resuelve workspaces)
+RUN bun install --frozen-lockfile || bun install
 
-# Build the project
-RUN bun run build
+# Working directory para el worker
+WORKDIR /app/apps/worker
 
-# Copy production dependencies and source code into final image
-FROM base AS release
-COPY --from=install /temp/prod/node_modules node_modules
-COPY --from=prerelease /app/dist ./dist
-COPY --from=prerelease /app/package.json .
-
-# Run the app
-USER bun
-EXPOSE 3000/tcp
-ENTRYPOINT [ "bun", "run", "start" ]
+# El comando se define en docker-compose.yml
+CMD ["bun", "run", "src/index.ts"]

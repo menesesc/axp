@@ -25,7 +25,10 @@
    - **Compose File Path**: `apps/worker/docker-compose.prod.yml`
    - **Auto Deploy**: ✅ Activado (opcional)
 
-⚠️ **IMPORTANTE**: Dokploy automáticamente clona el repo completo en `/app` dentro del contenedor, por eso el compose NO necesita montar el código.
+⚠️ **IMPORTANTE**: 
+- El compose usa `build` en lugar de `image` prebuilt
+- El Dockerfile copia el monorepo completo para resolver workspaces
+- Dokploy hará build automático al deployar
 
 ### 3. Configurar variables de entorno
 
@@ -68,26 +71,30 @@ FILE_STABLE_CHECKS=3
 ## Estructura de volúmenes
 
 ```
-Dokploy automáticamente clona el repo completo en /app dentro del contenedor:
-
-/app/                    (root del monorepo - clonado por Dokploy)
+Docker Image (buildeado por Dockerfile):
+/app/                    (monorepo copiado durante build)
 ├── package.json         (workspace root)
+├── bun.lockb
 ├── apps/
 │   └── worker/
 │       ├── src/
 │       ├── prefix-map.json
-│       └── package.json
+│       ├── package.json
+│       └── Dockerfile
 ├── packages/
 │   ├── database/        (workspace dependency)
 │   └── shared/          (workspace dependency)
 
-Volúmenes adicionales montados:
+Volúmenes montados en runtime:
 /srv/webdav/data         →  /data          (watcher: lectura/escritura)
 /srv/webdav/processed    →  /processed     (ambos: lectura/escritura)
 /srv/webdav/failed       →  /failed        (watcher: escritura)
 ```
 
-**Nota:** El comando del contenedor primero hace `bun install` desde `/app` (root del monorepo) para resolver los workspaces, luego ejecuta el worker desde `/app/apps/worker`.
+**Nota:** 
+- El Dockerfile copia `packages/` y `apps/worker/` durante el build
+- `bun install` se ejecuta durante el build (resuelve workspaces)
+- La imagen ya contiene todo el código + node_modules listos
 
 ## Comandos útiles en Dokploy
 
