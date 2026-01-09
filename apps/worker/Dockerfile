@@ -15,6 +15,9 @@ COPY apps/worker ./apps/worker
 # Instalar dependencias (resuelve workspaces)
 RUN bun install --frozen-lockfile || bun install
 
+# Generar Prisma Client (CRÍTICO)
+RUN cd packages/database && bunx prisma generate
+
 # Working directory para el worker
 WORKDIR /app/apps/worker
 
