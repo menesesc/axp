@@ -118,10 +118,16 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   // };
 
   // Extraer campos del summary
-  const proveedor = getFieldValue('VENDOR_NAME');
+  const proveedor = normalizeText(getFieldValue('VENDOR_NAME'));
   const fechaEmision = parseTextractDate(getFieldValue('INVOICE_RECEIPT_DATE'));
   const fechaVencimiento = parseTextractDate(getFieldValue('DUE_DATE'));
-  const numeroCompleto = getFieldValue('INVOICE_RECEIPT_ID');
+  const numeroCompletoRaw = getFieldValue('INVOICE_RECEIPT_ID');
+  
+  // Limpiar numeroCompleto: solo números, remover N°, guiones, espacios
+  const numeroCompleto = numeroCompletoRaw 
+    ? numeroCompletoRaw.replace(/[^\d]/g, '') // Solo dígitos
+    : null;
+  
   const subtotal = parseTextractAmount(getFieldValue('SUBTOTAL'));
   const iva = parseTextractAmount(getFieldValue('TAX'));
   const total = parseTextractAmount(getFieldValue('TOTAL'));
@@ -219,6 +225,14 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
 // ============================================================================
 
 /**
+ * Normaliza texto a mayúsculas y limpia espacios
+ */
+function normalizeText(text: string | null): string | null {
+  if (!text) return null;
+  return text.trim().toUpperCase();
+}
+
+/**
  * Parsea fecha de Textract (varios formatos)
  */
 function parseTextractDate(dateStr: string | null): string | null {
@@ -286,7 +300,7 @@ function extractExpenseLineItems(lineItemGroups: any[]): any[] {
 
       items.push({
         linea: i + 1,
-        descripcion: descripcion,
+        descripcion: normalizeText(descripcion), // MAYÚSCULAS
         codigo: codigo,
         cantidad: cantidadStr ? parseAmount(cantidadStr) : null,
         unidad: null, // AnalyzeExpense no detecta unidad
@@ -535,34 +549,58 @@ function extractProveedorCUIT(lines: string[]): string | null {
   // Buscar CUIT en formato: XX-XXXXXXXX-X o XXXXXXXXXXXX
   // Ejemplos: 30-53804819-0, 30-71215244-9, 33-71215244-9
   
-  // ESTRATEGIA 1: Buscar en las primeras 15 líneas (zona del emisor/proveedor)
-  // El CUIT del proveedor suele estar en el encabezado, antes del CUIT del cliente
-  for (let i = 0; i < Math.min(15, lines.length); i++) {
+  // ESTRATEGIA 1: Buscar patrón XX-XXXXXXXX-X en cualquier línea (primeras 20)
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
     const line = lines[i] || '';
     
-    // Buscar líneas que contengan "C.U.I.T" en la zona del proveedor
-    if (line.match(/C\.?U\.?I\.?T\.?/i) && !line.match(/cliente|comprador/i)) {
-      // Patrón con guiones
-      const matchWithDashes = line.match(/\b(\d{2})[-\s]?(\d{8})[-\s]?(\d)\b/);
-      if (matchWithDashes) {
-        // Normalizar sin guiones (formato de 11 dígitos)
-        return `${matchWithDashes[1]}${matchWithDashes[2]}${matchWithDashes[3]}`;
+    // Buscar patrón con guiones
+    const matchWithDashes = line.match(/\b(\d{2})[-](\d{8})[-](\d)\b/);
+    if (matchWithDashes) {
+      const cuit = `${matchWithDashes[1]}${matchWithDashes[2]}${matchWithDashes[3]}`;
+      
+      // Verificar que NO sea el CUIT del cliente (suele estar después)
+      // El primer CUIT que encontramos es generalmente el del proveedor
+      const prevLines = lines.slice(Math.max(0, i - 3), i).join(' ').toLowerCase();
+      const nextLines = lines.slice(i + 1, i + 4).join(' ').toLowerCase();
+      
+      // Si las líneas cercanas mencionan "cliente" o "comprador", skip
+      if (prevLines.includes('cliente') || nextLines.includes('cliente') ||
+          prevLines.includes('comprador') || nextLines.includes('comprador')) {
+        continue;
       }
-
-      // Patrón sin guiones (11 dígitos seguidos)
-      const matchNoDashes = line.match(/\b(\d{11})\b/);
-      if (matchNoDashes) {
-        return matchNoDashes[1];
-      }
+      
+      return cuit;
     }
   }
 
-  // ESTRATEGIA 2: Buscar cualquier patrón XX-XXXXXXXX-X en las primeras líneas
-  for (let i = 0; i < Math.min(15, lines.length); i++) {
+  // ESTRATEGIA 2: Buscar líneas con "C.U.I.T" y buscar el número en la misma o líneas adyacentes
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
     const line = lines[i] || '';
-    const matchWithDashes = line.match(/\b(\d{2})[-](\d{8})[-](\d)\b/);
-    if (matchWithDashes) {
-      return `${matchWithDashes[1]}${matchWithDashes[2]}${matchWithDashes[3]}`;
+    
+    if (line.match(/C\.?U\.?I\.?T\.?/i) && !line.match(/cliente|comprador/i)) {
+      // Buscar en la misma línea
+      const matchSameLine = line.match(/\b(\d{2})[-\s]?(\d{8})[-\s]?(\d)\b/);
+      if (matchSameLine) {
+        return `${matchSameLine[1]}${matchSameLine[2]}${matchSameLine[3]}`;
+      }
+      
+      // Buscar en la línea anterior
+      if (i > 0) {
+        const prevLine = lines[i - 1] || '';
+        const matchPrevLine = prevLine.match(/\b(\d{2})[-\s]?(\d{8})[-\s]?(\d)\b/);
+        if (matchPrevLine) {
+          return `${matchPrevLine[1]}${matchPrevLine[2]}${matchPrevLine[3]}`;
+        }
+      }
+      
+      // Buscar en la línea siguiente
+      if (i < lines.length - 1) {
+        const nextLine = lines[i + 1] || '';
+        const matchNextLine = nextLine.match(/\b(\d{2})[-\s]?(\d{8})[-\s]?(\d)\b/);
+        if (matchNextLine) {
+          return `${matchNextLine[1]}${matchNextLine[2]}${matchNextLine[3]}`;
+        }
+      }
     }
   }
 
