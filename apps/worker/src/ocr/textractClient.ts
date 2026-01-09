@@ -150,8 +150,13 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   });
 
   // Debug: mostrar primeras líneas de texto para verificar extractores
-  logger.info(`📝 Raw text (first 10 lines):`);
-  allText.slice(0, 10).forEach((line, i) => logger.info(`   ${i + 1}: "${line}"`));
+  logger.info(`📝 Raw text (first 20 lines):`);
+  allText.slice(0, 20).forEach((line, i) => logger.info(`   ${i + 1}: "${line}"`));
+  
+  // También buscar específicamente "FACTURA", "A", "B", "C" en todo el texto
+  const hasFactura = allText.some(line => /FACTURA/i.test(line));
+  const hasLetraLine = allText.filter(line => /^[ABC]$/i.test(line.trim()));
+  logger.info(`🔍 Debug: hasFactura=${hasFactura}, letraLines=${JSON.stringify(hasLetraLine.slice(0, 3))}`);
 
   // Fallbacks usando extractores legacy
   const letra = extractLetra(allText);
