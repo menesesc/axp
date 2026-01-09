@@ -257,8 +257,19 @@ function extractExpenseLineItems(lineItemGroups: any[]): any[] {
       const codigo = getItemField('PRODUCT_CODE');
       const cantidadStr = getItemField('QUANTITY');
       const precioStr = getItemField('UNIT_PRICE') || getItemField('PRICE');
-      // Buscar subtotal: primero AMOUNT (total de línea), luego EXPENSE_ROW
-      const subtotalStr = getItemField('AMOUNT') || getItemField('LINE_ITEM_TOTAL') || getItemField('EXPENSE_ROW');
+      
+      // El campo AMOUNT puede contener toda la fila, necesitamos extraer el último número
+      let subtotalStr = getItemField('AMOUNT') || getItemField('LINE_ITEM_TOTAL') || getItemField('EXPENSE_ROW');
+      
+      // Si subtotalStr contiene texto adicional, extraer el último número
+      if (subtotalStr && subtotalStr.includes(' ')) {
+        // Buscar todos los números en el string
+        const numbers = subtotalStr.match(/[\d,.]+/g);
+        if (numbers && numbers.length > 0) {
+          // El último número suele ser el subtotal
+          subtotalStr = numbers[numbers.length - 1] || subtotalStr;
+        }
+      }
 
       // Debug: mostrar todos los campos del item
       logger.info(`  📦 Item ${i + 1}: ${descripcion}`);
@@ -538,60 +549,29 @@ function calculateConfidence(blocks: Block[]): number {
 
 function parseAmount(str: string): number | null {
   try {
-    // Detectar formato:
-    // - Si tiene COMA: formato argentino (1.234,56 → miles con punto, decimal con coma)
-    // - Si NO tiene COMA: puede ser formato con punto decimal (10642.402) o entero (10)
+    // Limpiar espacios
+    str = str.trim();
     
-    if (str.includes(',')) {
-      // Formato argentino: 1.234,56 o 734.451,45
-      const normalized = str
-        .replace(/\./g, '') // Remover puntos de miles
-        .replace(',', '.'); // Coma decimal a punto
-      const parsed = parseFloat(normalized);
-      return isNaN(parsed) ? null : parsed;
+    // Estrategia simple: el último punto o coma es el separador decimal
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+    
+    let normalized: string;
+    
+    if (lastDot === -1 && lastComma === -1) {
+      // Sin separadores: número entero
+      normalized = str;
+    } else if (lastDot > lastComma) {
+      // El punto es el separador decimal: 1,234.56 o 1234.56
+      normalized = str.replace(/,/g, ''); // Remover todas las comas
     } else {
-      // Sin coma: verificar si es formato con punto decimal o miles
-      const parts = str.split('.');
-      
-      if (parts.length === 1) {
-        // Sin punto: número entero (ej: "10", "42")
-        const parsed = parseFloat(str);
-        return isNaN(parsed) ? null : parsed;
-      } else if (parts.length === 2) {
-        // Con punto: verificar si es decimal o separador de miles
-        const decimalPart = parts[1] || '';
-        
-        // Si la parte decimal tiene 3 dígitos y el siguiente tiene más de 2,
-        // probablemente es separador de miles (ej: 106.424.02 → 106424.02)
-        // Si la parte decimal tiene 1-3 dígitos al final, es decimal (ej: 10642.402)
-        
-        // Heurística: Si último grupo tiene exactamente 2 dígitos → es decimal money format
-        // Si último grupo tiene 3 dígitos → puede ser miles
-        // Si hay más de un punto → definitivamente miles
-        
-        if (parts.length > 2) {
-          // Múltiples puntos: separador de miles (ej: 1.234.567,89)
-          const normalized = str.replace(/\./g, '');
-          const parsed = parseFloat(normalized);
-          return isNaN(parsed) ? null : parsed;
-        }
-        
-        // Un solo punto: verificar longitud de parte decimal
-        if (decimalPart.length === 2 && parseFloat(parts[0] || '0') < 100) {
-          // Probablemente formato money (ej: 10.50, 21.00)
-          const parsed = parseFloat(str);
-          return isNaN(parsed) ? null : parsed;
-        } else {
-          // Probablemente decimal de precio unitario (ej: 10642.402)
-          const parsed = parseFloat(str);
-          return isNaN(parsed) ? null : parsed;
-        }
-      }
+      // La coma es el separador decimal: 1.234,56 o 1234,56
+      normalized = str.replace(/\./g, '').replace(',', '.'); // Remover puntos, coma → punto
     }
-
-    const parsed = parseFloat(str);
+    
+    const parsed = parseFloat(normalized);
     return isNaN(parsed) ? null : parsed;
-  } catch {
+  } catch (err) {
     return null;
   }
 }
