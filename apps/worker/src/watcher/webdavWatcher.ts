@@ -136,12 +136,18 @@ async function processFile(filename: string): Promise<void> {
 
     logger.info(`✅ File enqueued: ${filename} (queue id: ${queueItem.id})`);
 
-    // Mover archivo a processed
+    // Mover archivo a processed para que el processor lo encuentre
     const processedPath = join(PROCESSED_DIR, filename);
     await moveFileSafe(filePath, processedPath);
     logger.info(`📦 File moved to processed: ${processedPath}`);
   } catch (error) {
     logger.error(`❌ Error processing file ${filename}:`, error);
+
+    // Si el archivo ya no existe, probablemente el processor ya lo procesó
+    if ((error as any)?.code === 'ENOENT') {
+      logger.info(`ℹ️  File already processed or moved: ${filename}`);
+      return;
+    }
 
     // Mover a failed si es posible
     try {

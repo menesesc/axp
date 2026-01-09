@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  watcher:
+    image: oven/bun:latest
+    container_name: axp-watcher
+    working_dir: /app
+    volumes:
+      # Código del worker
+      - ./:/app
+      
+      # Directorios compartidos con webdav
+      - /srv/webdav/data:/data:rw
+      - /srv/webdav/processed:/processed:rw
+      - /srv/webdav/failed:/failed:rw
+    environment:
+      - NODE_ENV=production
+      - WORKER_MODE=watcher
+      - WEBDAV_DIR=/data
+      - PROCESSED_DIR=/processed
+      - FAILED_DIR=/failed
+      - POLLING_INTERVAL=5000
+      - FILE_STABLE_CHECKS=3
+      - DATABASE_URL=${DATABASE_URL}
+    command: sh -c "bun install && bun run src/index.ts"
+    restart: unless-stopped
+
+  processor:
+    image: oven/bun:latest
+    container_name: axp-processor
+    working_dir: /app
+    volumes:
+      # Código del worker
+      - ./:/app
+      
+      # Solo necesita acceso a processed
+      - /srv/webdav/processed:/processed:rw
+    environment:
+      - NODE_ENV=production
+      - WORKER_MODE=processor
+      - PROCESSED_DIR=/processed
+      - POLLING_INTERVAL=5000
+      - MAX_CONCURRENT_JOBS=3
+      - MAX_RETRY_ATTEMPTS=5
+      - DATABASE_URL=${DATABASE_URL}
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+    command: sh -c "bun install && bun run src/index.ts"
+    restart: unless-stopped

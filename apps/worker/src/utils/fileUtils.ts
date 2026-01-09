@@ -87,13 +87,16 @@ export function extractPrefixFromFilename(filename: string): string | null {
 /**
  * Genera una key de R2 organizada por cliente/fecha
  * Formato: ${r2Prefix}/${YYYY}/${MM}/${DD}/${filename}
+ * Si r2Prefix está vacío, omite el prefijo inicial
  */
 export function generateR2Key(r2Prefix: string, filename: string, date: Date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
 
-  return `${r2Prefix}/${year}/${month}/${day}/${filename}`;
+  // Si r2Prefix está vacío, no agregar la barra inicial
+  const prefix = r2Prefix ? `${r2Prefix}/` : '';
+  return `${prefix}${year}/${month}/${day}/${filename}`;
 }
 
 /**

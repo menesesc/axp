@@ -8,7 +8,8 @@ import { readFile } from 'fs/promises';
 export interface ClienteConfig {
   clienteId: string;
   cuit: string;
-  r2Prefix: string;
+  r2Bucket: string;  // Nombre del bucket específico del cliente
+  r2Prefix: string;  // Prefijo dentro del bucket (puede ser vacío)
 }
 
 export type PrefixMap = Record<string, ClienteConfig>;

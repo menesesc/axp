@@ -2,6 +2,7 @@
  * Cloudflare R2 Client
  * 
  * Cliente S3-compatible para subir archivos a Cloudflare R2.
+ * Soporta multi-bucket (un bucket por cliente).
  */
 
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -13,15 +14,17 @@ const logger = createLogger('R2');
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 
-if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
+// R2_BUCKET_NAME ahora es opcional (se usa solo como fallback)
+const R2_BUCKET_NAME_FALLBACK = process.env.R2_BUCKET_NAME;
+
+if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
   throw new Error(
-    'Missing required R2 environment variables: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME'
+    'Missing required R2 environment variables: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY'
   );
 }
 
-// Cliente S3 configurado para R2
+// Cliente S3 configurado para R2 (reutilizable para todos los buckets)
 const r2Client = new S3Client({
   region: 'auto',
   endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -34,11 +37,13 @@ const r2Client = new S3Client({
 /**
  * Sube un archivo a R2
  * 
+ * @param bucket - Nombre del bucket de destino
  * @param key - La ruta/clave del objeto en R2
  * @param body - El contenido del archivo (Buffer o ReadableStream)
  * @param contentType - El tipo MIME del archivo
  */
 export async function uploadToR2(
+  bucket: string,
   key: string,
   body: Buffer | Uint8Array,
   contentType: string = 'application/pdf'
@@ -47,10 +52,10 @@ export async function uploadToR2(
     const startTime = Date.now();
     const sizeKB = body.byteLength / 1024;
 
-    logger.info(`☁️  Uploading to R2: ${key} (${sizeKB.toFixed(2)} KB)`);
+    logger.info(`☁️  Uploading to R2: ${bucket}/${key} (${sizeKB.toFixed(2)} KB)`);
 
     const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: bucket,
       Key: key,
       Body: body,
       ContentType: contentType,
@@ -62,9 +67,9 @@ export async function uploadToR2(
     await r2Client.send(command);
 
     const duration = Date.now() - startTime;
-    logger.info(`✅ Upload complete: ${key} (${duration}ms)`);
+    logger.info(`✅ Upload complete: ${bucket}/${key} (${duration}ms)`);
   } catch (error) {
-    logger.error(`❌ R2 upload failed for ${key}:`, error);
+    logger.error(`❌ R2 upload failed for ${bucket}/${key}:`, error);
     throw error;
   }
 }
@@ -73,5 +78,12 @@ export async function uploadToR2(
  * Verifica si las credenciales de R2 están configuradas correctamente
  */
 export function validateR2Config(): boolean {
-  return !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME);
+  return !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY);
+}
+
+/**
+ * Obtiene el bucket fallback (para compatibilidad con configuración anterior)
+ */
+export function getFallbackBucket(): string | undefined {
+  return R2_BUCKET_NAME_FALLBACK;
 }

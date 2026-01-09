@@ -11,6 +11,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { createLogger, calculateNextRetry, generateR2Key, sleep } from '../utils/fileUtils';
 import { uploadToR2 } from './r2Client';
+import { getClienteByPrefix } from '../config/prefixMap';
 import { isShuttingDown } from '../index';
 
 const logger = createLogger('PROCESSOR');
@@ -36,9 +37,12 @@ interface QueueItem {
 }
 
 /**
- * Obtiene la configuración del cliente desde la base de datos
+ * Obtiene la configuración del cliente desde la base de datos Y prefix-map
  */
-async function getClienteConfig(clienteId: string): Promise<{ cuit: string; r2Prefix: string }> {
+async function getClienteConfig(
+  clienteId: string
+): Promise<{ cuit: string; r2Bucket: string; r2Prefix: string }> {
+  // Obtener CUIT desde la base de datos
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
     select: { cuit: true },
@@ -48,9 +52,26 @@ async function getClienteConfig(clienteId: string): Promise<{ cuit: string; r2Pr
     throw new Error(`Cliente not found: ${clienteId}`);
   }
 
+  // Buscar configuración R2 en prefix-map
+  // (necesitamos encontrar el prefix que corresponde a este clienteId)
+  const prefixMapModule = await import('../config/prefixMap');
+  const prefixMap = await prefixMapModule.loadPrefixMap();
+
+  // Buscar el cliente por su ID
+  const prefixEntry = Object.entries(prefixMap).find(
+    ([_, config]) => config.clienteId === clienteId
+  );
+
+  if (!prefixEntry || !prefixEntry[1].r2Bucket) {
+    throw new Error(`R2 bucket configuration not found for cliente: ${clienteId}`);
+  }
+
+  const config = prefixEntry[1];
+
   return {
     cuit: cliente.cuit,
-    r2Prefix: `cuit=${cliente.cuit}`,
+    r2Bucket: config.r2Bucket,
+    r2Prefix: config.r2Prefix || '',
   };
 }
 
@@ -84,15 +105,16 @@ async function processQueueItem(item: QueueItem): Promise<void> {
     // Obtener configuración del cliente
     const clienteConfig = await getClienteConfig(item.clienteId);
     logger.info(`🏢 Cliente: ${clienteConfig.cuit}`);
+    logger.info(`📦 R2 Bucket: ${clienteConfig.r2Bucket}`);
 
     // Generar clave R2 (usa fecha de creación del registro)
     const r2Key = generateR2Key(clienteConfig.r2Prefix, item.sourceRef, item.createdAt);
     logger.info(`🔑 R2 key: ${r2Key}`);
 
-    // Subir a R2
+    // Subir a R2 (ahora pasamos el bucket específico del cliente)
     logger.info(`☁️  Uploading to R2...`);
-    await uploadToR2(r2Key, fileBuffer, 'application/pdf');
-    logger.info(`✅ Upload successful: ${r2Key}`);
+    await uploadToR2(clienteConfig.r2Bucket, r2Key, fileBuffer, 'application/pdf');
+    logger.info(`✅ Upload successful: ${clienteConfig.r2Bucket}/${r2Key}`);
 
     // Marcar como DONE
     await prisma.ingestQueue.update({

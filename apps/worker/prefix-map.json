@@ -4,11 +4,5 @@
     "cuit": "33712152449",
     "r2Bucket": "axp-client-33712152449",
     "r2Prefix": ""
-  },
-  "acme": {
-    "clienteId": "00000000-0000-0000-0000-000000000002",
-    "cuit": "20123456789",
-    "r2Bucket": "axp-client-20123456789",
-    "r2Prefix": ""
   }
 }
