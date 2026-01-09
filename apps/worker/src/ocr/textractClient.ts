@@ -592,11 +592,20 @@ function parseAmount(str: string): number | null {
       normalized = str;
     } else if (dotCount > 1) {
       // Múltiples puntos: son separadores de miles (734.451.45)
-      // Si también hay coma, la coma es decimal
-      if (commaCount > 0) {
+      // Verificar si el último segmento tiene 2 dígitos (decimal)
+      const segments = str.split('.');
+      const lastSegment = segments[segments.length - 1] || '';
+      
+      if (lastSegment.length === 2 && segments.length > 1) {
+        // Último segmento de 2 dígitos: es decimal (734.451.45)
+        // Remover todos los puntos excepto el último
+        const allButLast = segments.slice(0, -1).join('');
+        normalized = allButLast + '.' + lastSegment;
+      } else if (commaCount > 0) {
+        // Si también hay coma, la coma es decimal
         normalized = str.replace(/\./g, '').replace(',', '.');
       } else {
-        // Solo puntos: el último es decimal
+        // Solo puntos sin patrón decimal claro: remover todos
         normalized = str.replace(/\./g, '');
       }
     } else if (commaCount > 1) {
