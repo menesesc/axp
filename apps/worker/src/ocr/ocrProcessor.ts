@@ -195,8 +195,10 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     logger.info(`🔑 Final key: ${finalKey}`);
     
-    // 8. Buscar o crear proveedor por CUIT (identificador único)
+    // 8. Buscar o crear proveedor con matching inteligente
     let proveedorId: string | null = null;
+    let proveedorLetra: string | null = null; // Letra por defecto del proveedor
+    
     if (parsed.proveedorCUIT || parsed.proveedor) {
       const cuit = parsed.proveedorCUIT;
       const razonSocial = parsed.proveedor || 'Proveedor sin nombre';
@@ -231,10 +233,18 @@ async function processOCRFile(file: InboxFile): Promise<void> {
             clienteId: file.clienteId,
             cuit: parsed.proveedorCUIT,
           },
+          select: {
+            id: true,
+            razonSocial: true,
+            letra: true,
+            alias: true,
+            cuit: true,
+          },
         });
 
         if (proveedor) {
           logger.info(`✅ Proveedor found by CUIT: ${proveedor.id} (${proveedor.razonSocial})`);
+          proveedorLetra = proveedor.letra; // Guardar letra por defecto
           
           // Actualizar alias si la razón social detectada es diferente y no está en alias
           const aliasArray = Array.isArray(proveedor.alias) ? proveedor.alias : [];
@@ -252,7 +262,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         }
       }
 
-      // ESTRATEGIA 2: Si no encontró por CUIT, buscar por razón social (case-insensitive)
+      // ESTRATEGIA 2: Buscar por razón social exacta (case-insensitive)
       if (!proveedor && parsed.proveedor) {
         proveedor = await prisma.proveedor.findFirst({
           where: {
@@ -262,10 +272,18 @@ async function processOCRFile(file: InboxFile): Promise<void> {
               mode: 'insensitive',
             },
           },
+          select: {
+            id: true,
+            razonSocial: true,
+            letra: true,
+            alias: true,
+            cuit: true,
+          },
         });
 
         if (proveedor) {
-          logger.info(`✅ Proveedor found by razón social: ${proveedor.id}`);
+          logger.info(`✅ Proveedor found by razón social (exact): ${proveedor.id}`);
+          proveedorLetra = proveedor.letra; // Guardar letra por defecto
           
           // Si ahora tenemos CUIT y el proveedor no lo tenía, actualizarlo
           if (parsed.proveedorCUIT && !proveedor.cuit) {
@@ -278,22 +296,165 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         }
       }
 
-      // ESTRATEGIA 3: Crear nuevo proveedor
-      if (!proveedor) {
-        logger.info(`➕ Creating new proveedor...`);
-        proveedor = await prisma.proveedor.create({
-          data: {
+      // ESTRATEGIA 3: Buscar en alias
+      if (!proveedor && parsed.proveedor) {
+        const allProveedores = await prisma.proveedor.findMany({
+          where: {
             clienteId: file.clienteId,
-            razonSocial: razonSocial,
-            cuit: parsed.proveedorCUIT || null,
-            alias: parsed.proveedor ? [parsed.proveedor] : [],
             activo: true,
           },
+          select: {
+            id: true,
+            razonSocial: true,
+            letra: true,
+            alias: true,
+            cuit: true,
+          },
         });
-        logger.info(`✅ Proveedor created: ${proveedor.id}`);
+
+        for (const p of allProveedores) {
+          const aliasArray = Array.isArray(p.alias) ? p.alias : [];
+          const foundInAlias = aliasArray.some((alias: string) => 
+            alias.toLowerCase() === parsed.proveedor.toLowerCase()
+          );
+
+          if (foundInAlias) {
+            proveedor = p;
+            logger.info(`✅ Proveedor found by alias: ${p.id} (${p.razonSocial})`);
+            proveedorLetra = p.letra; // Guardar letra por defecto
+            break;
+          }
+        }
       }
 
-      proveedorId = proveedor.id;
+      // ESTRATEGIA 4: Similitud de texto (fuzzy matching)
+      // Evita crear duplicados cuando OCR detecta mal el nombre
+      if (!proveedor && parsed.proveedor) {
+        logger.info(`🔍 Attempting fuzzy match...`);
+        
+        const allProveedores = await prisma.proveedor.findMany({
+          where: {
+            clienteId: file.clienteId,
+            activo: true,
+          },
+          select: {
+            id: true,
+            razonSocial: true,
+            letra: true,
+            alias: true,
+            cuit: true,
+          },
+        });
+
+        const normalizedSearch = parsed.proveedor.toLowerCase()
+          .replace(/\s+/g, ' ')
+          .replace(/[^a-z0-9\s]/gi, '')
+          .trim();
+
+        let bestMatch = null;
+        let bestScore = 0;
+
+        for (const p of allProveedores) {
+          const normalizedName = p.razonSocial.toLowerCase()
+            .replace(/\s+/g, ' ')
+            .replace(/[^a-z0-9\s]/gi, '')
+            .trim();
+
+          // Calcular similitud simple (palabras en común)
+          const searchWords = normalizedSearch.split(' ');
+          const nameWords = normalizedName.split(' ');
+          
+          const commonWords = searchWords.filter((word: string) => 
+            nameWords.some((nameWord: string) => 
+              nameWord.includes(word) || word.includes(nameWord)
+            )
+          );
+
+          const score = commonWords.length / Math.max(searchWords.length, nameWords.length);
+
+          // También verificar alias
+          const aliasArray = Array.isArray(p.alias) ? p.alias : [];
+          for (const alias of aliasArray) {
+            const normalizedAlias = alias.toLowerCase()
+              .replace(/\s+/g, ' ')
+              .replace(/[^a-z0-9\s]/gi, '')
+              .trim();
+            
+            const aliasWords = normalizedAlias.split(' ');
+            const aliasCommon = searchWords.filter((word: string) => 
+              aliasWords.some((aliasWord: string) => 
+                aliasWord.includes(word) || word.includes(aliasWord)
+              )
+            );
+            
+            const aliasScore = aliasCommon.length / Math.max(searchWords.length, aliasWords.length);
+            if (aliasScore > score) {
+              const finalScore = aliasScore;
+              if (finalScore > bestScore) {
+                bestScore = finalScore;
+                bestMatch = p;
+              }
+            }
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = p;
+          }
+        }
+
+        // Umbral de similitud: 60% de palabras en común
+        if (bestMatch && bestScore >= 0.6) {
+          proveedor = bestMatch;
+          logger.info(`✅ Proveedor found by fuzzy match: ${proveedor.id} (${proveedor.razonSocial})`);
+          logger.info(`   Match score: ${(bestScore * 100).toFixed(1)}%`);
+          logger.info(`   OCR detected: "${parsed.proveedor}"`);
+          proveedorLetra = proveedor.letra; // Guardar letra por defecto
+          
+          // Agregar el nombre detectado como alias para mejorar futuras detecciones
+          const aliasArray = Array.isArray(proveedor.alias) ? proveedor.alias : [];
+          if (!aliasArray.includes(parsed.proveedor)) {
+            await prisma.proveedor.update({
+              where: { id: proveedor.id },
+              data: {
+                alias: [...aliasArray, parsed.proveedor],
+              },
+            });
+            logger.info(`   Added OCR name to alias: "${parsed.proveedor}"`);
+          }
+        } else if (bestMatch) {
+          logger.warn(`⚠️  Best match found but below threshold:`);
+          logger.warn(`   ${bestMatch.razonSocial} (${(bestScore * 100).toFixed(1)}%)`);
+          logger.warn(`   Creating new proveedor instead`);
+        }
+      }
+
+      // ESTRATEGIA 5: Marcar para revisión manual si no encontró match
+      // NO crear automáticamente, requiere intervención humana
+      if (!proveedor) {
+        logger.warn(`⚠️  NO MATCH FOUND - Proveedor requires manual assignment`);
+        logger.warn(`   OCR detected: "${razonSocial}"`);
+        logger.warn(`   CUIT: ${cuit || 'not detected'}`);
+        logger.warn(`   Document will be marked as PENDIENTE for manual review`);
+        
+        // Dejar proveedorId en null - el documento se marcará como PENDIENTE
+        // El usuario deberá asignar manualmente el proveedor correcto desde el dashboard
+        proveedorId = null;
+      } else {
+        proveedorId = proveedor.id;
+      }
+    }
+    
+    // Usar letra del proveedor si no se detectó con OCR
+    const finalLetra = parsed.letra || proveedorLetra;
+    if (!parsed.letra && proveedorLetra) {
+      logger.info(`📝 Using default letra from proveedor: ${proveedorLetra}`);
+    }
+    
+    // Si no hay fecha de vencimiento, usar fecha de emisión
+    const finalFechaVencimiento = parsed.fechaVencimiento || parsed.fechaEmision;
+    if (!parsed.fechaVencimiento && parsed.fechaEmision) {
+      logger.info(`📅 Using fechaEmision as fechaVencimiento: ${parsed.fechaEmision}`);
     }
     
     // 9. Crear documento en BD
@@ -306,12 +467,12 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         clienteId: file.clienteId,
         proveedorId: proveedorId,
         tipo: parsed.tipo || 'FACTURA',
-        letra: parsed.letra,
+        letra: finalLetra, // Usar letra del proveedor si OCR no detectó
         puntoVenta: parsed.puntoVenta,
         numero: parsed.numero,
         numeroCompleto: parsed.numeroCompleto,
         fechaEmision: parsed.fechaEmision ? new Date(parsed.fechaEmision) : null,
-        fechaVencimiento: parsed.fechaVencimiento ? new Date(parsed.fechaVencimiento) : null,
+        fechaVencimiento: finalFechaVencimiento ? new Date(finalFechaVencimiento) : null, // Usar fechaEmision si no hay vencimiento
         moneda: parsed.moneda || 'ARS',
         subtotal: parsed.subtotal,
         iva: parsed.iva,
@@ -342,6 +503,24 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     });
     
     logger.info(`✅ Documento created: ${documento.id}`);
+    
+    // Enviar notificación al frontend
+    try {
+      const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
+      await fetch(`${webAppUrl}/api/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteId: file.clienteId,
+          documentoId: documento.id,
+          tipo: 'new_document',
+        }),
+      });
+      logger.info(`📬 Notification sent for documento: ${documento.id}`);
+    } catch (notifError) {
+      logger.warn(`⚠️  Failed to send notification:`, notifError);
+      // No es crítico, continuar con el proceso
+    }
     
     // 10. Crear items de productos si existen
     if (parsed.items && parsed.items.length > 0) {

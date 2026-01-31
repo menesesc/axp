@@ -156,17 +156,18 @@ model pagos {
 }
 
 model proveedores {
-  id          String       @id @db.Uuid
-  clienteId   String       @db.Uuid
-  razonSocial String       @db.VarChar(255)
-  cuit        String?      @db.VarChar(11)
-  alias       Json         @default("[]")
-  activo      Boolean      @default(true)
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime     @db.Timestamptz(3)
+  id          String        @id @db.Uuid
+  clienteId   String        @db.Uuid
+  razonSocial String        @db.VarChar(255)
+  cuit        String?       @db.VarChar(11)
+  alias       Json          @default("[]")
+  letra       String?       @db.VarChar(1)
+  activo      Boolean       @default(true)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @db.Timestamptz(3)
   documentos  documentos[]
   pagos       pagos[]
-  clientes    clientes     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  clientes    clientes      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@unique([clienteId, cuit])
   @@index([clienteId])
