@@ -1,17 +1,24 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
+import { getAuthUser } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
+    // Verificar autenticación
+    const { user, error } = await getAuthUser()
+    if (error) return error
+
     const { searchParams } = new URL(request.url)
-    const clienteId = searchParams.get('clienteId')
-    
+
+    // Usar clienteId del usuario autenticado (no del query param)
+    const clienteId = user?.clienteId
+
     if (!clienteId) {
       return NextResponse.json(
-        { error: 'clienteId is required' },
-        { status: 400 }
+        { error: 'No tienes una empresa asignada' },
+        { status: 403 }
       )
     }
 
@@ -23,6 +30,7 @@ export async function GET(request: Request) {
     // Filtros opcionales
     const estado = searchParams.get('estado')
     const proveedorId = searchParams.get('proveedorId')
+    const busqueda = searchParams.get('q')
 
     const where: any = {
       clienteId,
@@ -34,6 +42,13 @@ export async function GET(request: Request) {
 
     if (proveedorId) {
       where.proveedorId = proveedorId
+    }
+
+    if (busqueda) {
+      where.OR = [
+        { numeroCompleto: { contains: busqueda, mode: 'insensitive' } },
+        { proveedores: { razonSocial: { contains: busqueda, mode: 'insensitive' } } },
+      ]
     }
 
     // Consultar documentos
@@ -68,10 +83,10 @@ export async function GET(request: Request) {
       },
     })
   } catch (error) {
-    console.error('Error en /api/documentos:', error);
+    console.error('Error en /api/documentos:', error)
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
-    );
+    )
   }
 }

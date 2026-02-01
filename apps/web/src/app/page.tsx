@@ -1,54 +1,141 @@
-import { DashboardStats } from '@/components/dashboard/stats'
-import { DocumentList } from '@/components/dashboard/document-list'
-import Link from 'next/link'
-import { Users } from 'lucide-react'
+'use client'
+
+import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { Header } from '@/components/layout/header'
+import { useUser } from '@/hooks/use-user'
+import { useQuery } from '@tanstack/react-query'
+import { KpiCards } from '@/components/dashboard/kpi-cards'
+import { RecentDocumentsCard } from '@/components/dashboard/recent-documents-card'
+import { StatusChart } from '@/components/dashboard/status-chart'
+import { QuickActions } from '@/components/dashboard/quick-actions'
+import { PaymentsSummary } from '@/components/dashboard/payments-summary'
+import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
+import { toast } from 'sonner'
 
 export default function Home() {
-  // TODO: Get clienteId from auth session
-  const clienteId = process.env.NEXT_PUBLIC_CLIENTE_ID || ''
+  const { clienteId, user, clienteNombre } = useUser()
+
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['stats', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/stats')
+      if (!res.ok) throw new Error('Failed to fetch')
+      return res.json()
+    },
+    enabled: !!clienteId,
+  })
+
+  const { data: docs, isLoading: docsLoading } = useQuery({
+    queryKey: ['recent-docs', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/documentos?pageSize=5&sortBy=createdAt&sortOrder=desc')
+      if (!res.ok) throw new Error('Failed to fetch')
+      return res.json()
+    },
+    enabled: !!clienteId,
+  })
+
+  const { data: paymentStats, isLoading: paymentsLoading } = useQuery({
+    queryKey: ['payment-stats', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/pagos/stats')
+      if (!res.ok) {
+        return {
+          proveedoresConSaldo: 0,
+          montoPendiente: 0,
+          ordenesRecientes: [],
+        }
+      }
+      return res.json()
+    },
+    enabled: !!clienteId,
+  })
+
+  if (!clienteId) {
+    return (
+      <DashboardLayout>
+        <div className="py-12 text-center">
+          <p className="text-sm text-slate-500">Sin empresa asignada</p>
+          <p className="text-xs text-slate-400 mt-1">{user?.email}</p>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  const recentDocs = docs?.documentos || []
+  const totalDocumentos = stats?.totalDocumentos || 0
+  const pendientes = stats?.totalPendientes || 0
+  const confirmados = stats?.totalConfirmados || 0
+  const confidencePromedio = stats?.confidencePromedio || 85
+  const documentosPorDia = stats?.documentosPorDia || []
+
+  const handleUpload = () => {
+    toast.info('Función de subida próximamente')
+  }
+
+  const handleEmail = () => {
+    toast.info('Función de email próximamente')
+  }
+
+  const handleExport = (format: 'csv' | 'excel' | 'pdf') => {
+    toast.info(`Exportar a ${format.toUpperCase()} próximamente`)
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard OCR</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Gestión de facturas y documentos procesados
-              </p>
-            </div>
-            <Link
-              href="/proveedores"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Users size={20} />
-              Proveedores
-            </Link>
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <Header
+          title={clienteNombre || 'Dashboard'}
+          description={`Bienvenido, ${user?.nombre?.split(' ')[0]}`}
+          actions={
+            <QuickActions
+              onUpload={handleUpload}
+              onEmail={handleEmail}
+              onExport={handleExport}
+            />
+          }
+        />
+
+        {/* KPI Cards */}
+        <KpiCards
+          totalDocumentos={totalDocumentos}
+          pendientes={pendientes}
+          confirmados={confirmados}
+          confidencePromedio={confidencePromedio}
+          isLoading={statsLoading}
+        />
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Recent Documents - 2 cols */}
+          <div className="lg:col-span-2">
+            <RecentDocumentsCard documents={recentDocs} isLoading={docsLoading} />
+          </div>
+
+          {/* Charts - 1 col */}
+          <div className="space-y-4">
+            <StatusChart
+              pendientes={pendientes}
+              confirmados={confirmados}
+              confidencePromedio={confidencePromedio}
+              isLoading={statsLoading}
+            />
+            <DocumentsTrendCard data={documentosPorDia} isLoading={statsLoading} />
           </div>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {/* Stats Cards */}
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Resumen</h2>
-            <DashboardStats clienteId={clienteId} />
-          </section>
-
-          {/* Document List */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Documentos Recientes</h2>
-              {/* TODO: Add filters here */}
-            </div>
-            <DocumentList clienteId={clienteId} />
-          </section>
+        {/* Payments Summary */}
+        <div>
+          <h2 className="text-sm font-medium text-slate-900 mb-3">Pagos</h2>
+          <PaymentsSummary
+            proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
+            montoPendiente={paymentStats?.montoPendiente || 0}
+            ordenesRecientes={paymentStats?.ordenesRecientes || []}
+            isLoading={paymentsLoading}
+          />
         </div>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   )
 }

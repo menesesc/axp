@@ -93,7 +93,7 @@ async function processFile(filename: string): Promise<void> {
     const existing = await prisma.ingestQueue.findFirst({
       where: {
         clienteId: clienteConfig.clienteId,
-        source: 'DRIVE', // Usamos DRIVE porque no hay WEBDAV en el enum
+        source: 'SFTP', // Origen: escáner/WebDAV (tratado como SFTP)
         sourceRef: sourceRef,
       },
     });
@@ -126,7 +126,7 @@ async function processFile(filename: string): Promise<void> {
     const queueItem = await prisma.ingestQueue.create({
       data: {
         clienteId: clienteConfig.clienteId,
-        source: 'DRIVE', // Usamos DRIVE porque WebDAV no está en el enum
+        source: 'SFTP', // Origen: escáner/WebDAV → SFTP
         sourceRef: sourceRef,
         sha256: sha256,
         status: 'PENDING',

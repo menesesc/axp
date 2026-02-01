@@ -80,7 +80,8 @@ export const ESTADOS_REVISION = {
 
 export const SOURCES_DOCUMENTO = {
   SFTP: 'SFTP',
-  DRIVE: 'DRIVE',
+  EMAIL: 'EMAIL',
+  WHATSAPP: 'WHATSAPP',
   MANUAL: 'MANUAL',
 } as const;
 

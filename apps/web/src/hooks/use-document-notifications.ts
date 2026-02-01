@@ -3,12 +3,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-interface DocumentNotification {
-  type: 'new_document'
-  documentoId: string
-  timestamp: string
-}
-
 export function useDocumentNotifications(clienteId: string) {
   const [newDocumentIds, setNewDocumentIds] = useState<Set<string>>(new Set())
   const queryClient = useQueryClient()

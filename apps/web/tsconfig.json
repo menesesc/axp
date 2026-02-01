@@ -10,6 +10,7 @@
     "jsx": "preserve",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "types": [],
     "paths": {
       "@/*": [
         "./src/*"

@@ -34,7 +34,8 @@ export enum EstadoRevision {
 
 export enum SourceDocumento {
   SFTP = 'SFTP',
-  DRIVE = 'DRIVE',
+  EMAIL = 'EMAIL',
+  WHATSAPP = 'WHATSAPP',
   MANUAL = 'MANUAL',
 }
 

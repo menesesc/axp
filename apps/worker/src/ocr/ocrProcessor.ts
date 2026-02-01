@@ -494,7 +494,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           confidence: parsed.confidenceScore,
           itemsCount: parsed.items?.length || 0,
         }, // Solo metadatos, no el JSON completo de Textract (ahorra espacio)
-        source: 'DRIVE', // Asumimos DRIVE (ajustar según source real)
+        source: 'SFTP', // Origen actual: escáner/WebDAV
         hashSha256: sha256,
         pdfRawKey: file.key,
         pdfFinalKey: null, // Se actualiza después del move
