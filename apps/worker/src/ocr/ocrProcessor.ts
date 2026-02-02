@@ -114,7 +114,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     const sha256 = hash.digest('hex');
     
     // 3. Verificar si ya existe documento con este hash
-    const existing = await prisma.documento.findFirst({
+    const existing = await prisma.documentos.findFirst({
       where: {
         clienteId: file.clienteId,
         hashSha256: sha256,
@@ -211,7 +211,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       
       // VALIDACIÓN CRÍTICA: El CUIT del proveedor NO puede ser igual al del cliente
       if (cuit) {
-        const cliente = await prisma.cliente.findUnique({
+        const cliente = await prisma.clientes.findUnique({
           where: { id: file.clienteId },
           select: { cuit: true, razonSocial: true },
         });
@@ -230,7 +230,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
       // ESTRATEGIA 1: Buscar por CUIT (identificador único legal)
       if (parsed.proveedorCUIT) {
-        proveedor = await prisma.proveedor.findFirst({
+        proveedor = await prisma.proveedores.findFirst({
           where: {
             clienteId: file.clienteId,
             cuit: parsed.proveedorCUIT,
@@ -253,7 +253,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           if (parsed.proveedor && 
               proveedor.razonSocial !== parsed.proveedor && 
               !aliasArray.includes(parsed.proveedor)) {
-            await prisma.proveedor.update({
+            await prisma.proveedores.update({
               where: { id: proveedor.id },
               data: {
                 alias: [...aliasArray, parsed.proveedor],
@@ -266,7 +266,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
       // ESTRATEGIA 2: Buscar por razón social exacta (case-insensitive)
       if (!proveedor && parsed.proveedor) {
-        proveedor = await prisma.proveedor.findFirst({
+        proveedor = await prisma.proveedores.findFirst({
           where: {
             clienteId: file.clienteId,
             razonSocial: {
@@ -289,7 +289,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           
           // Si ahora tenemos CUIT y el proveedor no lo tenía, actualizarlo
           if (parsed.proveedorCUIT && !proveedor.cuit) {
-            await prisma.proveedor.update({
+            await prisma.proveedores.update({
               where: { id: proveedor.id },
               data: { cuit: parsed.proveedorCUIT },
             });
@@ -300,7 +300,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
       // ESTRATEGIA 3: Buscar en alias
       if (!proveedor && parsed.proveedor) {
-        const allProveedores = await prisma.proveedor.findMany({
+        const allProveedores = await prisma.proveedores.findMany({
           where: {
             clienteId: file.clienteId,
             activo: true,
@@ -334,7 +334,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       if (!proveedor && parsed.proveedor) {
         logger.info(`🔍 Attempting fuzzy match...`);
         
-        const allProveedores = await prisma.proveedor.findMany({
+        const allProveedores = await prisma.proveedores.findMany({
           where: {
             clienteId: file.clienteId,
             activo: true,
@@ -416,7 +416,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           // Agregar el nombre detectado como alias para mejorar futuras detecciones
           const aliasArray = Array.isArray(proveedor.alias) ? proveedor.alias : [];
           if (!aliasArray.includes(parsed.proveedor)) {
-            await prisma.proveedor.update({
+            await prisma.proveedores.update({
               where: { id: proveedor.id },
               data: {
                 alias: [...aliasArray, parsed.proveedor],
@@ -464,7 +464,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     const estadoRevision = determineEstadoRevision(parsed, proveedorId);
     logger.info(`📋 Estado de revisión: ${estadoRevision}`);
     
-    const documento = await prisma.documento.create({
+    const documento = await prisma.documentos.create({
       data: {
         clienteId: file.clienteId,
         proveedorId: proveedorId,
@@ -528,7 +528,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     if (parsed.items && parsed.items.length > 0) {
       logger.info(`📦 Creating ${parsed.items.length} documento items...`);
       
-      await prisma.documentoItem.createMany({
+      await prisma.documento_items.createMany({
         data: parsed.items.map((item: any) => ({
           documentoId: documento.id,
           linea: item.linea,
@@ -549,7 +549,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     await moveR2Object(file.bucket, file.key, finalKey);
     
     // 12. Actualizar documento con pdfFinalKey
-    await prisma.documento.update({
+    await prisma.documentos.update({
       where: { id: documento.id },
       data: { pdfFinalKey: finalKey },
     });

@@ -43,7 +43,7 @@ async function getClienteConfig(
   clienteId: string
 ): Promise<{ cuit: string; r2Bucket: string; r2Prefix: string }> {
   // Obtener CUIT desde la base de datos
-  const cliente = await prisma.cliente.findUnique({
+  const cliente = await prisma.clientes.findUnique({
     where: { id: clienteId },
     select: { cuit: true },
   });
