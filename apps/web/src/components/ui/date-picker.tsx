@@ -47,8 +47,9 @@ export function DatePicker({
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
+          required={false}
           selected={date}
-          onSelect={onDateChange}
+          onSelect={onDateChange ?? (() => {})}
         />
       </PopoverContent>
     </Popover>

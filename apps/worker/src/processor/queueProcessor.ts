@@ -5,7 +5,7 @@
  * Implementa retry con exponential backoff.
  */
 
-import { prisma } from 'database';
+import { prisma } from '../lib/prisma';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -83,7 +83,7 @@ async function processQueueItem(item: QueueItem): Promise<void> {
 
   try {
     // Marcar como PROCESSING
-    await prisma.ingestQueue.update({
+    await prisma.ingest_queue.update({
       where: { id: item.id },
       data: {
         status: 'PROCESSING',
@@ -124,7 +124,7 @@ async function processQueueItem(item: QueueItem): Promise<void> {
     logger.info(`✅ Upload successful: ${clienteConfig.r2Bucket}/${r2Key}`);
 
     // Marcar como DONE
-    await prisma.ingestQueue.update({
+    await prisma.ingest_queue.update({
       where: { id: item.id },
       data: {
         status: 'DONE',
@@ -143,7 +143,7 @@ async function processQueueItem(item: QueueItem): Promise<void> {
     // Decidir si reintentar o marcar como ERROR
     if (newAttempts >= MAX_RETRY_ATTEMPTS) {
       logger.error(`❌ Max retry attempts reached for ${item.id}. Marking as ERROR.`);
-      await prisma.ingestQueue.update({
+      await prisma.ingest_queue.update({
         where: { id: item.id },
         data: {
           status: 'ERROR',
@@ -158,7 +158,7 @@ async function processQueueItem(item: QueueItem): Promise<void> {
       logger.warn(
         `⚠️  Retry ${newAttempts}/${MAX_RETRY_ATTEMPTS} for ${item.id}. Next retry at: ${nextRetryAt.toISOString()}`
       );
-      await prisma.ingestQueue.update({
+      await prisma.ingest_queue.update({
         where: { id: item.id },
         data: {
           status: 'PENDING',
@@ -178,7 +178,7 @@ async function processQueueItem(item: QueueItem): Promise<void> {
 async function getPendingItems(limit: number): Promise<QueueItem[]> {
   const now = new Date();
 
-  const items = await prisma.ingestQueue.findMany({
+  const items = await prisma.ingest_queue.findMany({
     where: {
       status: 'PENDING',
       OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }],

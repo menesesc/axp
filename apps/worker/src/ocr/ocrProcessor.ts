@@ -13,8 +13,10 @@
  * 7. Actualiza Documento.pdfFinalKey
  */
 
-import { prisma } from 'database';
-import type { EstadoRevision } from 'database';
+import { prisma } from '../lib/prisma';
+
+// Tipo para EstadoRevision
+type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';

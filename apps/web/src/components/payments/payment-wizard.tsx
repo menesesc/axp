@@ -170,8 +170,8 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
       metodos: methods.map((m) => ({
         tipo: m.tipo,
         monto: m.monto,
-        fecha: m.fecha,
-        referencia: m.referencia,
+        ...(m.fecha && { fecha: m.fecha }),
+        ...(m.referencia && { referencia: m.referencia }),
       })),
     })
   }

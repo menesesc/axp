@@ -8,7 +8,7 @@
 import { readdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { prisma } from 'database';
+import { prisma } from '../lib/prisma';
 import {
   calculateFileSHA256,
   waitForFileStable,
@@ -90,7 +90,7 @@ async function processFile(filename: string): Promise<void> {
 
     // Verificar si ya existe en la queue (idempotencia)
     const sourceRef = filename; // Usamos el filename como sourceRef
-    const existing = await prisma.ingestQueue.findFirst({
+    const existing = await prisma.ingest_queue.findFirst({
       where: {
         clienteId: clienteConfig.clienteId,
         source: 'SFTP', // Origen: escáner/WebDAV (tratado como SFTP)
@@ -106,7 +106,7 @@ async function processFile(filename: string): Promise<void> {
     }
 
     // Verificar si ya existe un archivo con este SHA256 para este cliente
-    const duplicateBySha = await prisma.ingestQueue.findFirst({
+    const duplicateBySha = await prisma.ingest_queue.findFirst({
       where: {
         clienteId: clienteConfig.clienteId,
         sha256: sha256,
@@ -123,7 +123,7 @@ async function processFile(filename: string): Promise<void> {
 
     // Crear registro en IngestQueue
     logger.info(`📝 Enqueuing file for processing...`);
-    const queueItem = await prisma.ingestQueue.create({
+    const queueItem = await prisma.ingest_queue.create({
       data: {
         clienteId: clienteConfig.clienteId,
         source: 'SFTP', // Origen: escáner/WebDAV → SFTP

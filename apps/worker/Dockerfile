@@ -15,11 +15,12 @@ COPY apps/worker ./apps/worker
 # Instalar dependencias (resuelve workspaces)
 RUN bun install --frozen-lockfile || bun install
 
-# Generar Prisma Client (CRÍTICO)
+# Generar Prisma Client en el paquete database
 RUN cd packages/database && bunx prisma generate
 
-# Working directory para el worker
+# Generar Prisma Client también para el worker (usando el schema de database)
 WORKDIR /app/apps/worker
+RUN bunx prisma generate --schema=../../packages/database/prisma/schema.prisma
 
 # El comando se define en docker-compose.yml
 CMD ["bun", "run", "src/index.ts"]

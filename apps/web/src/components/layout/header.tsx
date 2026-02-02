@@ -6,10 +6,11 @@ export interface HeaderProps {
   title: string
   description?: string | undefined
   actions?: React.ReactNode
+  children?: React.ReactNode
   className?: string
 }
 
-export function Header({ title, description, actions, className }: HeaderProps) {
+export function Header({ title, description, actions, children, className }: HeaderProps) {
   return (
     <div
       className={cn(
@@ -25,7 +26,12 @@ export function Header({ title, description, actions, className }: HeaderProps) 
           <p className="text-sm text-slate-500 mt-0.5">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2 mt-4 sm:mt-0">{actions}</div>}
+      {(actions || children) && (
+        <div className="flex items-center gap-2 mt-4 sm:mt-0">{actions || children}</div>
+      )}
     </div>
   )
 }
+
+// Alias for backward compatibility
+export const PageHeader = Header
