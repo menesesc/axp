@@ -9,6 +9,15 @@ import { readdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { prisma } from '../lib/prisma';
+
+// Helper para generar UUID (compatible con Bun)
+const generateId = (): string => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 import {
   calculateFileSHA256,
   waitForFileStable,
@@ -125,12 +134,14 @@ async function processFile(filename: string): Promise<void> {
     logger.info(`📝 Enqueuing file for processing...`);
     const queueItem = await prisma.ingest_queue.create({
       data: {
+        id: generateId(),
         clienteId: clienteConfig.clienteId,
         source: 'SFTP', // Origen: escáner/WebDAV → SFTP
         sourceRef: sourceRef,
         sha256: sha256,
         status: 'PENDING',
         attempts: 0,
+        updatedAt: new Date(),
       },
     });
 
