@@ -160,6 +160,7 @@ model proveedores {
   clienteId   String       @db.Uuid
   razonSocial String       @db.VarChar(255)
   cuit        String?      @db.VarChar(11)
+  letra       String?      @db.VarChar(1) // Letra de factura por defecto (A, B, C, etc.)
   alias       Json         @default("[]")
   activo      Boolean      @default(true)
   createdAt   DateTime     @default(now()) @db.Timestamptz(3)
