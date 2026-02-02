@@ -511,6 +511,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         pdfRawKey: file.key,
         pdfFinalKey: null, // Se actualiza después del move
         textractRawKey: null, // NO guardamos el JSON de Textract (ahorra 455KB por factura)
+        updatedAt: new Date(),
       },
     });
     
