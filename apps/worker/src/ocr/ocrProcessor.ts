@@ -17,6 +17,15 @@ import { prisma } from '../lib/prisma';
 
 // Tipo para EstadoRevision
 type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
+
+// Helper para generar UUID (compatible con Bun)
+const generateId = (): string => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
@@ -466,6 +475,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     const documento = await prisma.documentos.create({
       data: {
+        id: generateId(),
         clienteId: file.clienteId,
         proveedorId: proveedorId,
         tipo: parsed.tipo || 'FACTURA',
@@ -530,6 +540,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       
       await prisma.documento_items.createMany({
         data: parsed.items.map((item: any) => ({
+          id: generateId(),
           documentoId: documento.id,
           linea: item.linea,
           descripcion: item.descripcion,
