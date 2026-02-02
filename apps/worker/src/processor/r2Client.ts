@@ -5,7 +5,16 @@
  * Soporta multi-bucket (un bucket por cliente).
  */
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  GetObjectCommand,
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  CreateBucketCommand,
+  HeadBucketCommand,
+} from '@aws-sdk/client-s3';
 import { createLogger } from '../utils/fileUtils';
 
 const logger = createLogger('R2');
@@ -34,26 +43,92 @@ const r2Client = new S3Client({
   },
 });
 
+// Cache de buckets verificados (evita verificar el mismo bucket múltiples veces)
+const verifiedBuckets = new Set<string>();
+
+/**
+ * Verifica si un bucket existe
+ */
+export async function bucketExists(bucket: string): Promise<boolean> {
+  // Si ya verificamos este bucket, asumimos que existe
+  if (verifiedBuckets.has(bucket)) {
+    return true;
+  }
+
+  try {
+    const command = new HeadBucketCommand({ Bucket: bucket });
+    await r2Client.send(command);
+    verifiedBuckets.add(bucket);
+    return true;
+  } catch (error: any) {
+    if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      return false;
+    }
+    // Otro error (ej: permisos) - lanzar para manejarlo arriba
+    throw error;
+  }
+}
+
+/**
+ * Crea un bucket en R2
+ */
+export async function createBucket(bucket: string): Promise<void> {
+  try {
+    logger.info(`🪣 Creating R2 bucket: ${bucket}`);
+
+    const command = new CreateBucketCommand({ Bucket: bucket });
+    await r2Client.send(command);
+
+    verifiedBuckets.add(bucket);
+    logger.info(`✅ Bucket created: ${bucket}`);
+  } catch (error: any) {
+    // Si el bucket ya existe (race condition), no es error
+    if (error.name === 'BucketAlreadyOwnedByYou' || error.name === 'BucketAlreadyExists') {
+      logger.info(`ℹ️  Bucket already exists: ${bucket}`);
+      verifiedBuckets.add(bucket);
+      return;
+    }
+    logger.error(`❌ Failed to create bucket ${bucket}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Asegura que un bucket exista, creándolo si es necesario
+ */
+export async function ensureBucketExists(bucket: string): Promise<void> {
+  if (verifiedBuckets.has(bucket)) {
+    return;
+  }
+
+  const exists = await bucketExists(bucket);
+  if (!exists) {
+    await createBucket(bucket);
+  }
+}
+
 /**
  * Sube un archivo a R2
- * 
+ *
  * @param bucket - Nombre del bucket de destino
  * @param key - La ruta/clave del objeto en R2
  * @param body - El contenido del archivo (Buffer o ReadableStream)
  * @param contentType - El tipo MIME del archivo
+ * @param autoCreateBucket - Si es true, crea el bucket automáticamente si no existe (default: true)
  */
 export async function uploadToR2(
   bucket: string,
   key: string,
   body: Buffer | Uint8Array,
-  contentType: string = 'application/pdf'
+  contentType: string = 'application/pdf',
+  autoCreateBucket: boolean = true
 ): Promise<void> {
+  const startTime = Date.now();
+  const sizeKB = body.byteLength / 1024;
+
+  logger.info(`☁️  Uploading to R2: ${bucket}/${key} (${sizeKB.toFixed(2)} KB)`);
+
   try {
-    const startTime = Date.now();
-    const sizeKB = body.byteLength / 1024;
-
-    logger.info(`☁️  Uploading to R2: ${bucket}/${key} (${sizeKB.toFixed(2)} KB)`);
-
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -65,10 +140,35 @@ export async function uploadToR2(
     });
 
     await r2Client.send(command);
+    verifiedBuckets.add(bucket); // Bucket existe si upload funcionó
 
     const duration = Date.now() - startTime;
     logger.info(`✅ Upload complete: ${bucket}/${key} (${duration}ms)`);
-  } catch (error) {
+  } catch (error: any) {
+    // Si el bucket no existe y autoCreateBucket está habilitado, crearlo y reintentar
+    if (autoCreateBucket && (error.name === 'NoSuchBucket' || error.Code === 'NoSuchBucket')) {
+      logger.warn(`⚠️  Bucket ${bucket} not found, creating it automatically...`);
+
+      await createBucket(bucket);
+
+      // Reintentar upload
+      const command = new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        Metadata: {
+          'upload-timestamp': new Date().toISOString(),
+        },
+      });
+
+      await r2Client.send(command);
+
+      const duration = Date.now() - startTime;
+      logger.info(`✅ Upload complete (after bucket creation): ${bucket}/${key} (${duration}ms)`);
+      return;
+    }
+
     logger.error(`❌ R2 upload failed for ${bucket}/${key}:`, error);
     throw error;
   }
