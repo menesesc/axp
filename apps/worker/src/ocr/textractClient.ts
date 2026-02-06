@@ -334,16 +334,19 @@ function parseTextractAmount(amountStr: string | null): number | null {
 /**
  * Extracción inteligente de totales
  *
- * Reglas:
- * 1. El TOTAL es siempre el valor más grande del sector de totales
- * 2. SUBTOTAL + IVA (10.5% o 21%) + otros impuestos = TOTAL
- * 3. Si no hay subtotal pero hay total e IVA, calcular subtotal
- * 4. Si no hay IVA pero hay total y subtotal, calcular IVA
+ * Estrategia CONSERVADORA:
+ * 1. CONFIAR en Textract primero - sus valores son más confiables
+ * 2. Solo buscar en texto si Textract no detectó valores
+ * 3. Validar que subtotal + IVA ≈ total (sanity check)
+ * 4. Límite máximo para evitar overflow en BD: 999,999,999,999 (< 10^12)
  */
 function extractSmartTotals(
   summaryFields: any[],
   allText: string[]
 ): { subtotal: number | null; iva: number | null; total: number | null } {
+
+  // Límite máximo (precision 14, scale 2 = max ~10^12)
+  const MAX_AMOUNT = 999_999_999_999;
 
   // Función helper para obtener campos
   const getFieldValue = (type: string): string | null => {
@@ -351,106 +354,99 @@ function extractSmartTotals(
     return field?.ValueDetection?.Text || null;
   };
 
-  // Extraer valores directos de Textract
-  let subtotalRaw = parseTextractAmount(getFieldValue('SUBTOTAL'));
-  let ivaRaw = parseTextractAmount(getFieldValue('TAX'));
-  let totalRaw = parseTextractAmount(getFieldValue('TOTAL'));
+  // Función para validar que un monto es razonable
+  const isValidAmount = (value: number | null): value is number => {
+    return value !== null && value > 0 && value <= MAX_AMOUNT;
+  };
 
-  // Recolectar TODOS los valores monetarios del sector de totales
-  const totalSectionValues: number[] = [];
+  // Extraer valores directos de Textract (FUENTE PRINCIPAL)
+  let subtotal = parseTextractAmount(getFieldValue('SUBTOTAL'));
+  let iva = parseTextractAmount(getFieldValue('TAX'));
+  let total = parseTextractAmount(getFieldValue('TOTAL'));
 
-  // Buscar en el texto líneas que contengan valores de totales
-  const totalPatterns = [
-    /(?:total|subtotal|neto|iva|impuesto|importe|gravado|no\s*gravado)[\s:$]*([\d.,]+)/gi,
-    /\$\s*([\d.,]+)/g,
-    /^([\d.,]+)$/gm,
-  ];
+  logger.info(`💰 Textract values: subtotal=${subtotal}, iva=${iva}, total=${total}`);
 
-  const textJoined = allText.join('\n');
+  // Validar que los valores sean razonables
+  if (subtotal && subtotal > MAX_AMOUNT) {
+    logger.warn(`💰 Subtotal ${subtotal} exceeds max, ignoring`);
+    subtotal = null;
+  }
+  if (iva && iva > MAX_AMOUNT) {
+    logger.warn(`💰 IVA ${iva} exceeds max, ignoring`);
+    iva = null;
+  }
+  if (total && total > MAX_AMOUNT) {
+    logger.warn(`💰 Total ${total} exceeds max, ignoring`);
+    total = null;
+  }
 
-  // Buscar todos los valores monetarios grandes (probables totales)
-  for (const pattern of totalPatterns) {
-    let match;
-    pattern.lastIndex = 0; // Reset regex
-    while ((match = pattern.exec(textJoined)) !== null) {
-      const value = parseAmount(match[1] || '');
-      if (value && value > 100) { // Solo valores significativos
-        totalSectionValues.push(value);
+  // SANITY CHECK: Si tenemos subtotal e IVA, el total debería ser ≈ subtotal + IVA
+  if (isValidAmount(subtotal) && isValidAmount(iva) && isValidAmount(total)) {
+    const expectedTotal = subtotal + iva;
+    const tolerance = total * 0.05; // 5% tolerancia para otros impuestos menores
+
+    if (Math.abs(total - expectedTotal) > tolerance) {
+      // Los valores no cuadran - el total podría incluir otros impuestos
+      // o hay un error. Confiamos en el total de Textract.
+      logger.info(`💰 Values don't match perfectly: ${subtotal} + ${iva} = ${subtotal + iva}, but total = ${total}`);
+      logger.info(`💰 Keeping Textract total (may include other taxes)`);
+    }
+  }
+
+  // FALLBACK: Solo si Textract no dio total, intentar buscar en texto
+  if (!isValidAmount(total)) {
+    logger.info(`💰 No valid total from Textract, searching in text...`);
+
+    // Buscar líneas que contengan "TOTAL" seguido de un valor
+    const textJoined = allText.join('\n');
+    const totalMatch = textJoined.match(/\bTOTAL\b[:\s$]*([\d.,]+)/i);
+
+    if (totalMatch && totalMatch[1]) {
+      const parsedTotal = parseAmount(totalMatch[1]);
+      if (isValidAmount(parsedTotal)) {
+        total = parsedTotal;
+        logger.info(`💰 Found total in text: ${total}`);
       }
     }
   }
 
-  // También agregar los valores de Textract
-  if (subtotalRaw) totalSectionValues.push(subtotalRaw);
-  if (ivaRaw) totalSectionValues.push(ivaRaw);
-  if (totalRaw) totalSectionValues.push(totalRaw);
-
-  // Eliminar duplicados y ordenar de mayor a menor
-  const uniqueValues = [...new Set(totalSectionValues)].sort((a, b) => b - a);
-
-  logger.info(`💰 Smart totals - All values found: ${uniqueValues.slice(0, 10).map(v => v.toFixed(2)).join(', ')}`);
-
-  // REGLA 1: El total es siempre el valor más grande
-  let total = uniqueValues[0] || totalRaw;
-  let subtotal = subtotalRaw;
-  let iva = ivaRaw;
-
-  // Si Textract reportó un total diferente del máximo, usar el máximo
-  if (total && totalRaw && total > totalRaw) {
-    logger.info(`💰 Correcting total: Textract said ${totalRaw}, but max value is ${total}`);
+  // Si tenemos total y subtotal pero no IVA, calcular
+  if (isValidAmount(total) && isValidAmount(subtotal) && !isValidAmount(iva)) {
+    const calculatedIva = total - subtotal;
+    if (calculatedIva > 0 && calculatedIva <= MAX_AMOUNT) {
+      iva = calculatedIva;
+      logger.info(`💰 Calculated IVA: ${total} - ${subtotal} = ${iva}`);
+    }
   }
 
-  // REGLA 2: Validar/calcular subtotal e IVA
-  if (total) {
-    // Buscar valores que sean IVA (10.5% o 21% del subtotal)
-    for (const value of uniqueValues) {
-      if (value === total) continue;
-
-      // Si subtotal + este valor ≈ total, este podría ser el IVA total (o parte de él)
-      if (subtotal && Math.abs(subtotal + value - total) < 1) {
-        iva = value;
-        logger.info(`💰 Detected IVA as remainder: ${iva}`);
-        break;
-      }
-
-      // Si este valor es ~21% de (total - valor), es IVA 21%
-      const possibleSubtotal = total - value;
-      if (Math.abs(value - possibleSubtotal * 0.21) < 1) {
-        iva = value;
-        subtotal = possibleSubtotal;
-        logger.info(`💰 Detected IVA 21%: subtotal=${subtotal}, iva=${iva}`);
-        break;
-      }
-
-      // Si este valor es ~10.5% de (total - valor), es IVA 10.5%
-      if (Math.abs(value - possibleSubtotal * 0.105) < 1) {
-        iva = value;
-        subtotal = possibleSubtotal;
-        logger.info(`💰 Detected IVA 10.5%: subtotal=${subtotal}, iva=${iva}`);
-        break;
-      }
-    }
-
-    // REGLA 3: Si tenemos total e IVA pero no subtotal, calcular
-    if (!subtotal && iva) {
-      subtotal = total - iva;
+  // Si tenemos total e IVA pero no subtotal, calcular
+  if (isValidAmount(total) && isValidAmount(iva) && !isValidAmount(subtotal)) {
+    const calculatedSubtotal = total - iva;
+    if (calculatedSubtotal > 0 && calculatedSubtotal <= MAX_AMOUNT) {
+      subtotal = calculatedSubtotal;
       logger.info(`💰 Calculated subtotal: ${total} - ${iva} = ${subtotal}`);
     }
+  }
 
-    // REGLA 4: Si tenemos total y subtotal pero no IVA, calcular
-    if (subtotal && !iva) {
-      iva = total - subtotal;
-      if (iva > 0) {
-        logger.info(`💰 Calculated IVA: ${total} - ${subtotal} = ${iva}`);
-      } else {
-        iva = null; // No hay IVA o es factura exenta
-      }
-    }
+  // FALLBACK FINAL: Si solo tenemos subtotal e IVA, calcular total
+  if (!isValidAmount(total) && isValidAmount(subtotal) && isValidAmount(iva)) {
+    total = subtotal + iva;
+    logger.info(`💰 Calculated total: ${subtotal} + ${iva} = ${total}`);
+  }
+
+  // Si solo tenemos subtotal sin IVA (factura exenta), el total = subtotal
+  if (!isValidAmount(total) && isValidAmount(subtotal) && !isValidAmount(iva)) {
+    total = subtotal;
+    logger.info(`💰 Using subtotal as total (possibly exempt): ${total}`);
   }
 
   logger.info(`💰 Final totals: subtotal=${subtotal}, iva=${iva}, total=${total}`);
 
-  return { subtotal, iva, total };
+  return {
+    subtotal: isValidAmount(subtotal) ? subtotal : null,
+    iva: isValidAmount(iva) ? iva : null,
+    total: isValidAmount(total) ? total : null
+  };
 }
 
 /**
