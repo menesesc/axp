@@ -56,6 +56,31 @@ services:
     depends_on:
       - postgres
 
+  # OCR: Procesa documentos con AWS Textract
+  axp-ocr:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    container_name: axp-ocr
+    environment:
+      WORKER_MODE: ocr
+      DATABASE_URL: ${DATABASE_URL}
+      OCR_POLL_INTERVAL: "30000"
+      OCR_MAX_CONCURRENT_JOBS: "3"
+      # Cloudflare R2
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      # AWS Textract
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      TEXTRACT_REGION: us-east-1
+    restart: unless-stopped
+    networks:
+      - axp-network
+    depends_on:
+      - postgres
+
   # PostgreSQL (opcional, si no usas Supabase)
   postgres:
     image: postgres:15-alpine
