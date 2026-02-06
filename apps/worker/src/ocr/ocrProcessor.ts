@@ -52,7 +52,9 @@ const logger = createLogger('OCR');
 
 // Configuración desde env vars
 const POLLING_INTERVAL_MS = parseInt(process.env.OCR_POLL_INTERVAL || '30000'); // 30 segundos
-const MAX_CONCURRENT_JOBS = parseInt(process.env.OCR_MAX_CONCURRENT_JOBS || '3');
+// IMPORTANTE: Usar MAX_CONCURRENT_JOBS=1 con Session Pooler de Supabase
+// Para mayor concurrencia, usar Transaction Pooler (puerto 6543)
+const MAX_CONCURRENT_JOBS = parseInt(process.env.OCR_MAX_CONCURRENT_JOBS || '1');
 const TEXTRACT_REGION = process.env.TEXTRACT_REGION || 'us-east-1';
 
 interface InboxFile {
@@ -643,18 +645,28 @@ export async function startOCRProcessor(): Promise<void> {
     try {
       // Obtener archivos en inbox
       const inboxFiles = await getInboxFiles();
-      
+
       if (inboxFiles.length > 0) {
         logger.info(`📋 Found ${inboxFiles.length} file(s) in inbox`);
-        
-        // Procesar en paralelo (con límite)
+
+        // Procesar archivos
         const batch = inboxFiles.slice(0, MAX_CONCURRENT_JOBS);
-        await Promise.all(batch.map(file => processOCRFile(file)));
+
+        if (MAX_CONCURRENT_JOBS === 1) {
+          // Procesamiento secuencial (recomendado para Session Pooler)
+          for (const file of batch) {
+            if (isShuttingDown) break;
+            await processOCRFile(file);
+          }
+        } else {
+          // Procesamiento en paralelo (solo con Transaction Pooler)
+          await Promise.all(batch.map(file => processOCRFile(file)));
+        }
       }
     } catch (error) {
       logger.error(`❌ Error in OCR processor loop:`, error);
     }
-    
+
     await sleep(POLLING_INTERVAL_MS);
   }
   
