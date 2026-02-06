@@ -26,6 +26,23 @@ const generateId = (): string => {
     return v.toString(16);
   });
 };
+
+/**
+ * Parsea una fecha string (YYYY-MM-DD) a Date sin problemas de timezone.
+ * Evita que "2026-01-21" se convierta en "2026-01-20" por diferencia de zona horaria.
+ */
+const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
+  if (!dateStr) return null;
+
+  // Si el string ya tiene hora, parsearlo directamente
+  if (dateStr.includes('T') || dateStr.includes(' ')) {
+    return new Date(dateStr);
+  }
+
+  // Para fechas solo (YYYY-MM-DD), agregar T12:00:00 para evitar problemas de timezone
+  // Usamos mediodía para que no importe la zona horaria (nunca cruzará al día anterior o siguiente)
+  return new Date(`${dateStr}T12:00:00`);
+};
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
@@ -47,29 +64,33 @@ interface InboxFile {
 
 /**
  * Determina el estado de revisión basado en los campos detectados
+ * @param parsed - Datos parseados del OCR
+ * @param proveedorId - ID del proveedor (si se encontró)
+ * @param finalLetra - Letra final (OCR o default del proveedor)
  */
-function determineEstadoRevision(parsed: any, proveedorId: string | null): EstadoRevision {
+function determineEstadoRevision(parsed: any, proveedorId: string | null, finalLetra: string | null): EstadoRevision {
   // Campos críticos: fechaEmision, total, y proveedor (o al menos CUIT)
-  const hasCriticalFields = 
-    parsed.fechaEmision && 
-    parsed.total && 
+  const hasCriticalFields =
+    parsed.fechaEmision &&
+    parsed.total &&
     (proveedorId || parsed.proveedorCUIT);
-  
+
   if (!hasCriticalFields) {
     return 'PENDIENTE'; // Falta información crítica, requiere revisión manual
   }
-  
-  // Campos opcionales importantes: letra, numeroCompleto, subtotal, iva
-  const hasOptionalFields = 
-    parsed.letra && 
-    parsed.numeroCompleto && 
-    parsed.subtotal && 
+
+  // Campos opcionales importantes: letra (OCR o proveedor), numeroCompleto, subtotal, iva
+  // NOTA: fechaVencimiento NO es campo crítico
+  const hasOptionalFields =
+    finalLetra &&  // Usar finalLetra que incluye default del proveedor
+    parsed.numeroCompleto &&
+    parsed.subtotal &&
     parsed.iva;
-  
+
   if (hasOptionalFields) {
     return 'CONFIRMADO'; // Tiene todos los campos importantes
   }
-  
+
   return 'PENDIENTE'; // Tiene campos críticos pero faltan opcionales
 }
 
@@ -256,20 +277,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         if (proveedor) {
           logger.info(`✅ Proveedor found by CUIT: ${proveedor.id} (${proveedor.razonSocial})`);
           proveedorLetra = proveedor.letra; // Guardar letra por defecto
-          
-          // Actualizar alias si la razón social detectada es diferente y no está en alias
-          const aliasArray = Array.isArray(proveedor.alias) ? proveedor.alias : [];
-          if (parsed.proveedor && 
-              proveedor.razonSocial !== parsed.proveedor && 
-              !aliasArray.includes(parsed.proveedor)) {
-            await prisma.proveedores.update({
-              where: { id: proveedor.id },
-              data: {
-                alias: [...aliasArray, parsed.proveedor],
-              },
-            });
-            logger.info(`   Updated alias: added "${parsed.proveedor}"`);
-          }
+          // NOTA: No actualizamos alias automáticamente - OCR puede detectar mal el nombre
         }
       }
 
@@ -421,18 +429,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           logger.info(`   Match score: ${(bestScore * 100).toFixed(1)}%`);
           logger.info(`   OCR detected: "${parsed.proveedor}"`);
           proveedorLetra = proveedor.letra; // Guardar letra por defecto
-          
-          // Agregar el nombre detectado como alias para mejorar futuras detecciones
-          const aliasArray = Array.isArray(proveedor.alias) ? proveedor.alias : [];
-          if (!aliasArray.includes(parsed.proveedor)) {
-            await prisma.proveedores.update({
-              where: { id: proveedor.id },
-              data: {
-                alias: [...aliasArray, parsed.proveedor],
-              },
-            });
-            logger.info(`   Added OCR name to alias: "${parsed.proveedor}"`);
-          }
+          // NOTA: No actualizamos alias automáticamente - OCR puede detectar mal el nombre
         } else if (bestMatch) {
           logger.warn(`⚠️  Best match found but below threshold:`);
           logger.warn(`   ${bestMatch.razonSocial} (${(bestScore * 100).toFixed(1)}%)`);
@@ -456,12 +453,49 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       }
     }
     
+    // CONTROL DE DUPLICADOS: Verificar si ya existe documento con mismo proveedor+fecha+numero
+    if (proveedorId && parsed.fechaEmision && parsed.numeroCompleto) {
+      const fechaEmisionDate = parseLocalDate(parsed.fechaEmision);
+
+      if (fechaEmisionDate) {
+        const duplicado = await prisma.documentos.findFirst({
+          where: {
+            clienteId: file.clienteId,
+            proveedorId: proveedorId,
+            fechaEmision: fechaEmisionDate,
+            numeroCompleto: parsed.numeroCompleto,
+          },
+          select: { id: true },
+        });
+
+        if (duplicado) {
+          logger.warn(`⚠️  DUPLICATE DOCUMENT DETECTED`);
+          logger.warn(`   Existing document: ${duplicado.id}`);
+          logger.warn(`   Proveedor: ${proveedorId}`);
+          logger.warn(`   Fecha: ${parsed.fechaEmision}`);
+          logger.warn(`   Número: ${parsed.numeroCompleto}`);
+          logger.warn(`   Deleting from inbox...`);
+
+          await deleteR2Object(file.bucket, file.key);
+          logger.info(`✅ Duplicate file removed from inbox`);
+          return;
+        }
+      }
+    }
+
     // Usar letra del proveedor si no se detectó con OCR
     const finalLetra = parsed.letra || proveedorLetra;
     if (!parsed.letra && proveedorLetra) {
       logger.info(`📝 Using default letra from proveedor: ${proveedorLetra}`);
     }
-    
+
+    // Ajustar missingFields: si tenemos letra del proveedor, no es campo faltante
+    let adjustedMissingFields = [...(parsed.missingFields || [])];
+    if (finalLetra && adjustedMissingFields.includes('letra')) {
+      adjustedMissingFields = adjustedMissingFields.filter(f => f !== 'letra');
+      logger.info(`📝 Removed 'letra' from missing fields (using proveedor default)`);
+    }
+
     // Si no hay fecha de vencimiento, usar fecha de emisión
     const finalFechaVencimiento = parsed.fechaVencimiento || parsed.fechaEmision;
     if (!parsed.fechaVencimiento && parsed.fechaEmision) {
@@ -470,7 +504,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     // 9. Crear documento en BD
     logger.info(`💾 Creating Documento record...`);
-    const estadoRevision = determineEstadoRevision(parsed, proveedorId);
+    const estadoRevision = determineEstadoRevision(parsed, proveedorId, finalLetra);
     logger.info(`📋 Estado de revisión: ${estadoRevision}`);
     
     const documento = await prisma.documentos.create({
@@ -483,15 +517,15 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         puntoVenta: parsed.puntoVenta,
         numero: parsed.numero,
         numeroCompleto: parsed.numeroCompleto,
-        fechaEmision: parsed.fechaEmision ? new Date(parsed.fechaEmision) : null,
-        fechaVencimiento: finalFechaVencimiento ? new Date(finalFechaVencimiento) : null, // Usar fechaEmision si no hay vencimiento
+        fechaEmision: parseLocalDate(parsed.fechaEmision),
+        fechaVencimiento: parseLocalDate(finalFechaVencimiento),
         moneda: parsed.moneda || 'ARS',
         subtotal: parsed.subtotal,
         iva: parsed.iva,
         total: parsed.total,
         confidenceScore: parsed.confidenceScore,
         estadoRevision: estadoRevision,
-        missingFields: parsed.missingFields || [],
+        missingFields: adjustedMissingFields,
         jsonNormalizado: {
           tipo: parsed.tipo,
           letra: parsed.letra,

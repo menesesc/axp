@@ -33,6 +33,7 @@ export async function GET() {
       documentosHoy,
       totalProveedores,
       documentosPorDiaRaw,
+      confidenceAvg,
     ] = await Promise.all([
       // Total documentos
       prisma.documentos.count({
@@ -102,6 +103,22 @@ export async function GET() {
           fechaEmision: 'asc',
         },
       }),
+
+      // Promedio de confianza OCR (últimos 30 días)
+      prisma.documentos.aggregate({
+        where: {
+          clienteId,
+          createdAt: {
+            gte: fromDate,
+          },
+          confidenceScore: {
+            not: null,
+          },
+        },
+        _avg: {
+          confidenceScore: true,
+        },
+      }),
     ])
 
     // Calcular tasa de éxito (confirmados / total)
@@ -129,6 +146,9 @@ export async function GET() {
       })
     }
 
+    // Calcular promedio de confianza (0 si no hay documentos)
+    const confidencePromedio = confidenceAvg._avg.confidenceScore ?? 0
+
     return NextResponse.json({
       totalDocumentos,
       totalPendientes,
@@ -138,6 +158,7 @@ export async function GET() {
       totalProveedores,
       tasaExito,
       documentosPorDia,
+      confidencePromedio,
     })
   } catch (error) {
     console.error('Error fetching stats:', error)

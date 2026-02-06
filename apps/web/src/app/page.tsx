@@ -66,7 +66,7 @@ export default function Home() {
   const totalDocumentos = stats?.totalDocumentos || 0
   const pendientes = stats?.totalPendientes || 0
   const confirmados = stats?.totalConfirmados || 0
-  const confidencePromedio = stats?.confidencePromedio || 85
+  const confidencePromedio = stats?.confidencePromedio ?? 0
   const documentosPorDia = stats?.documentosPorDia || []
 
   const handleUpload = () => {

@@ -168,9 +168,10 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
     ? numeroCompletoRaw.replace(/[^\d]/g, '') // Solo dígitos
     : null;
   
-  const subtotal = parseTextractAmount(getFieldValue('SUBTOTAL'));
-  const iva = parseTextractAmount(getFieldValue('TAX'));
-  const total = parseTextractAmount(getFieldValue('TOTAL'));
+  // Extracción básica (se reemplaza más abajo con smart extraction)
+  const subtotalBasic = parseTextractAmount(getFieldValue('SUBTOTAL'));
+  const ivaBasic = parseTextractAmount(getFieldValue('TAX'));
+  const totalBasic = parseTextractAmount(getFieldValue('TOTAL'));
 
   // ========================================================================
   // MEJORAR EXTRACCIÓN: Usar TODOS los Blocks (LINE y WORD)
@@ -230,14 +231,19 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   const proveedorCUIT = extractProveedorCUIT(allText);
   const fechaVencimientoFallback = fechaVencimiento || extractFechaVencimiento(allText);
 
+  // EXTRACCIÓN INTELIGENTE DE TOTALES
+  // El total es siempre el más grande, subtotal + IVA = total
+  const smartTotals = extractSmartTotals(summaryFields, allText);
+  const { subtotal, iva, total } = smartTotals;
+
   // Debug logging
   logger.info(`🔍 Extracted fields:`);
   logger.info(`   Proveedor: ${proveedor || 'N/A'}`);
   logger.info(`   CUIT: ${proveedorCUIT || 'N/A'}`);
   logger.info(`   Letra: ${letra || 'N/A'}`);
-  logger.info(`   Subtotal (raw): "${getFieldValue('SUBTOTAL')}" → ${subtotal || 'N/A'}`);
-  logger.info(`   IVA (raw): "${getFieldValue('TAX')}" → ${iva || 'N/A'}`);
-  logger.info(`   Total (raw): "${getFieldValue('TOTAL')}" → ${total || 'N/A'}`);
+  logger.info(`   Subtotal (raw): "${getFieldValue('SUBTOTAL')}" → ${subtotalBasic || 'N/A'} → smart: ${subtotal || 'N/A'}`);
+  logger.info(`   IVA (raw): "${getFieldValue('TAX')}" → ${ivaBasic || 'N/A'} → smart: ${iva || 'N/A'}`);
+  logger.info(`   Total (raw): "${getFieldValue('TOTAL')}" → ${totalBasic || 'N/A'} → smart: ${total || 'N/A'}`);
   logger.info(`   Fecha emisión: ${fechaEmision || 'N/A'}`);
   logger.info(`   Fecha vencimiento: ${fechaVencimientoFallback || 'N/A'}`);
 
@@ -274,6 +280,7 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   };
 
   // Detectar campos faltantes (para missingFields en BD)
+  // NOTA: fechaVencimiento NO es campo crítico - no incluir
   if (!parsed.fechaEmision) parsed.missingFields.push('fechaEmision');
   if (!parsed.total) parsed.missingFields.push('total');
   if (!parsed.proveedor) parsed.missingFields.push('proveedor');
@@ -282,7 +289,6 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   if (!parsed.numeroCompleto) parsed.missingFields.push('numeroCompleto');
   if (!parsed.subtotal) parsed.missingFields.push('subtotal');
   if (!parsed.iva) parsed.missingFields.push('iva');
-  if (!parsed.fechaVencimiento) parsed.missingFields.push('fechaVencimiento');
 
   return parsed;
 }
@@ -323,6 +329,128 @@ function parseTextractDate(dateStr: string | null): string | null {
 function parseTextractAmount(amountStr: string | null): number | null {
   if (!amountStr) return null;
   return parseAmount(amountStr);
+}
+
+/**
+ * Extracción inteligente de totales
+ *
+ * Reglas:
+ * 1. El TOTAL es siempre el valor más grande del sector de totales
+ * 2. SUBTOTAL + IVA (10.5% o 21%) + otros impuestos = TOTAL
+ * 3. Si no hay subtotal pero hay total e IVA, calcular subtotal
+ * 4. Si no hay IVA pero hay total y subtotal, calcular IVA
+ */
+function extractSmartTotals(
+  summaryFields: any[],
+  allText: string[]
+): { subtotal: number | null; iva: number | null; total: number | null } {
+
+  // Función helper para obtener campos
+  const getFieldValue = (type: string): string | null => {
+    const field = summaryFields.find((f: any) => f.Type?.Text === type);
+    return field?.ValueDetection?.Text || null;
+  };
+
+  // Extraer valores directos de Textract
+  let subtotalRaw = parseTextractAmount(getFieldValue('SUBTOTAL'));
+  let ivaRaw = parseTextractAmount(getFieldValue('TAX'));
+  let totalRaw = parseTextractAmount(getFieldValue('TOTAL'));
+
+  // Recolectar TODOS los valores monetarios del sector de totales
+  const totalSectionValues: number[] = [];
+
+  // Buscar en el texto líneas que contengan valores de totales
+  const totalPatterns = [
+    /(?:total|subtotal|neto|iva|impuesto|importe|gravado|no\s*gravado)[\s:$]*([\d.,]+)/gi,
+    /\$\s*([\d.,]+)/g,
+    /^([\d.,]+)$/gm,
+  ];
+
+  const textJoined = allText.join('\n');
+
+  // Buscar todos los valores monetarios grandes (probables totales)
+  for (const pattern of totalPatterns) {
+    let match;
+    pattern.lastIndex = 0; // Reset regex
+    while ((match = pattern.exec(textJoined)) !== null) {
+      const value = parseAmount(match[1] || '');
+      if (value && value > 100) { // Solo valores significativos
+        totalSectionValues.push(value);
+      }
+    }
+  }
+
+  // También agregar los valores de Textract
+  if (subtotalRaw) totalSectionValues.push(subtotalRaw);
+  if (ivaRaw) totalSectionValues.push(ivaRaw);
+  if (totalRaw) totalSectionValues.push(totalRaw);
+
+  // Eliminar duplicados y ordenar de mayor a menor
+  const uniqueValues = [...new Set(totalSectionValues)].sort((a, b) => b - a);
+
+  logger.info(`💰 Smart totals - All values found: ${uniqueValues.slice(0, 10).map(v => v.toFixed(2)).join(', ')}`);
+
+  // REGLA 1: El total es siempre el valor más grande
+  let total = uniqueValues[0] || totalRaw;
+  let subtotal = subtotalRaw;
+  let iva = ivaRaw;
+
+  // Si Textract reportó un total diferente del máximo, usar el máximo
+  if (total && totalRaw && total > totalRaw) {
+    logger.info(`💰 Correcting total: Textract said ${totalRaw}, but max value is ${total}`);
+  }
+
+  // REGLA 2: Validar/calcular subtotal e IVA
+  if (total) {
+    // Buscar valores que sean IVA (10.5% o 21% del subtotal)
+    for (const value of uniqueValues) {
+      if (value === total) continue;
+
+      // Si subtotal + este valor ≈ total, este podría ser el IVA total (o parte de él)
+      if (subtotal && Math.abs(subtotal + value - total) < 1) {
+        iva = value;
+        logger.info(`💰 Detected IVA as remainder: ${iva}`);
+        break;
+      }
+
+      // Si este valor es ~21% de (total - valor), es IVA 21%
+      const possibleSubtotal = total - value;
+      if (Math.abs(value - possibleSubtotal * 0.21) < 1) {
+        iva = value;
+        subtotal = possibleSubtotal;
+        logger.info(`💰 Detected IVA 21%: subtotal=${subtotal}, iva=${iva}`);
+        break;
+      }
+
+      // Si este valor es ~10.5% de (total - valor), es IVA 10.5%
+      if (Math.abs(value - possibleSubtotal * 0.105) < 1) {
+        iva = value;
+        subtotal = possibleSubtotal;
+        logger.info(`💰 Detected IVA 10.5%: subtotal=${subtotal}, iva=${iva}`);
+        break;
+      }
+    }
+
+    // REGLA 3: Si tenemos total e IVA pero no subtotal, calcular
+    if (!subtotal && iva) {
+      subtotal = total - iva;
+      logger.info(`💰 Calculated subtotal: ${total} - ${iva} = ${subtotal}`);
+    }
+
+    // REGLA 4: Si tenemos total y subtotal pero no IVA, calcular
+    if (subtotal && !iva) {
+      iva = total - subtotal;
+      if (iva > 0) {
+        logger.info(`💰 Calculated IVA: ${total} - ${subtotal} = ${iva}`);
+      } else {
+        iva = null; // No hay IVA o es factura exenta
+      }
+    }
+  }
+
+  logger.info(`💰 Final totals: subtotal=${subtotal}, iva=${iva}, total=${total}`);
+
+  return { subtotal, iva, total };
 }
 
 /**
