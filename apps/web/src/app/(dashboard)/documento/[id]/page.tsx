@@ -135,11 +135,12 @@ export default function DocumentoPage() {
     setEditData({
       fechaEmision: data.documento.fechaEmision?.split('T')[0] || '',
       fechaVencimiento: data.documento.fechaVencimiento?.split('T')[0] || '',
-      total: data.documento.total || '',
-      subtotal: data.documento.subtotal || '',
-      iva: data.documento.iva || '',
+      total: data.documento.total ?? '',
+      subtotal: data.documento.subtotal ?? '',
+      iva: data.documento.iva ?? '',
       letra: data.documento.letra || '',
       numeroCompleto: data.documento.numeroCompleto || '',
+      estadoRevision: data.documento.estadoRevision,
     })
     setIsEditing(true)
   }
@@ -264,125 +265,139 @@ export default function DocumentoPage() {
               </div>
             </div>
 
-            {/* Missing Fields */}
-            {documento.missingFields && documento.missingFields.length > 0 && isAdmin && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-amber-900">Campos faltantes</p>
-                      {!isEditing && (
-                        <p className="text-xs text-amber-700 mt-0.5">
-                          {documento.missingFields.map(f => fieldNames[f] || f).join(', ')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+            {/* Missing Fields Warning */}
+            {documento.missingFields && documento.missingFields.length > 0 && !isEditing && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <p className="text-sm text-amber-900">
+                    <span className="font-medium">Campos faltantes:</span>{' '}
+                    {documento.missingFields.map(f => fieldNames[f] || f).join(', ')}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Form - Always available for admins */}
+            {isAdmin && (
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Editar Documento</h3>
                   {!isEditing ? (
                     <button
                       onClick={handleStartEdit}
-                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
                     >
                       <Edit className="w-3 h-3" />
                       Editar
                     </button>
                   ) : (
-                    <div className="flex gap-1">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => updateMutation.mutate(editData)}
                         disabled={updateMutation.isPending}
-                        className="flex items-center gap-1 px-2 py-1 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
                       >
                         <Save className="w-3 h-3" />
                         Guardar
                       </button>
                       <button
                         onClick={() => { setIsEditing(false); setEditData({}) }}
-                        className="flex items-center gap-1 px-2 py-1 bg-gray-500 text-white rounded text-xs font-medium hover:bg-gray-600"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-gray-500 text-white rounded text-xs font-medium hover:bg-gray-600"
                       >
                         <X className="w-3 h-3" />
+                        Cancelar
                       </button>
                     </div>
                   )}
                 </div>
 
                 {isEditing && (
-                  <div className="grid grid-cols-2 gap-3 mt-3">
-                    {documento.missingFields.includes('fechaEmision') && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Fecha</label>
-                        <input
-                          type="date"
-                          value={editData.fechaEmision}
-                          onChange={(e) => setEditData({ ...editData, fechaEmision: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-amber-500"
-                        />
-                      </div>
-                    )}
-                    {documento.missingFields.includes('letra') && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Letra</label>
-                        <select
-                          value={editData.letra}
-                          onChange={(e) => setEditData({ ...editData, letra: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-amber-500"
-                        >
-                          <option value="">-</option>
-                          <option value="A">A</option>
-                          <option value="B">B</option>
-                          <option value="C">C</option>
-                        </select>
-                      </div>
-                    )}
-                    {documento.missingFields.includes('numeroCompleto') && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Número</label>
-                        <input
-                          type="text"
-                          value={editData.numeroCompleto}
-                          onChange={(e) => setEditData({ ...editData, numeroCompleto: e.target.value })}
-                          placeholder="0001-00000001"
-                          className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-amber-500"
-                        />
-                      </div>
-                    )}
-                    {documento.missingFields.includes('total') && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editData.total}
-                          onChange={(e) => setEditData({ ...editData, total: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-amber-500"
-                        />
-                      </div>
-                    )}
-                    {documento.missingFields.includes('subtotal') && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Subtotal</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editData.subtotal}
-                          onChange={(e) => setEditData({ ...editData, subtotal: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-amber-500"
-                        />
-                      </div>
-                    )}
-                    {documento.missingFields.includes('iva') && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">IVA</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editData.iva}
-                          onChange={(e) => setEditData({ ...editData, iva: e.target.value })}
-                          className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-amber-500"
-                        />
-                      </div>
-                    )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Emisión</label>
+                      <input
+                        type="date"
+                        value={editData.fechaEmision}
+                        onChange={(e) => setEditData({ ...editData, fechaEmision: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Vencimiento</label>
+                      <input
+                        type="date"
+                        value={editData.fechaVencimiento}
+                        onChange={(e) => setEditData({ ...editData, fechaVencimiento: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Letra</label>
+                      <select
+                        value={editData.letra}
+                        onChange={(e) => setEditData({ ...editData, letra: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">-</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Número Completo</label>
+                      <input
+                        type="text"
+                        value={editData.numeroCompleto}
+                        onChange={(e) => setEditData({ ...editData, numeroCompleto: e.target.value })}
+                        placeholder="0001-00000001"
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Subtotal</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editData.subtotal}
+                        onChange={(e) => setEditData({ ...editData, subtotal: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">IVA</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editData.iva}
+                        onChange={(e) => setEditData({ ...editData, iva: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editData.total}
+                        onChange={(e) => setEditData({ ...editData, total: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Estado</label>
+                      <select
+                        value={editData.estadoRevision || documento.estadoRevision}
+                        onChange={(e) => setEditData({ ...editData, estadoRevision: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="PENDIENTE">Pendiente</option>
+                        <option value="CONFIRMADO">Confirmado</option>
+                        <option value="ERROR">Error</option>
+                        <option value="DUPLICADO">Duplicado</option>
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>

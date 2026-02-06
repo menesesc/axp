@@ -124,7 +124,22 @@ export async function PATCH(
       subtotal,
       iva,
       proveedorId,
+      estadoRevision,
     } = body
+
+    /**
+     * Parsea fecha con timezone de Argentina (GMT-3).
+     * Convierte "YYYY-MM-DD" a Date con hora mediodía en Argentina.
+     */
+    const parseArgentinaDate = (dateStr: string | null | undefined): Date | null => {
+      if (!dateStr) return null
+      // Si ya tiene hora/timezone, parsear directamente
+      if (dateStr.includes('T')) {
+        return new Date(dateStr)
+      }
+      // Para fechas YYYY-MM-DD, usar mediodía en Argentina (GMT-3)
+      return new Date(`${dateStr}T12:00:00-03:00`)
+    }
 
     // Construir objeto de actualización solo con campos presentes
     const updateData: any = {
@@ -132,11 +147,9 @@ export async function PATCH(
     }
 
     if (fechaEmision !== undefined)
-      updateData.fechaEmision = fechaEmision ? new Date(fechaEmision) : null
+      updateData.fechaEmision = parseArgentinaDate(fechaEmision)
     if (fechaVencimiento !== undefined)
-      updateData.fechaVencimiento = fechaVencimiento
-        ? new Date(fechaVencimiento)
-        : null
+      updateData.fechaVencimiento = parseArgentinaDate(fechaVencimiento)
     if (letra !== undefined) updateData.letra = letra || null
     if (numeroCompleto !== undefined)
       updateData.numeroCompleto = numeroCompleto || null
@@ -146,6 +159,7 @@ export async function PATCH(
       updateData.subtotal = subtotal ? parseFloat(subtotal) : null
     if (iva !== undefined) updateData.iva = iva ? parseFloat(iva) : null
     if (proveedorId !== undefined) updateData.proveedorId = proveedorId || null
+    if (estadoRevision !== undefined) updateData.estadoRevision = estadoRevision
 
     // Actualizar documento
     const documento = await prisma.documentos.update({
@@ -182,18 +196,22 @@ export async function PATCH(
     if (!documento.subtotal) missingFields.push('subtotal')
     if (!documento.iva) missingFields.push('iva')
 
-    // Determinar nuevo estado
+    // Determinar nuevo estado (solo auto-cambiar si el usuario no lo especificó)
     let newEstado = documento.estadoRevision
-    if (
-      missingFields.length === 0 &&
-      documento.estadoRevision === 'PENDIENTE'
-    ) {
-      newEstado = 'CONFIRMADO'
+    if (estadoRevision === undefined) {
+      // Auto-confirmar solo si no hay campos faltantes y estaba pendiente
+      if (
+        missingFields.length === 0 &&
+        documento.estadoRevision === 'PENDIENTE'
+      ) {
+        newEstado = 'CONFIRMADO'
+      }
     }
 
     // Actualizar missingFields y estado si cambió
+    const currentMissingFields = documento.missingFields as string[] || []
     if (
-      missingFields.length !== (documento.missingFields as string[]).length ||
+      missingFields.length !== currentMissingFields.length ||
       newEstado !== documento.estadoRevision
     ) {
       await prisma.documentos.update({

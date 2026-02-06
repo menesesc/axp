@@ -28,20 +28,28 @@ const generateId = (): string => {
 };
 
 /**
- * Parsea una fecha string (YYYY-MM-DD) a Date sin problemas de timezone.
- * Evita que "2026-01-21" se convierta en "2026-01-20" por diferencia de zona horaria.
+ * Parsea una fecha string (YYYY-MM-DD) a Date con timezone de Argentina (GMT-3).
+ * Las facturas argentinas usan fechas locales de Argentina, así que las guardamos
+ * explícitamente en GMT-3 para evitar problemas de conversión.
  */
 const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
   if (!dateStr) return null;
 
-  // Si el string ya tiene hora, parsearlo directamente
-  if (dateStr.includes('T') || dateStr.includes(' ')) {
+  // Si ya tiene timezone offset, parsearlo directamente
+  if (dateStr.includes('+') || dateStr.includes('Z') || /-\d{2}:\d{2}$/.test(dateStr)) {
     return new Date(dateStr);
   }
 
-  // Para fechas solo (YYYY-MM-DD), agregar T12:00:00 para evitar problemas de timezone
-  // Usamos mediodía para que no importe la zona horaria (nunca cruzará al día anterior o siguiente)
-  return new Date(`${dateStr}T12:00:00`);
+  // Si tiene hora pero no timezone, asumir Argentina (GMT-3)
+  if (dateStr.includes('T') || dateStr.includes(' ')) {
+    const normalized = dateStr.replace(' ', 'T');
+    return new Date(`${normalized}-03:00`);
+  }
+
+  // Para fechas solo (YYYY-MM-DD), usar mediodía en Argentina (GMT-3)
+  // Esto garantiza que la fecha se interprete correctamente sin importar
+  // la timezone del servidor o del cliente
+  return new Date(`${dateStr}T12:00:00-03:00`);
 };
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
