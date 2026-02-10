@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronLeft,
   Menu,
+  Activity,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'Proveedores', href: '/proveedores', icon: Users },
   { name: 'Pagos', href: '/pagos', icon: CreditCard },
   { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
+  { name: 'Procesamiento', href: '/procesamiento', icon: Activity, logsBadge: true },
 ]
 
 interface SidebarContentProps {
@@ -38,6 +40,7 @@ interface SidebarContentProps {
   subscription: { plan_nombre?: string } | null
   signOut: () => void
   pendingCount?: number
+  unreadLogsCount?: number
   collapsed?: boolean
   onCollapse?: () => void
 }
@@ -49,6 +52,7 @@ function SidebarContent({
   subscription,
   signOut,
   pendingCount = 0,
+  unreadLogsCount = 0,
   collapsed = false,
   onCollapse,
 }: SidebarContentProps) {
@@ -89,6 +93,9 @@ function SidebarContent({
             (item.href !== '/' && pathname.startsWith(item.href))
           const Icon = item.icon
           const showBadge = item.badge && pendingCount > 0
+          const showLogsBadge = (item as any).logsBadge && unreadLogsCount > 0
+          const badgeCount = showBadge ? pendingCount : showLogsBadge ? unreadLogsCount : 0
+          const badgeColor = showLogsBadge ? 'bg-red-500' : 'bg-amber-500'
 
           return (
             <Link
@@ -106,16 +113,22 @@ function SidebarContent({
               {!collapsed && (
                 <>
                   <span className="flex-1">{item.name}</span>
-                  {showBadge && (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-medium text-white">
-                      {pendingCount > 99 ? '99+' : pendingCount}
+                  {(showBadge || showLogsBadge) && (
+                    <span className={cn(
+                      'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-medium text-white',
+                      badgeColor
+                    )}>
+                      {badgeCount > 99 ? '99+' : badgeCount}
                     </span>
                   )}
                 </>
               )}
-              {collapsed && showBadge && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-medium text-white">
-                  {pendingCount > 9 ? '9+' : pendingCount}
+              {collapsed && (showBadge || showLogsBadge) && (
+                <span className={cn(
+                  'absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium text-white',
+                  badgeColor
+                )}>
+                  {badgeCount > 9 ? '9+' : badgeCount}
                 </span>
               )}
             </Link>
@@ -169,9 +182,10 @@ function SidebarContent({
 
 interface SidebarProps {
   pendingCount?: number
+  unreadLogsCount?: number
 }
 
-export function Sidebar({ pendingCount = 0 }: SidebarProps) {
+export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps) {
   const pathname = usePathname()
   const { user, signOut, isAdmin } = useUser()
   const { subscription } = useSubscription()
@@ -188,6 +202,7 @@ export function Sidebar({ pendingCount = 0 }: SidebarProps) {
           subscription={subscription}
           signOut={signOut}
           pendingCount={pendingCount}
+          unreadLogsCount={unreadLogsCount}
           collapsed={collapsed}
           onCollapse={() => setCollapsed(!collapsed)}
         />
@@ -213,6 +228,7 @@ export function Sidebar({ pendingCount = 0 }: SidebarProps) {
               subscription={subscription}
               signOut={signOut}
               pendingCount={pendingCount}
+              unreadLogsCount={unreadLogsCount}
             />
           </SheetContent>
         </Sheet>

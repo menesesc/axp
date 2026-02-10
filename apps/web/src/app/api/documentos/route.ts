@@ -31,6 +31,7 @@ export async function GET(request: Request) {
     const estado = searchParams.get('estado')
     const proveedorId = searchParams.get('proveedorId')
     const busqueda = searchParams.get('q')
+    const sinItems = searchParams.get('sinItems') === 'true'
 
     const where: any = {
       clienteId,
@@ -51,6 +52,13 @@ export async function GET(request: Request) {
       ]
     }
 
+    // Filtro para documentos sin items
+    if (sinItems) {
+      where.documento_items = {
+        none: {},
+      }
+    }
+
     // Consultar documentos
     const [documentos, total] = await Promise.all([
       prisma.documentos.findMany({
@@ -61,6 +69,11 @@ export async function GET(request: Request) {
               id: true,
               razonSocial: true,
               cuit: true,
+            },
+          },
+          _count: {
+            select: {
+              documento_items: true,
             },
           },
         },

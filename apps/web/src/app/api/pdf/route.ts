@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
@@ -61,6 +61,22 @@ export async function GET(request: NextRequest) {
 
     // El bucket sigue el patrón: axp-client-{CUIT}
     const bucket = `axp-client-${cliente.cuit}`;
+
+    // Verificar que el archivo existe antes de generar la URL
+    try {
+      await r2Client.send(new HeadObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }));
+    } catch (headError: any) {
+      if (headError.name === 'NotFound' || headError.$metadata?.httpStatusCode === 404) {
+        return NextResponse.json(
+          { error: 'PDF no encontrado', notFound: true },
+          { status: 404 }
+        );
+      }
+      throw headError;
+    }
 
     const command = new GetObjectCommand({
       Bucket: bucket,

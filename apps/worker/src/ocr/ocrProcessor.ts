@@ -52,11 +52,21 @@ const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
   return new Date(`${dateStr}T12:00:00-03:00`);
 };
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
+import { createDbLogger, flushAllLogs } from '../utils/dbLogger';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
 import { isShuttingDown } from '../index';
 
 const logger = createLogger('OCR');
+
+// Cache de dbLoggers por clienteId
+const dbLoggers = new Map<string, ReturnType<typeof createDbLogger>>();
+function getDbLogger(clienteId: string) {
+  if (!dbLoggers.has(clienteId)) {
+    dbLoggers.set(clienteId, createDbLogger(clienteId, 'OCR'));
+  }
+  return dbLoggers.get(clienteId)!;
+}
 
 // Configuración desde env vars
 const POLLING_INTERVAL_MS = parseInt(process.env.OCR_POLL_INTERVAL || '30000'); // 30 segundos
@@ -64,6 +74,13 @@ const POLLING_INTERVAL_MS = parseInt(process.env.OCR_POLL_INTERVAL || '30000'); 
 // Para mayor concurrencia, usar Transaction Pooler (puerto 6543)
 const MAX_CONCURRENT_JOBS = parseInt(process.env.OCR_MAX_CONCURRENT_JOBS || '1');
 const TEXTRACT_REGION = process.env.TEXTRACT_REGION || 'us-east-1';
+
+// Tracking de archivos en proceso para evitar re-escaneo en caso de error de BD
+// Esto previene facturación excesiva de Textract cuando falla el guardado en DB
+const processingFiles = new Set<string>();
+const failedFiles = new Map<string, { attempts: number; lastError: string; lastAttempt: Date }>();
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutos entre reintentos
 
 interface InboxFile {
   bucket: string;
@@ -140,8 +157,45 @@ async function getInboxFiles(): Promise<InboxFile[]> {
  * Procesa un archivo individual con OCR
  */
 async function processOCRFile(file: InboxFile): Promise<void> {
+  const fileKey = `${file.bucket}/${file.key}`;
+
+  // Verificar si ya está siendo procesado (previene llamadas duplicadas a Textract)
+  if (processingFiles.has(fileKey)) {
+    logger.warn(`⏳ File already being processed, skipping: ${file.key}`);
+    return;
+  }
+
+  // Verificar si ha fallado demasiadas veces (previene loops infinitos)
+  const failedInfo = failedFiles.get(fileKey);
+  if (failedInfo) {
+    if (failedInfo.attempts >= MAX_RETRY_ATTEMPTS) {
+      logger.error(`❌ File exceeded max retry attempts (${MAX_RETRY_ATTEMPTS}), skipping: ${file.key}`);
+      logger.error(`   Last error: ${failedInfo.lastError}`);
+      // Log error a la base de datos
+      const dbLogger = getDbLogger(file.clienteId);
+      dbLogger.error(`Archivo abandonado después de ${MAX_RETRY_ATTEMPTS} intentos fallidos`, {
+        filename: file.filename,
+        details: {
+          attempts: failedInfo.attempts,
+          lastError: failedInfo.lastError,
+        },
+      });
+      return;
+    }
+
+    // Esperar antes de reintentar
+    const timeSinceLastAttempt = Date.now() - failedInfo.lastAttempt.getTime();
+    if (timeSinceLastAttempt < RETRY_DELAY_MS) {
+      const waitMinutes = Math.ceil((RETRY_DELAY_MS - timeSinceLastAttempt) / 60000);
+      logger.info(`⏰ Waiting ${waitMinutes} min before retry: ${file.key}`);
+      return;
+    }
+  }
+
+  // Marcar como en proceso
+  processingFiles.add(fileKey);
   logger.info(`🔄 Processing OCR: ${file.key}`);
-  
+
   try {
     // 1. Descargar archivo de R2
     logger.info(`📥 Downloading from R2: ${file.bucket}/${file.key}`);
@@ -163,6 +217,13 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     if (existing) {
       logger.warn(`⚠️  Document already exists: ${existing.id} (hash: ${sha256})`);
+      // Log warning a la base de datos
+      const dbLogger = getDbLogger(file.clienteId);
+      dbLogger.warn(`Documento duplicado detectado (mismo hash SHA256)`, {
+        filename: file.filename,
+        documentoId: existing.id,
+        details: { sha256 },
+      });
       // Borrar de inbox ya que está duplicado
       await deleteR2Object(file.bucket, file.key);
       return;
@@ -182,12 +243,26 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         logger.error(`   - Multiple invoices in one PDF (not supported by AnalyzeExpense)`);
         logger.error(`   - Corrupted or protected PDF`);
         logger.error(`   - Scanned document with poor quality`);
-        
+
+        // Log error a la base de datos
+        const dbLogger = getDbLogger(file.clienteId);
+        dbLogger.error(`Formato de documento no soportado - requiere revisión manual`, {
+          filename: file.filename,
+          details: {
+            reason: 'UnsupportedDocumentException',
+            possibleCauses: [
+              'Múltiples facturas en un PDF',
+              'PDF corrupto o protegido',
+              'Documento escaneado con mala calidad',
+            ],
+          },
+        });
+
         // Mover a carpeta error/ para revisión manual
         const errorKey = file.key.replace('inbox/', 'error/unsupported_');
         logger.info(`📦 Moving to error folder: ${errorKey}`);
         await moveR2Object(file.bucket, file.key, errorKey);
-        
+
         logger.warn(`⚠️  File moved to error/ for manual review`);
         return;
       }
@@ -613,12 +688,51 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     logger.info(`✅ OCR processing complete: ${file.filename}`);
     logger.info(`📂 Final location: ${file.bucket}/${finalKey}`);
     logger.info(`📊 Summary: ${parsed.items?.length || 0} items, confidence: ${parsed.confidenceScore}%`);
-    
+
+    // Log de éxito a la base de datos
+    const dbLogger = getDbLogger(file.clienteId);
+    dbLogger.success(`Documento procesado: ${parsed.tipo || 'FACTURA'} ${parsed.numeroCompleto || ''}`, {
+      filename: file.filename,
+      documentoId: documento.id,
+      details: {
+        proveedor: parsed.proveedor,
+        total: parsed.total,
+        items: parsed.items?.length || 0,
+        confidence: parsed.confidenceScore,
+      },
+    });
+
+    // Éxito: limpiar tracking
+    processingFiles.delete(fileKey);
+    failedFiles.delete(fileKey);
+
   } catch (error: any) {
     logger.error(`❌ Error processing OCR for ${file.key}:`, error);
-    
+
+    // Log de error a la base de datos
+    const dbLogger = getDbLogger(file.clienteId);
+    dbLogger.error(`Error procesando archivo: ${error.message || 'Error desconocido'}`, {
+      filename: file.filename,
+      details: {
+        errorName: error.name,
+        errorCode: error.code,
+        stack: error.stack?.substring(0, 500),
+      },
+    });
+
+    // Limpiar de processingFiles para permitir reintentos
+    processingFiles.delete(fileKey);
+
+    // Registrar el fallo para control de reintentos
+    const currentFail = failedFiles.get(fileKey);
+    failedFiles.set(fileKey, {
+      attempts: (currentFail?.attempts || 0) + 1,
+      lastError: error.message || String(error),
+      lastAttempt: new Date(),
+    });
+
     // Determinar si es un error recuperable o no
-    const isRecoverable = !error.name?.includes('UnsupportedDocument') && 
+    const isRecoverable = !error.name?.includes('UnsupportedDocument') &&
                           !error.name?.includes('InvalidParameter') &&
                           !error.code?.includes('InvalidParameter');
     
@@ -626,7 +740,10 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       // Error no recuperable: mover a error/ para no reintentar
       const errorKey = file.key.replace('inbox/', 'error/failed_');
       logger.warn(`⚠️  Non-recoverable error, moving to: ${errorKey}`);
-      
+
+      // Limpiar tracking ya que no se reintentará
+      failedFiles.delete(fileKey);
+
       try {
         await moveR2Object(file.bucket, file.key, errorKey);
         logger.info(`✅ File moved to error/ folder`);
@@ -677,6 +794,8 @@ export async function startOCRProcessor(): Promise<void> {
 
     await sleep(POLLING_INTERVAL_MS);
   }
-  
+
+  // Flush pending logs before stopping
+  await flushAllLogs();
   logger.info(`🛑 OCR Processor stopped`);
 }

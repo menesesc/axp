@@ -30,6 +30,8 @@ interface DocumentFiltersProps {
   proveedorId: string
   onProveedorChange: (value: string) => void
   proveedores: Proveedor[]
+  sinItems: boolean
+  onSinItemsChange: (value: boolean) => void
   dateFrom?: Date | undefined
   dateTo?: Date | undefined
   onDateFromChange: (date: Date | undefined) => void
@@ -48,6 +50,8 @@ export function DocumentFilters({
   proveedorId,
   onProveedorChange,
   proveedores,
+  sinItems,
+  onSinItemsChange,
   dateFrom,
   dateTo,
   onDateFromChange,
@@ -69,6 +73,17 @@ export function DocumentFilters({
             <TabsTrigger value="CONFIRMADO">Confirmados</TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Sin Items Toggle */}
+        <Button
+          variant={sinItems ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => onSinItemsChange(!sinItems)}
+          className="gap-1.5"
+        >
+          Sin items
+          {sinItems && <X className="h-3 w-3" />}
+        </Button>
 
         {/* Search */}
         <div className="relative flex-1 max-w-xs">

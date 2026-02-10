@@ -25,6 +25,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     staleTime: 60000,
   })
 
+  const { data: logStats } = useQuery({
+    queryKey: ['logStats', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/logs/stats')
+      if (!res.ok) throw new Error('Failed to fetch log stats')
+      return res.json()
+    },
+    enabled: !!clienteId,
+    staleTime: 30000,
+    refetchInterval: 60000, // Refetch cada minuto
+  })
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex">
@@ -50,7 +62,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-slate-50 flex">
-        <Sidebar pendingCount={stats?.totalPendientes || 0} />
+        <Sidebar
+          pendingCount={stats?.totalPendientes || 0}
+          unreadLogsCount={logStats?.totalUnread || 0}
+        />
         <main className="flex-1 overflow-auto">
           <div className="p-6 lg:p-8">
             <div className="max-w-6xl mx-auto">{children}</div>

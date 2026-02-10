@@ -22,10 +22,14 @@ interface Documento {
   total: number | null
   estadoRevision: 'PENDIENTE' | 'CONFIRMADO'
   confidenceScore: number | null
+  pdfFinalKey: string | null
   proveedores: {
     id: string
     razonSocial: string
   } | null
+  _count?: {
+    documento_items: number
+  }
 }
 
 interface DocumentosResponse {
@@ -48,6 +52,7 @@ export default function DocumentosPage() {
   const [estado, setEstado] = useState('')
   const [confidenceFilter, setConfidenceFilter] = useState('')
   const [proveedorFilter, setProveedorFilter] = useState('')
+  const [sinItems, setSinItems] = useState(false)
   const [dateFrom, setDateFrom] = useState<Date | undefined>()
   const [dateTo, setDateTo] = useState<Date | undefined>()
   const [page, setPage] = useState(1)
@@ -71,10 +76,11 @@ export default function DocumentosPage() {
     if (confidenceFilter && confidenceFilter !== 'all') {
       params.append('confidence', confidenceFilter)
     }
+    if (sinItems) params.append('sinItems', 'true')
     if (dateFrom) params.append('dateFrom', dateFrom.toISOString())
     if (dateTo) params.append('dateTo', dateTo.toISOString())
     return params.toString()
-  }, [page, pageSize, estado, search, proveedorFilter, confidenceFilter, dateFrom, dateTo])
+  }, [page, pageSize, estado, search, proveedorFilter, confidenceFilter, sinItems, dateFrom, dateTo])
 
   const { data, isLoading } = useQuery<DocumentosResponse>({
     queryKey: ['documentos', clienteId, queryParams],
@@ -130,6 +136,7 @@ export default function DocumentosPage() {
     search ||
     (confidenceFilter && confidenceFilter !== 'all') ||
     (proveedorFilter && proveedorFilter !== 'all') ||
+    sinItems ||
     dateFrom ||
     dateTo
   )
@@ -138,6 +145,7 @@ export default function DocumentosPage() {
     setSearch('')
     setConfidenceFilter('')
     setProveedorFilter('')
+    setSinItems(false)
     setDateFrom(undefined)
     setDateTo(undefined)
     setPage(1)
@@ -188,23 +196,58 @@ export default function DocumentosPage() {
     })
   }
 
-  const handleAddToPayment = () => {
-    const selectedArray = Array.from(selectedDocs)
-    sessionStorage.setItem('pendingPaymentDocs', JSON.stringify(selectedArray))
-    router.push('/pagos/nueva')
-  }
-
   const handleConfirmDoc = (_docId: string) => {
     toast.info('Función de confirmación próximamente')
   }
 
-  const handleAddSingleToPayment = (docId: string) => {
-    sessionStorage.setItem('pendingPaymentDocs', JSON.stringify([docId]))
+  const documentos = data?.documentos || []
+  const pagination = data?.pagination
+
+  // Calcular si se puede crear orden de pago
+  const paymentValidation = useMemo(() => {
+    if (selectedDocs.size === 0) {
+      return { canAdd: false, reason: 'Selecciona documentos', proveedorId: undefined }
+    }
+
+    const selectedDocsList = documentos.filter((d) => selectedDocs.has(d.id))
+
+    // Verificar que todos tengan el mismo proveedor
+    const proveedorIds = new Set(selectedDocsList.map((d) => d.proveedores?.id).filter(Boolean))
+    if (proveedorIds.size === 0) {
+      return { canAdd: false, reason: 'Los documentos no tienen proveedor asignado', proveedorId: undefined }
+    }
+    if (proveedorIds.size > 1) {
+      return { canAdd: false, reason: 'Los documentos deben ser del mismo proveedor', proveedorId: undefined }
+    }
+
+    // Verificar que todos estén confirmados
+    const noConfirmados = selectedDocsList.filter((d) => d.estadoRevision !== 'CONFIRMADO')
+    if (noConfirmados.length > 0) {
+      return { canAdd: false, reason: 'Todos los documentos deben estar confirmados', proveedorId: undefined }
+    }
+
+    const proveedorId = Array.from(proveedorIds)[0]
+    return { canAdd: true, reason: undefined, proveedorId }
+  }, [selectedDocs, documentos])
+
+  const handleAddToPayment = () => {
+    if (!paymentValidation.canAdd || !paymentValidation.proveedorId) return
+    const selectedArray = Array.from(selectedDocs)
+    sessionStorage.setItem('pendingPaymentDocs', JSON.stringify(selectedArray))
+    sessionStorage.setItem('pendingPaymentProveedor', paymentValidation.proveedorId)
     router.push('/pagos/nueva')
   }
 
-  const documentos = data?.documentos || []
-  const pagination = data?.pagination
+  const handleAddSingleToPayment = (docId: string) => {
+    const doc = documentos.find((d) => d.id === docId)
+    if (!doc?.proveedores?.id || doc.estadoRevision !== 'CONFIRMADO') {
+      toast.error('El documento debe estar confirmado y tener proveedor')
+      return
+    }
+    sessionStorage.setItem('pendingPaymentDocs', JSON.stringify([docId]))
+    sessionStorage.setItem('pendingPaymentProveedor', doc.proveedores.id)
+    router.push('/pagos/nueva')
+  }
 
   if (!clienteId) {
     return (
@@ -232,6 +275,8 @@ export default function DocumentosPage() {
           proveedorId={proveedorFilter}
           onProveedorChange={(v) => { setProveedorFilter(v); setPage(1) }}
           proveedores={proveedores}
+          sinItems={sinItems}
+          onSinItemsChange={(v) => { setSinItems(v); setPage(1) }}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateFromChange={(d) => { setDateFrom(d); setPage(1) }}
@@ -296,6 +341,8 @@ export default function DocumentosPage() {
             onAddToPayment={handleAddToPayment}
             onCancel={() => setSelectedDocs(new Set())}
             isAssigning={bulkAssignMutation.isPending}
+            canAddToPayment={paymentValidation.canAdd}
+            {...(paymentValidation.reason ? { paymentDisabledReason: paymentValidation.reason } : {})}
           />
         )}
       </div>

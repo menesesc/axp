@@ -19,10 +19,17 @@ function createPrismaClient(): PrismaClient {
   // Obtener la URL de la base de datos
   let databaseUrl = process.env.DATABASE_URL || '';
 
-  // Si la URL no tiene connection_limit, agregarlo para limitar conexiones del worker
-  if (databaseUrl && !databaseUrl.includes('connection_limit')) {
+  // IMPORTANTE: Para Supabase con PgBouncer (Transaction Pooler)
+  // Necesitamos agregar pgbouncer=true para deshabilitar prepared statements
+  // Error típico sin esto: "prepared statement already exists"
+  if (databaseUrl && !databaseUrl.includes('pgbouncer=')) {
     const separator = databaseUrl.includes('?') ? '&' : '?';
-    databaseUrl = `${databaseUrl}${separator}connection_limit=2&pool_timeout=10`;
+    databaseUrl = `${databaseUrl}${separator}pgbouncer=true`;
+  }
+
+  // Limitar conexiones del worker
+  if (databaseUrl && !databaseUrl.includes('connection_limit')) {
+    databaseUrl = `${databaseUrl}&connection_limit=2&pool_timeout=10`;
   }
 
   const options: ConstructorParameters<typeof PrismaClient>[0] = {

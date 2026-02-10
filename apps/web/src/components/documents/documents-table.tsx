@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard } from 'lucide-react'
+import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard, FileIcon } from 'lucide-react'
 
 interface Document {
   id: string
@@ -33,10 +33,14 @@ interface Document {
   total: number | null
   estadoRevision: 'PENDIENTE' | 'CONFIRMADO'
   confidenceScore: number | null
+  pdfFinalKey: string | null
   proveedores: {
     id: string
     razonSocial: string
   } | null
+  _count?: {
+    documento_items: number
+  }
 }
 
 interface DocumentsTableProps {
@@ -74,7 +78,9 @@ export function DocumentsTable({
               <TableHead>Proveedor</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Confianza</TableHead>
+              <TableHead>Items</TableHead>
               <TableHead className="text-right">Total</TableHead>
+              <TableHead>PDF</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -91,7 +97,9 @@ export function DocumentsTable({
                 <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                 <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                 <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-4" /></TableCell>
               </TableRow>
             ))}
@@ -131,7 +139,9 @@ export function DocumentsTable({
             <TableHead>Proveedor</TableHead>
             <TableHead className="w-24">Estado</TableHead>
             <TableHead className="w-28">Confianza</TableHead>
+            <TableHead className="w-16 text-center">Items</TableHead>
             <TableHead className="text-right w-28">Total</TableHead>
+            <TableHead className="w-10">PDF</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -180,10 +190,38 @@ export function DocumentsTable({
                   <ConfidenceBadge score={doc.confidenceScore || 0} />
                 </Link>
               </TableCell>
+              <TableCell className="text-center">
+                <Link href={`/documento/${doc.id}`} className="block text-slate-500 text-sm tabular-nums">
+                  {doc._count?.documento_items ?? '-'}
+                </Link>
+              </TableCell>
               <TableCell className="text-right">
                 <Link href={`/documento/${doc.id}`} className="block font-medium text-slate-900 tabular-nums">
                   {doc.total ? formatCurrency(doc.total) : '-'}
                 </Link>
+              </TableCell>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                {doc.pdfFinalKey ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => window.open(`/documento/${doc.id}?pdf=1`, '_blank')}
+                    title="Ver PDF"
+                  >
+                    <FileIcon className="h-4 w-4 text-blue-600" />
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled
+                    title="PDF no disponible"
+                  >
+                    <FileIcon className="h-4 w-4 text-slate-300" />
+                  </Button>
+                )}
               </TableCell>
               <TableCell onClick={(e) => e.stopPropagation()}>
                 <DropdownMenu>
