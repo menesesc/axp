@@ -5,7 +5,7 @@
  * Detecta archivos nuevos, espera a que estén estables, y los encola en IngestQueue.
  */
 
-import { readdir } from 'fs/promises';
+import { readdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { prisma } from '../lib/prisma';
@@ -34,7 +34,7 @@ const logger = createLogger('WATCHER');
 // Configuración desde env vars
 const WEBDAV_DIR = process.env.WEBDAV_DIR || '/srv/webdav/data';
 const PROCESSED_DIR = process.env.PROCESSED_DIR || '/srv/webdav/processed';
-const FAILED_DIR = process.env.FAILED_DIR || '/srv/webdav/failed';
+// FAILED_DIR ya no se usa - los archivos fallidos se eliminan directamente
 const POLLING_INTERVAL_MS = parseInt(process.env.WATCHER_POLL_INTERVAL || '2000');
 const FILE_STABLE_CHECKS = parseInt(process.env.FILE_STABLE_CHECKS || '3');
 
@@ -76,7 +76,10 @@ async function processFile(filename: string): Promise<void> {
     const prefix = extractPrefixFromFilename(filename);
     if (!prefix) {
       logger.error(`❌ Could not extract prefix from filename: ${filename}`);
-      await moveFileSafe(filePath, join(FAILED_DIR, filename));
+      logger.error(`   Expected format: prefix_YYYYMMDD_HHMMSS.pdf`);
+      // Eliminar archivo - no podemos procesarlo sin prefijo
+      await unlink(filePath);
+      logger.info(`🗑️  File deleted (invalid format): ${filename}`);
       return;
     }
 
@@ -86,7 +89,9 @@ async function processFile(filename: string): Promise<void> {
     const clienteConfig = await getClienteByPrefix(prefix);
     if (!clienteConfig) {
       logger.error(`❌ No client configuration found for prefix: ${prefix}`);
-      await moveFileSafe(filePath, join(FAILED_DIR, filename));
+      // Eliminar archivo - no hay cliente configurado
+      await unlink(filePath);
+      logger.info(`🗑️  File deleted (unknown prefix): ${filename}`);
       return;
     }
 
@@ -160,11 +165,12 @@ async function processFile(filename: string): Promise<void> {
       return;
     }
 
-    // Mover a failed si es posible
+    // Eliminar archivo fallido para no acumular en disco
     try {
-      await moveFileSafe(filePath, join(FAILED_DIR, filename));
-    } catch (moveError) {
-      logger.error(`❌ Could not move file to failed dir:`, moveError);
+      await unlink(filePath);
+      logger.info(`🗑️  Failed file deleted: ${filename}`);
+    } catch (unlinkError) {
+      logger.error(`❌ Could not delete failed file:`, unlinkError);
     }
   } finally {
     filesInProcess.delete(filename);
@@ -203,7 +209,6 @@ export async function startWatcher(): Promise<void> {
   logger.info(`🚀 WebDAV Watcher starting...`);
   logger.info(`📁 Watching directory: ${WEBDAV_DIR}`);
   logger.info(`📁 Processed directory: ${PROCESSED_DIR}`);
-  logger.info(`📁 Failed directory: ${FAILED_DIR}`);
   logger.info(`⏱️  Polling interval: ${POLLING_INTERVAL_MS}ms`);
   logger.info(`🔒 File stable checks: ${FILE_STABLE_CHECKS}`);
 
