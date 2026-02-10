@@ -177,7 +177,7 @@ export default function ProcesamientoPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['logs'] })
       queryClient.invalidateQueries({ queryKey: ['logStats'] })
-      toast.success('Todos los logs marcados como leídos')
+      toast.success('Todos los logs marcados como leidos')
     },
   })
 
@@ -298,7 +298,7 @@ export default function ProcesamientoPage() {
               className="gap-1.5"
             >
               <CheckCheck className="h-4 w-4" />
-              Marcar todos leídos
+              Marcar todos leidos
             </Button>
           )}
         </div>
@@ -321,7 +321,7 @@ export default function ProcesamientoPage() {
             <div className="p-12 text-center text-slate-500">
               <Info className="h-12 w-12 mx-auto mb-3 text-slate-300" />
               <p>No hay logs que mostrar</p>
-              <p className="text-sm mt-1">Los logs aparecerán cuando el sistema procese documentos</p>
+              <p className="text-sm mt-1">Los logs apareceran cuando el sistema procese documentos</p>
             </div>
           ) : (
             logs.map((log) => {

@@ -17,45 +17,26 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const level = searchParams.get('level') // INFO, WARNING, ERROR, SUCCESS
-    const source = searchParams.get('source') // OCR, PROCESSOR, WATCHER, SYSTEM
-    const unreadOnly = searchParams.get('unread') === 'true'
-    const skip = (page - 1) * limit
+    const limit = Math.min(parseInt(searchParams.get('limit') || '25'), 100)
+    const level = searchParams.get('level')
+    const source = searchParams.get('source')
 
-    const where: any = {
-      cliente_id: clienteId,
-    }
-
-    if (level) {
-      where.level = level
-    }
-
-    if (source) {
-      where.source = source
-    }
-
-    if (unreadOnly) {
-      where.read = false
-    }
+    const where: any = { cliente_id: clienteId }
+    if (level && level !== 'all') where.level = level
+    if (source && source !== 'all') where.source = source
 
     const [logs, total, unreadCount] = await Promise.all([
       prisma.processing_logs.findMany({
         where,
-        orderBy: {
-          created_at: 'desc',
-        },
-        skip,
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
         take: limit,
       }),
       prisma.processing_logs.count({ where }),
       prisma.processing_logs.count({
-        where: {
-          cliente_id: clienteId,
-          read: false,
-        },
+        where: { cliente_id: clienteId, read: false },
       }),
     ])
 
@@ -78,7 +59,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Marcar logs como leídos
 export async function PATCH(request: NextRequest) {
   try {
     const { user, error } = await getAuthUser()
@@ -96,83 +76,27 @@ export async function PATCH(request: NextRequest) {
     const { logIds, markAllRead } = body
 
     if (markAllRead) {
-      // Marcar todos como leídos
-      await prisma.processing_logs.updateMany({
-        where: {
-          cliente_id: clienteId,
-          read: false,
-        },
-        data: {
-          read: true,
-        },
+      const result = await prisma.processing_logs.updateMany({
+        where: { cliente_id: clienteId, read: false },
+        data: { read: true },
       })
-    } else if (logIds && Array.isArray(logIds)) {
-      // Marcar específicos como leídos
-      await prisma.processing_logs.updateMany({
+      return NextResponse.json({ updated: result.count })
+    }
+
+    if (logIds && Array.isArray(logIds) && logIds.length > 0) {
+      const result = await prisma.processing_logs.updateMany({
         where: {
           id: { in: logIds },
           cliente_id: clienteId,
         },
-        data: {
-          read: true,
-        },
+        data: { read: true },
       })
+      return NextResponse.json({ updated: result.count })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ error: 'No logIds provided' }, { status: 400 })
   } catch (error) {
     console.error('Error updating logs:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-// Endpoint para que el worker escriba logs (usa service key)
-export async function POST(request: NextRequest) {
-  try {
-    // Verificar service key para el worker
-    const authHeader = request.headers.get('authorization')
-    const serviceKey = process.env.WORKER_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!authHeader || authHeader !== `Bearer ${serviceKey}`) {
-      // Fallback: verificar si es un usuario autenticado admin
-      const { user, error } = await getAuthUser()
-      if (error) return error
-      if (user?.rol !== 'ADMIN') {
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        )
-      }
-    }
-
-    const body = await request.json()
-    const { clienteId, level, source, message, details, documentoId, filename } = body
-
-    if (!clienteId || !level || !source || !message) {
-      return NextResponse.json(
-        { error: 'Missing required fields: clienteId, level, source, message' },
-        { status: 400 }
-      )
-    }
-
-    const log = await prisma.processing_logs.create({
-      data: {
-        cliente_id: clienteId,
-        level,
-        source,
-        message,
-        details: details || {},
-        documento_id: documentoId || null,
-        filename: filename || null,
-      },
-    })
-
-    return NextResponse.json({ success: true, logId: log.id })
-  } catch (error) {
-    console.error('Error creating log:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

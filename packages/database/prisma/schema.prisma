@@ -9,18 +9,19 @@ datasource db {
 }
 
 model clientes {
-  id           String         @id @db.Uuid
-  razonSocial  String         @db.VarChar(255)
-  cuit         String         @unique @db.VarChar(11)
-  r2Prefix     String         @db.VarChar(50)
-  activo       Boolean        @default(true)
-  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime       @db.Timestamptz(3)
-  documentos   documentos[]
-  ingest_queue ingest_queue[]
-  pagos        pagos[]
-  proveedores  proveedores[]
-  usuarios     usuarios[]
+  id              String            @id @db.Uuid
+  razonSocial     String            @db.VarChar(255)
+  cuit            String            @unique @db.VarChar(11)
+  r2Prefix        String            @db.VarChar(50)
+  activo          Boolean           @default(true)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @db.Timestamptz(3)
+  documentos      documentos[]
+  ingest_queue    ingest_queue[]
+  pagos           pagos[]
+  proveedores     proveedores[]
+  usuarios        usuarios[]
+  processing_logs processing_logs[]
 }
 
 model documento_items {
@@ -84,6 +85,7 @@ model documentos {
   clientes             clientes               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   proveedores          proveedores?           @relation(fields: [proveedorId], references: [id])
   pago_documentos      pago_documentos[]
+  processing_logs      processing_logs[]
 
   @@unique([clienteId, hashSha256])
   @@index([clienteId, estadoRevision])
@@ -188,6 +190,27 @@ model usuarios {
 
   @@index([clienteId])
   @@index([rol])
+}
+
+model processing_logs {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id   String    @db.Uuid
+  level        String    @db.Text
+  source       String    @db.Text
+  message      String    @db.Text
+  details      Json      @default("{}")
+  documento_id String?   @db.Uuid
+  filename     String?   @db.Text
+  read         Boolean   @default(false)
+  created_at   DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes   clientes    @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  documentos documentos? @relation(fields: [documento_id], references: [id], onDelete: SetNull)
+
+  @@index([cliente_id])
+  @@index([level])
+  @@index([created_at(sort: Desc)])
+  @@index([cliente_id, read])
 }
 
 enum AccionRevision {

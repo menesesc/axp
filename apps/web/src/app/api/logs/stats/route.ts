@@ -17,24 +17,21 @@ export async function GET() {
       )
     }
 
-    const today = new Date()
-    const last24h = new Date(today.getTime() - 24 * 60 * 60 * 1000)
-    const last7d = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const now = new Date()
+    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
     const [
       totalUnread,
-      errorsLast24h,
-      warningsLast24h,
-      successLast24h,
-      countByLevel,
+      errors24h,
+      warnings24h,
+      success24h,
+      last7dGrouped,
       recentErrors,
     ] = await Promise.all([
-      // Total no leídos
+      // Total sin leer
       prisma.processing_logs.count({
-        where: {
-          cliente_id: clienteId,
-          read: false,
-        },
+        where: { cliente_id: clienteId, read: false },
       }),
 
       // Errores últimas 24h
@@ -55,7 +52,7 @@ export async function GET() {
         },
       }),
 
-      // Success últimas 24h
+      // Exitosos últimas 24h
       prisma.processing_logs.count({
         where: {
           cliente_id: clienteId,
@@ -64,17 +61,17 @@ export async function GET() {
         },
       }),
 
-      // Conteo por nivel (últimos 7 días)
+      // Agrupados por nivel últimos 7 días
       prisma.processing_logs.groupBy({
+        by: ['level'],
         where: {
           cliente_id: clienteId,
           created_at: { gte: last7d },
         },
-        by: ['level'],
-        _count: { _all: true },
+        _count: true,
       }),
 
-      // Últimos 5 errores
+      // Últimos errores
       prisma.processing_logs.findMany({
         where: {
           cliente_id: clienteId,
@@ -93,25 +90,25 @@ export async function GET() {
       }),
     ])
 
-    const levelCounts = {
+    // Construir objeto de últimos 7 días
+    const last7dStats: Record<string, number> = {
       INFO: 0,
       WARNING: 0,
       ERROR: 0,
       SUCCESS: 0,
     }
-
-    for (const row of countByLevel) {
-      levelCounts[row.level as keyof typeof levelCounts] = row._count._all
+    for (const group of last7dGrouped) {
+      last7dStats[group.level] = group._count
     }
 
     return NextResponse.json({
       totalUnread,
       last24h: {
-        errors: errorsLast24h,
-        warnings: warningsLast24h,
-        success: successLast24h,
+        errors: errors24h,
+        warnings: warnings24h,
+        success: success24h,
       },
-      last7d: levelCounts,
+      last7d: last7dStats,
       recentErrors,
     })
   } catch (error) {

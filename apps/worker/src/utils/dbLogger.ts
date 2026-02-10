@@ -1,14 +1,14 @@
 /**
  * Database Logger
  *
- * Logs importantes se guardan en la base de datos para que
- * el usuario pueda verlos en el dashboard.
+ * Logs processing events to the database so users can see them in the dashboard.
+ * Uses batching to reduce database calls.
  */
 
 import { prisma } from '../lib/prisma';
 
-export type LogLevel = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
-export type LogSource = 'OCR' | 'PROCESSOR' | 'WATCHER' | 'SYSTEM';
+type LogLevel = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
+type LogSource = 'OCR' | 'PROCESSOR' | 'WATCHER' | 'SYSTEM';
 
 interface LogEntry {
   clienteId: string;
@@ -20,193 +20,102 @@ interface LogEntry {
   filename?: string;
 }
 
-// Queue para enviar logs en batch (reduce llamadas a DB)
-const logQueue: LogEntry[] = [];
-let flushTimer: NodeJS.Timeout | null = null;
-const FLUSH_INTERVAL = 5000; // 5 segundos
-const MAX_QUEUE_SIZE = 50;
+// Buffer for batch inserts
+const logBuffer: LogEntry[] = [];
+let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+const FLUSH_INTERVAL_MS = 5000; // Flush every 5 seconds
+const MAX_BUFFER_SIZE = 50; // Or when buffer reaches 50 entries
 
 /**
- * Envía los logs pendientes a la base de datos
+ * Flushes the log buffer to the database
  */
 async function flushLogs(): Promise<void> {
-  if (logQueue.length === 0) return;
+  if (logBuffer.length === 0) return;
 
-  const logsToSend = [...logQueue];
-  logQueue.length = 0; // Clear queue
+  const logsToFlush = [...logBuffer];
+  logBuffer.length = 0; // Clear buffer
 
   try {
     await prisma.processing_logs.createMany({
-      data: logsToSend.map((log) => ({
+      data: logsToFlush.map(log => ({
         cliente_id: log.clienteId,
         level: log.level,
         source: log.source,
-        message: log.message.substring(0, 1000), // Limitar tamaño
+        message: log.message,
         details: log.details || {},
         documento_id: log.documentoId || null,
         filename: log.filename || null,
+        read: false,
       })),
     });
   } catch (error) {
-    // Si falla el guardado, loguear en consola pero no perder los logs
-    console.error('[DB_LOGGER] Error saving logs to database:', error);
-    // Intentar enviar a la API como fallback
-    for (const log of logsToSend) {
-      try {
-        await sendLogToApi(log);
-      } catch {
-        console.error('[DB_LOGGER] Failed to send log via API:', log.message);
-      }
-    }
+    // Log to console but don't throw - we don't want logging failures to break processing
+    console.error('[DB_LOGGER] Failed to flush logs to database:', error);
+    // Put logs back in buffer for retry (at the front)
+    logBuffer.unshift(...logsToFlush);
   }
 }
 
 /**
- * Envía un log a la API web (fallback)
- */
-async function sendLogToApi(log: LogEntry): Promise<void> {
-  const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
-  const serviceKey = process.env.WORKER_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceKey) {
-    console.warn('[DB_LOGGER] No service key configured, cannot send log via API');
-    return;
-  }
-
-  await fetch(`${webAppUrl}/api/logs`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${serviceKey}`,
-    },
-    body: JSON.stringify(log),
-  });
-}
-
-/**
- * Programa el flush de logs
+ * Schedules a flush if one isn't already scheduled
  */
 function scheduleFlush(): void {
-  if (flushTimer) return;
-  flushTimer = setTimeout(async () => {
-    flushTimer = null;
+  if (flushTimeout) return;
+
+  flushTimeout = setTimeout(async () => {
+    flushTimeout = null;
     await flushLogs();
-  }, FLUSH_INTERVAL);
+  }, FLUSH_INTERVAL_MS);
 }
 
 /**
- * Añade un log a la cola
+ * Adds a log entry to the buffer
  */
-function queueLog(entry: LogEntry): void {
-  logQueue.push(entry);
-  scheduleFlush();
+function addLog(entry: LogEntry): void {
+  logBuffer.push(entry);
 
-  // Flush inmediato si la cola está llena o es un error
-  if (logQueue.length >= MAX_QUEUE_SIZE || entry.level === 'ERROR') {
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
+  // Flush immediately if buffer is full or if it's an error
+  if (logBuffer.length >= MAX_BUFFER_SIZE || entry.level === 'ERROR') {
+    if (flushTimeout) {
+      clearTimeout(flushTimeout);
+      flushTimeout = null;
     }
     flushLogs().catch(console.error);
+  } else {
+    scheduleFlush();
   }
 }
 
 /**
- * Crea un logger para un cliente específico
+ * Creates a logger instance for a specific client and source
  */
 export function createDbLogger(clienteId: string, source: LogSource) {
-  const consolePrefix = `[${source}]`;
-
   return {
-    /**
-     * Log de información (no se guarda en DB por defecto para no saturar)
-     */
-    info: (message: string, details?: Record<string, any>) => {
-      console.log(consolePrefix, message, details ? JSON.stringify(details) : '');
+    info: (message: string, details?: Record<string, any>, filename?: string, documentoId?: string) => {
+      addLog({ clienteId, level: 'INFO', source, message, details, filename, documentoId });
     },
 
-    /**
-     * Log de éxito (se guarda en DB)
-     */
-    success: (message: string, options?: { filename?: string; documentoId?: string; details?: Record<string, any> }) => {
-      console.log(consolePrefix, '✅', message);
-      queueLog({
-        clienteId,
-        level: 'SUCCESS',
-        source,
-        message,
-        ...options,
-      });
+    warning: (message: string, details?: Record<string, any>, filename?: string, documentoId?: string) => {
+      addLog({ clienteId, level: 'WARNING', source, message, details, filename, documentoId });
     },
 
-    /**
-     * Log de warning (se guarda en DB)
-     */
-    warn: (message: string, options?: { filename?: string; documentoId?: string; details?: Record<string, any> }) => {
-      console.warn(consolePrefix, '⚠️', message);
-      queueLog({
-        clienteId,
-        level: 'WARNING',
-        source,
-        message,
-        ...options,
-      });
+    error: (message: string, details?: Record<string, any>, filename?: string, documentoId?: string) => {
+      addLog({ clienteId, level: 'ERROR', source, message, details, filename, documentoId });
     },
 
-    /**
-     * Log de error (se guarda en DB inmediatamente)
-     */
-    error: (message: string, options?: { filename?: string; documentoId?: string; details?: Record<string, any> }) => {
-      console.error(consolePrefix, '❌', message);
-      queueLog({
-        clienteId,
-        level: 'ERROR',
-        source,
-        message,
-        ...options,
-      });
-    },
-
-    /**
-     * Log debug (solo consola)
-     */
-    debug: (message: string, data?: any) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(consolePrefix, message, data);
-      }
+    success: (message: string, details?: Record<string, any>, filename?: string, documentoId?: string) => {
+      addLog({ clienteId, level: 'SUCCESS', source, message, details, filename, documentoId });
     },
   };
 }
 
 /**
- * Logger para logs sin cliente específico (sistema)
- */
-export function createSystemLogger(source: LogSource = 'SYSTEM') {
-  const consolePrefix = `[${source}]`;
-
-  return {
-    info: (...args: unknown[]) => console.log(consolePrefix, ...args),
-    warn: (...args: unknown[]) => console.warn(consolePrefix, '⚠️', ...args),
-    error: (...args: unknown[]) => console.error(consolePrefix, '❌', ...args),
-    debug: (...args: unknown[]) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(consolePrefix, ...args);
-      }
-    },
-  };
-}
-
-/**
- * Fuerza el flush de todos los logs pendientes
- * Llamar antes de cerrar el proceso
+ * Force flush all pending logs (call on shutdown)
  */
 export async function flushAllLogs(): Promise<void> {
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = null;
+  if (flushTimeout) {
+    clearTimeout(flushTimeout);
+    flushTimeout = null;
   }
   await flushLogs();
 }
-
-// Exportar para tests
-export { flushLogs };
