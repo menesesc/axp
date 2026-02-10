@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../lib/prisma';
-import { readFile } from 'fs/promises';
+import { readFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { createLogger, calculateNextRetry, generateR2Key, extractDateFromFilename, sleep } from '../utils/fileUtils';
@@ -132,6 +132,15 @@ async function processQueueItem(item: QueueItem): Promise<void> {
         updatedAt: new Date(),
       },
     });
+
+    // Limpiar archivo local después de subir exitosamente a R2
+    try {
+      await unlink(filePath);
+      logger.info(`🗑️  Local file deleted: ${filePath}`);
+    } catch (unlinkError) {
+      // No es crítico si falla la limpieza, solo logueamos
+      logger.warn(`⚠️  Could not delete local file: ${filePath}`, unlinkError);
+    }
 
     logger.info(`✅ Queue item processed successfully: ${item.id}`);
   } catch (error) {
