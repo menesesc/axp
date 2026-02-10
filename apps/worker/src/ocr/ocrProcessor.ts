@@ -219,11 +219,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       logger.warn(`⚠️  Document already exists: ${existing.id} (hash: ${sha256})`);
       // Log warning a la base de datos
       const dbLogger = getDbLogger(file.clienteId);
-      dbLogger.warn(`Documento duplicado detectado (mismo hash SHA256)`, {
-        filename: file.filename,
-        documentoId: existing.id,
-        details: { sha256 },
-      });
+      dbLogger.warning(`Documento duplicado detectado (mismo hash SHA256)`, { sha256 }, file.filename, existing.id);
       // Borrar de inbox ya que está duplicado
       await deleteR2Object(file.bucket, file.key);
       return;
@@ -433,9 +429,10 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
       // ESTRATEGIA 4: Similitud de texto (fuzzy matching)
       // Evita crear duplicados cuando OCR detecta mal el nombre
+      // IMPORTANTE: Umbral alto (80%) para evitar falsos positivos
       if (!proveedor && parsed.proveedor) {
-        logger.info(`🔍 Attempting fuzzy match...`);
-        
+        logger.info(`🔍 Attempting fuzzy match for: "${parsed.proveedor}"`);
+
         const allProveedores = await prisma.proveedores.findMany({
           where: {
             clienteId: file.clienteId,
@@ -455,70 +452,94 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           .replace(/[^a-z0-9\s]/gi, '')
           .trim();
 
-        let bestMatch = null;
-        let bestScore = 0;
+        // Filtrar palabras muy cortas (< 3 caracteres) que causan falsos positivos
+        const searchWords = normalizedSearch.split(' ').filter((w: string) => w.length >= 3);
 
-        for (const p of allProveedores) {
-          const normalizedName = p.razonSocial.toLowerCase()
-            .replace(/\s+/g, ' ')
-            .replace(/[^a-z0-9\s]/gi, '')
-            .trim();
+        // Si no hay palabras significativas, no hacer fuzzy match
+        if (searchWords.length === 0) {
+          logger.warn(`⚠️  No significant words in OCR name, skipping fuzzy match`);
+        } else {
+          let bestMatch = null;
+          let bestScore = 0;
+          let bestMatchWords = 0;
 
-          // Calcular similitud simple (palabras en común)
-          const searchWords = normalizedSearch.split(' ');
-          const nameWords = normalizedName.split(' ');
-          
-          const commonWords = searchWords.filter((word: string) => 
-            nameWords.some((nameWord: string) => 
-              nameWord.includes(word) || word.includes(nameWord)
-            )
-          );
-
-          const score = commonWords.length / Math.max(searchWords.length, nameWords.length);
-
-          // También verificar alias
-          const aliasArray = Array.isArray(p.alias) ? p.alias : [];
-          for (const alias of aliasArray) {
-            const normalizedAlias = alias.toLowerCase()
+          for (const p of allProveedores) {
+            const normalizedName = p.razonSocial.toLowerCase()
               .replace(/\s+/g, ' ')
               .replace(/[^a-z0-9\s]/gi, '')
               .trim();
-            
-            const aliasWords = normalizedAlias.split(' ');
-            const aliasCommon = searchWords.filter((word: string) => 
-              aliasWords.some((aliasWord: string) => 
-                aliasWord.includes(word) || word.includes(aliasWord)
-              )
+
+            const nameWords = normalizedName.split(' ').filter((w: string) => w.length >= 3);
+
+            // Contar palabras exactas en común (más estricto)
+            const exactCommon = searchWords.filter((word: string) =>
+              nameWords.includes(word)
             );
-            
-            const aliasScore = aliasCommon.length / Math.max(searchWords.length, aliasWords.length);
-            if (aliasScore > score) {
-              const finalScore = aliasScore;
-              if (finalScore > bestScore) {
-                bestScore = finalScore;
+
+            // Contar palabras parciales (al menos 4 caracteres coinciden)
+            const partialCommon = searchWords.filter((word: string) =>
+              nameWords.some((nameWord: string) => {
+                if (word.length < 4 || nameWord.length < 4) return false;
+                return nameWord.includes(word) || word.includes(nameWord);
+              })
+            );
+
+            // Score basado en palabras exactas (peso 1.0) + parciales (peso 0.5)
+            const totalWords = Math.max(searchWords.length, nameWords.length);
+            const score = totalWords > 0
+              ? (exactCommon.length + partialCommon.length * 0.5) / totalWords
+              : 0;
+
+            // También verificar alias con el mismo criterio estricto
+            const aliasArray = Array.isArray(p.alias) ? p.alias : [];
+            for (const alias of aliasArray) {
+              const normalizedAlias = (alias as string).toLowerCase()
+                .replace(/\s+/g, ' ')
+                .replace(/[^a-z0-9\s]/gi, '')
+                .trim();
+
+              const aliasWords = normalizedAlias.split(' ').filter((w: string) => w.length >= 3);
+              const aliasExact = searchWords.filter((word: string) => aliasWords.includes(word));
+              const aliasPartial = searchWords.filter((word: string) =>
+                aliasWords.some((aliasWord: string) => {
+                  if (word.length < 4 || aliasWord.length < 4) return false;
+                  return aliasWord.includes(word) || word.includes(aliasWord);
+                })
+              );
+
+              const aliasTotalWords = Math.max(searchWords.length, aliasWords.length);
+              const aliasScore = aliasTotalWords > 0
+                ? (aliasExact.length + aliasPartial.length * 0.5) / aliasTotalWords
+                : 0;
+
+              if (aliasScore > bestScore) {
+                bestScore = aliasScore;
                 bestMatch = p;
+                bestMatchWords = aliasExact.length;
               }
+            }
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = p;
+              bestMatchWords = exactCommon.length;
             }
           }
 
-          if (score > bestScore) {
-            bestScore = score;
-            bestMatch = p;
+          // UMBRAL MÁS ESTRICTO: 80% de similitud Y al menos 1 palabra exacta
+          // Esto evita matches como "LANTE INDA" -> "GONZALEZ JORGE A."
+          if (bestMatch && bestScore >= 0.8 && bestMatchWords >= 1) {
+            proveedor = bestMatch;
+            logger.info(`✅ Proveedor found by fuzzy match: ${proveedor.id} (${proveedor.razonSocial})`);
+            logger.info(`   Match score: ${(bestScore * 100).toFixed(1)}%, exact words: ${bestMatchWords}`);
+            logger.info(`   OCR detected: "${parsed.proveedor}"`);
+            proveedorLetra = proveedor.letra;
+          } else if (bestMatch) {
+            logger.warn(`⚠️  Best fuzzy match below threshold:`);
+            logger.warn(`   "${bestMatch.razonSocial}" score=${(bestScore * 100).toFixed(1)}%, exactWords=${bestMatchWords}`);
+            logger.warn(`   OCR detected: "${parsed.proveedor}"`);
+            logger.warn(`   Requires manual assignment (threshold: 80% + 1 exact word)`);
           }
-        }
-
-        // Umbral de similitud: 60% de palabras en común
-        if (bestMatch && bestScore >= 0.6) {
-          proveedor = bestMatch;
-          logger.info(`✅ Proveedor found by fuzzy match: ${proveedor.id} (${proveedor.razonSocial})`);
-          logger.info(`   Match score: ${(bestScore * 100).toFixed(1)}%`);
-          logger.info(`   OCR detected: "${parsed.proveedor}"`);
-          proveedorLetra = proveedor.letra; // Guardar letra por defecto
-          // NOTA: No actualizamos alias automáticamente - OCR puede detectar mal el nombre
-        } else if (bestMatch) {
-          logger.warn(`⚠️  Best match found but below threshold:`);
-          logger.warn(`   ${bestMatch.razonSocial} (${(bestScore * 100).toFixed(1)}%)`);
-          logger.warn(`   Creating new proveedor instead`);
         }
       }
 

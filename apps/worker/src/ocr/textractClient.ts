@@ -159,7 +159,7 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
 
   // Extraer campos del summary
   const proveedor = normalizeText(getFieldValue('VENDOR_NAME'));
-  const fechaEmision = parseTextractDate(getFieldValue('INVOICE_RECEIPT_DATE'));
+  let fechaEmision = parseTextractDate(getFieldValue('INVOICE_RECEIPT_DATE'));
   const fechaVencimiento = parseTextractDate(getFieldValue('DUE_DATE'));
   const numeroCompletoRaw = getFieldValue('INVOICE_RECEIPT_ID');
   
@@ -225,6 +225,12 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   const hasFactura = allText.some(line => /FACTURA/i.test(line));
   const hasLetraLine = allText.filter(line => /^[ABC]$/i.test(line.trim()));
   logger.info(`🔍 Debug: hasFactura=${hasFactura}, letraLines=${JSON.stringify(hasLetraLine.slice(0, 3))}`);
+
+  // FALLBACK: Si Textract no detectó fecha válida, buscar en texto crudo
+  if (!fechaEmision) {
+    logger.warn(`⚠️  No valid fecha from Textract, searching in raw text...`);
+    fechaEmision = extractFechaEmisionFromText(allText);
+  }
 
   // Fallbacks usando extractores legacy
   const letra = extractLetra(allText);
@@ -307,6 +313,7 @@ function normalizeText(text: string | null): string | null {
 
 /**
  * Parsea fecha de Textract (varios formatos)
+ * Valida que la fecha sea razonable (> 2020, < año actual + 2)
  */
 function parseTextractDate(dateStr: string | null): string | null {
   if (!dateStr) return null;
@@ -317,7 +324,73 @@ function parseTextractDate(dateStr: string | null): string | null {
     const day = match1[1].padStart(2, '0');
     const month = match1[2].padStart(2, '0');
     const year = match1[3];
+
+    // VALIDACIÓN: Rechazar fechas antes de 2020 o muy en el futuro
+    // Esto evita capturar "Inicio Actividades" o fechas incorrectas
+    const yearNum = parseInt(year);
+    const currentYear = new Date().getFullYear();
+    if (yearNum < 2020 || yearNum > currentYear + 2) {
+      logger.warn(`⚠️  Date ${dateStr} rejected: year ${year} out of range (2020-${currentYear + 2})`);
+      return null;
+    }
+
     return `${year}-${month}-${day}`; // ISO format
+  }
+
+  return null;
+}
+
+/**
+ * Busca la fecha de emisión en el texto crudo
+ * Prioriza líneas que contengan "FECHA" explícitamente
+ */
+function extractFechaEmisionFromText(lines: string[]): string | null {
+  // Patrón 1: "FECHA DD/MM/YYYY" o "FECHA: DD/MM/YYYY"
+  for (const line of lines) {
+    // Buscar específicamente la palabra FECHA seguida de una fecha
+    // Ignorar líneas que contengan "Inicio" o "Actividades"
+    if (/inicio|actividades/i.test(line)) continue;
+
+    const match = line.match(/\bFECHA\b[:\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+    if (match && match[1] && match[2] && match[3]) {
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      const year = match[3];
+
+      // Validar año razonable
+      const yearNum = parseInt(year);
+      const currentYear = new Date().getFullYear();
+      if (yearNum >= 2020 && yearNum <= currentYear + 2) {
+        logger.info(`📅 Found fecha from text pattern "FECHA": ${year}-${month}-${day}`);
+        return `${year}-${month}-${day}`;
+      }
+    }
+  }
+
+  // Patrón 2: Buscar en líneas que contengan "FACTURA" + fecha en la misma zona
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
+    const line = lines[i] || '';
+    if (/factura/i.test(line) && !/inicio|actividades/i.test(line)) {
+      // Buscar fecha en esta línea o las siguientes 2
+      for (let j = i; j < Math.min(i + 3, lines.length); j++) {
+        const searchLine = lines[j] || '';
+        if (/inicio|actividades/i.test(searchLine)) continue;
+
+        const dateMatch = searchLine.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+        if (dateMatch && dateMatch[1] && dateMatch[2] && dateMatch[3]) {
+          const day = dateMatch[1];
+          const month = dateMatch[2];
+          const year = dateMatch[3];
+
+          const yearNum = parseInt(year);
+          const currentYear = new Date().getFullYear();
+          if (yearNum >= 2020 && yearNum <= currentYear + 2) {
+            logger.info(`📅 Found fecha near FACTURA: ${year}-${month}-${day}`);
+            return `${year}-${month}-${day}`;
+          }
+        }
+      }
+    }
   }
 
   return null;
