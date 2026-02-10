@@ -162,11 +162,21 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   let fechaEmision = parseTextractDate(getFieldValue('INVOICE_RECEIPT_DATE'));
   const fechaVencimiento = parseTextractDate(getFieldValue('DUE_DATE'));
   const numeroCompletoRaw = getFieldValue('INVOICE_RECEIPT_ID');
-  
+
   // Limpiar numeroCompleto: solo números, remover N°, guiones, espacios
-  const numeroCompleto = numeroCompletoRaw 
+  let numeroCompleto = numeroCompletoRaw
     ? numeroCompletoRaw.replace(/[^\d]/g, '') // Solo dígitos
     : null;
+
+  // VALIDACIÓN: Rechazar si parece ser un CUIT (11 dígitos empezando con prefijo típico)
+  // Los CUITs argentinos empiezan con 20, 23, 24, 27, 30, 33, 34
+  if (numeroCompleto && numeroCompleto.length === 11) {
+    const cuitPrefixes = ['20', '23', '24', '27', '30', '33', '34'];
+    if (cuitPrefixes.some(prefix => numeroCompleto!.startsWith(prefix))) {
+      logger.warn(`⚠️  INVOICE_RECEIPT_ID "${numeroCompletoRaw}" looks like a CUIT, rejecting`);
+      numeroCompleto = null;
+    }
+  }
   
   // Extracción básica (se reemplaza más abajo con smart extraction)
   const subtotalBasic = parseTextractAmount(getFieldValue('SUBTOTAL'));
@@ -230,6 +240,12 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   if (!fechaEmision) {
     logger.warn(`⚠️  No valid fecha from Textract, searching in raw text...`);
     fechaEmision = extractFechaEmisionFromText(allText);
+  }
+
+  // FALLBACK: Si no hay número de factura válido, buscar en texto
+  if (!numeroCompleto) {
+    logger.warn(`⚠️  No valid invoice number from Textract, searching in raw text...`);
+    numeroCompleto = extractNumeroFacturaFromText(allText);
   }
 
   // Fallbacks usando extractores legacy
@@ -390,6 +406,51 @@ function extractFechaEmisionFromText(lines: string[]): string | null {
           }
         }
       }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extrae el número de factura del texto crudo
+ * Busca patrones como "FACTURA A00012-00013515" o "A 0001-00013515"
+ */
+function extractNumeroFacturaFromText(lines: string[]): string | null {
+  // Patrón 1: "FACTURA A00012-00013515" o "FACTURA A 00012-00013515"
+  for (const line of lines) {
+    // Buscar número de factura con formato típico argentino
+    // Formato: [Letra][PtoVta 4-5 dígitos]-[Número 8 dígitos]
+    const match = line.match(/FACTURA\s*([ABC])?[\s-]*(\d{4,5})[-\s]*(\d{8})/i);
+    if (match) {
+      const ptoVta = match[2]?.padStart(5, '0') || '';
+      const numero = match[3] || '';
+      const result = `${ptoVta}${numero}`;
+      logger.info(`📝 Found invoice number from FACTURA pattern: ${result}`);
+      return result;
+    }
+  }
+
+  // Patrón 2: Línea con formato "A00012-00013515" o similar cerca de FACTURA
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const line = lines[i] || '';
+    // Buscar patrón de número de factura sin la palabra FACTURA
+    const match = line.match(/^[ABC]?(\d{4,5})[-\s](\d{8})$/);
+    if (match && match[1] && match[2]) {
+      const ptoVta = match[1].padStart(5, '0');
+      const numero = match[2];
+      const result = `${ptoVta}${numero}`;
+      logger.info(`📝 Found invoice number from standalone pattern: ${result}`);
+      return result;
+    }
+  }
+
+  // Patrón 3: Buscar "Comp. Nro:" o "Nro:" seguido de número
+  for (const line of lines) {
+    const match = line.match(/(?:Comp\.?\s*Nro\.?|N[°º]|Número)\s*:?\s*(\d{12,13})/i);
+    if (match && match[1]) {
+      logger.info(`📝 Found invoice number from Nro pattern: ${match[1]}`);
+      return match[1];
     }
   }
 
@@ -811,53 +872,86 @@ function extractProveedor(lines: string[]): string | null {
 function extractProveedorCUIT(lines: string[]): string | null {
   // Buscar CUIT en formato: XX-XXXXXXXX-X o XXXXXXXXXXXX
   // Ejemplos: 30-53804819-0, 30-71215244-9, 30-71891765-0
-  
-  const allCUITs: { cuit: string; index: number; context: string }[] = [];
-  
+
+  const allCUITs: { cuit: string; index: number; context: string; isInClientSection: boolean }[] = [];
+
+  // Detectar dónde empieza la sección del cliente
+  let clientSectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = (lines[i] || '').toLowerCase();
+    if (line.includes('datos del cliente') || line.includes('cliente:') ||
+        (line.includes('cliente') && !line.includes('descuento cliente'))) {
+      clientSectionStart = i;
+      logger.info(`📍 Client section detected at line ${i}: "${lines[i]}"`);
+      break;
+    }
+  }
+
   // ESTRATEGIA 1: Recolectar TODOS los CUITs encontrados (primeras 50 líneas)
   for (let i = 0; i < Math.min(50, lines.length); i++) {
     const line = lines[i] || '';
-    
+
     // Buscar patrón con guiones: XX-XXXXXXXX-X
     const matchWithDashes = line.match(/\b(\d{2})[-](\d{7,8})[-](\d)\b/);
     if (matchWithDashes) {
       const cuit = `${matchWithDashes[1]}${matchWithDashes[2].padStart(8, '0')}${matchWithDashes[3]}`;
-      
+
       // Contexto: líneas cercanas
       const prevLine = (lines[i - 1] || '').toLowerCase();
       const nextLine = (lines[i + 1] || '').toLowerCase();
       const context = prevLine + ' ' + line.toLowerCase() + ' ' + nextLine;
-      
-      allCUITs.push({ cuit, index: i, context });
+
+      // Determinar si está en la sección del cliente
+      const isInClientSection = clientSectionStart >= 0 && i >= clientSectionStart;
+
+      logger.info(`🔍 Found CUIT ${cuit} at line ${i}, inClientSection: ${isInClientSection}`);
+      allCUITs.push({ cuit, index: i, context, isInClientSection });
     }
   }
-  
+
   // Si no hay CUITs, return null
   if (allCUITs.length === 0) {
     return null;
   }
-  
+
   // Si solo hay 1 CUIT, devolverlo (es el del proveedor)
   if (allCUITs.length === 1) {
     return allCUITs[0].cuit;
   }
-  
+
   // Si hay múltiples CUITs:
-  // 1. Preferir el que NO tenga "cliente" o "comprador" cerca
-  const proveedorCUITs = allCUITs.filter(item => 
-    !item.context.includes('cliente') && 
-    !item.context.includes('comprador') &&
-    !item.context.includes('destinatario')
-  );
-  
-  if (proveedorCUITs.length > 0) {
-    // Devolver el primero (suele estar arriba en el documento)
-    return proveedorCUITs[0].cuit;
+  // 1. PRIMERO: Excluir los que están en la sección del cliente
+  const notInClientSection = allCUITs.filter(item => !item.isInClientSection);
+  const firstNotInClient = notInClientSection[0];
+  if (notInClientSection.length >= 1 && firstNotInClient) {
+    logger.info(`✅ Selected provider CUIT (outside client section): ${firstNotInClient.cuit}`);
+    return firstNotInClient.cuit;
   }
-  
-  // Si todos tienen "cliente", devolver el primero de todos
-  // (el proveedor suele estar antes que el cliente)
-  return allCUITs[0].cuit;
+
+  // 2. Si no pudimos detectar sección del cliente, usar contexto de texto
+  const proveedorCUITs = allCUITs.filter(item =>
+    !item.context.includes('cliente') &&
+    !item.context.includes('comprador') &&
+    !item.context.includes('destinatario') &&
+    !item.context.includes('responsable inscripto') // El cliente suele tener esta etiqueta
+  );
+
+  const firstProveedorCUIT = proveedorCUITs[0];
+  if (firstProveedorCUIT) {
+    logger.info(`✅ Selected provider CUIT (by context filter): ${firstProveedorCUIT.cuit}`);
+    return firstProveedorCUIT.cuit;
+  }
+
+  // 3. Último recurso: devolver el que está más arriba (índice más bajo)
+  // El proveedor suele estar en el encabezado
+  const sorted = [...allCUITs].sort((a, b) => a.index - b.index);
+  const firstSorted = sorted[0];
+  if (firstSorted) {
+    logger.info(`⚠️ Falling back to first CUIT by position: ${firstSorted.cuit}`);
+    return firstSorted.cuit;
+  }
+
+  return null;
 }
 
 function calculateConfidence(blocks: Block[]): number {
