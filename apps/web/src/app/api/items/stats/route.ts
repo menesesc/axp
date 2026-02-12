@@ -144,6 +144,57 @@ export async function GET(request: NextRequest) {
       ORDER BY mes ASC
     `, ...params)
 
+    // Items with biggest price variation (comparing first and last price)
+    const priceVariationRaw = await prisma.$queryRawUnsafe<Array<{
+      descripcion: string
+      precio_inicial: number
+      precio_final: number
+      fecha_inicial: Date
+      fecha_final: Date
+      variacion_pct: number
+      compras: number
+    }>>(`
+      WITH item_prices AS (
+        SELECT
+          di.descripcion,
+          di."precioUnitario"::numeric as precio,
+          d."fechaEmision" as fecha,
+          ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" ASC) as rn_asc,
+          ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn_desc,
+          COUNT(*) OVER (PARTITION BY di.descripcion) as total_compras
+        FROM documento_items di
+        JOIN documentos d ON di."documentoId" = d.id
+        WHERE d."clienteId" = $1::uuid
+          AND di."precioUnitario" IS NOT NULL
+          AND di."precioUnitario" > 0
+      ),
+      first_last AS (
+        SELECT
+          descripcion,
+          MAX(CASE WHEN rn_asc = 1 THEN precio END) as precio_inicial,
+          MAX(CASE WHEN rn_desc = 1 THEN precio END) as precio_final,
+          MAX(CASE WHEN rn_asc = 1 THEN fecha END) as fecha_inicial,
+          MAX(CASE WHEN rn_desc = 1 THEN fecha END) as fecha_final,
+          MAX(total_compras) as compras
+        FROM item_prices
+        GROUP BY descripcion
+        HAVING MAX(total_compras) >= 2
+      )
+      SELECT
+        descripcion,
+        precio_inicial,
+        precio_final,
+        fecha_inicial,
+        fecha_final,
+        ROUND(((precio_final - precio_inicial) / precio_inicial * 100)::numeric, 1) as variacion_pct,
+        compras::int
+      FROM first_last
+      WHERE precio_inicial > 0
+        AND precio_final != precio_inicial
+      ORDER BY ABS((precio_final - precio_inicial) / precio_inicial) DESC
+      LIMIT 10
+    `, clienteId)
+
     // Group price history by item
     const priceHistoryByItem: Record<string, Array<{ fecha: string; precio: number }>> = {}
     for (const row of priceHistoryRaw) {
@@ -176,6 +227,13 @@ export async function GET(request: NextRequest) {
         mes: row.mes,
         totalItems: Number(row.total_items),
         totalSubtotal: row.total_subtotal ? Number(row.total_subtotal) : 0,
+      })),
+      priceVariation: priceVariationRaw.map(row => ({
+        descripcion: row.descripcion,
+        precioInicial: Number(row.precio_inicial),
+        precioFinal: Number(row.precio_final),
+        variacionPct: Number(row.variacion_pct),
+        compras: row.compras,
       })),
     })
   } catch (error) {

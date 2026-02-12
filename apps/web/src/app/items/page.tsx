@@ -32,12 +32,15 @@ import {
   ChevronRight,
   Package,
   TrendingUp,
+  TrendingDown,
   BarChart3,
   FileText,
   Filter,
   X,
   Calendar,
   Loader2,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react'
 
 function PdfButton({ pdfKey }: { pdfKey: string | null }) {
@@ -143,6 +146,13 @@ interface ItemStats {
     mes: string
     totalItems: number
     totalSubtotal: number
+  }>
+  priceVariation: Array<{
+    descripcion: string
+    precioInicial: number
+    precioFinal: number
+    variacionPct: number
+    compras: number
   }>
 }
 
@@ -665,6 +675,44 @@ export default function ItemsPage() {
                 </div>
               ))}
               {!stats?.topItems.length && (
+                <p className="text-sm text-slate-400">Sin datos</p>
+              )}
+            </div>
+
+            {/* Price Variation */}
+            <div className="bg-white border rounded-lg p-4">
+              <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Mayor variación de precio
+              </h3>
+              {stats?.priceVariation?.slice(0, 5).map((item, i) => {
+                const isUp = item.variacionPct > 0
+                return (
+                  <div
+                    key={i}
+                    className="py-2 border-b last:border-0"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate flex-1" title={item.descripcion}>
+                        {item.descripcion}
+                      </p>
+                      <div className={`flex items-center gap-0.5 text-sm font-semibold ${isUp ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {isUp ? (
+                          <ArrowUpRight className="h-4 w-4" />
+                        ) : (
+                          <ArrowDownRight className="h-4 w-4" />
+                        )}
+                        {isUp ? '+' : ''}{item.variacionPct}%
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-500 mt-1">
+                      <span>{formatCurrency(item.precioInicial)} → {formatCurrency(item.precioFinal)}</span>
+                      <span>{item.compras} compras</span>
+                    </div>
+                  </div>
+                )
+              })}
+              {!stats?.priceVariation?.length && (
                 <p className="text-sm text-slate-400">Sin datos</p>
               )}
             </div>
