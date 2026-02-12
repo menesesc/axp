@@ -648,7 +648,7 @@ export default function ItemsPage() {
                     <p className="text-sm font-medium truncate flex-1" title={item.descripcion}>
                       {item.descripcion}
                     </p>
-                    {item.priceHistory.length >= 2 && (
+                    {item.priceHistory?.length >= 2 && (
                       <Sparkline
                         data={item.priceHistory.map(p => p.precio)}
                         width={60}
