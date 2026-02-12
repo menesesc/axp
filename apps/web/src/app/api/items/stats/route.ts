@@ -92,6 +92,39 @@ export async function GET(request: NextRequest) {
       LIMIT 15
     `, ...params)
 
+    // Price history for top items (last 10 purchases per item)
+    const topDescriptions = topItemsRaw.slice(0, 5).map(i => i.descripcion)
+    let priceHistoryRaw: Array<{
+      descripcion: string
+      fecha: Date
+      precio_unitario: number | null
+    }> = []
+
+    if (topDescriptions.length > 0) {
+      priceHistoryRaw = await prisma.$queryRawUnsafe<Array<{
+        descripcion: string
+        fecha: Date
+        precio_unitario: number | null
+      }>>(`
+        WITH ranked_prices AS (
+          SELECT
+            di.descripcion,
+            d."fechaEmision" as fecha,
+            di."precioUnitario"::numeric as precio_unitario,
+            ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn
+          FROM documento_items di
+          JOIN documentos d ON di."documentoId" = d.id
+          WHERE d."clienteId" = $1::uuid
+            AND di.descripcion = ANY($2::text[])
+            AND di."precioUnitario" IS NOT NULL
+        )
+        SELECT descripcion, fecha, precio_unitario
+        FROM ranked_prices
+        WHERE rn <= 10
+        ORDER BY descripcion, fecha ASC
+      `, clienteId, topDescriptions)
+    }
+
     // Monthly trend
     const monthlyTrendRaw = await prisma.$queryRawUnsafe<Array<{
       mes: string
@@ -111,6 +144,19 @@ export async function GET(request: NextRequest) {
       ORDER BY mes ASC
     `, ...params)
 
+    // Group price history by item
+    const priceHistoryByItem: Record<string, Array<{ fecha: string; precio: number }>> = {}
+    for (const row of priceHistoryRaw) {
+      const desc = row.descripcion
+      if (!priceHistoryByItem[desc]) {
+        priceHistoryByItem[desc] = []
+      }
+      priceHistoryByItem[desc].push({
+        fecha: row.fecha.toISOString().split('T')[0],
+        precio: row.precio_unitario ? Number(row.precio_unitario) : 0,
+      })
+    }
+
     return NextResponse.json({
       byProvider: byProviderRaw.map(row => ({
         proveedorId: row.proveedor_id,
@@ -124,6 +170,7 @@ export async function GET(request: NextRequest) {
         totalCantidad: row.total_cantidad ? Number(row.total_cantidad) : 0,
         totalSubtotal: row.total_subtotal ? Number(row.total_subtotal) : 0,
         proveedores: row.proveedores,
+        priceHistory: priceHistoryByItem[row.descripcion] || [],
       })),
       monthlyTrend: monthlyTrendRaw.map(row => ({
         mes: row.mes,

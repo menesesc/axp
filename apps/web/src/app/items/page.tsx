@@ -119,6 +119,11 @@ interface ItemsResponse {
   }
 }
 
+interface PricePoint {
+  fecha: string
+  precio: number
+}
+
 interface ItemStats {
   byProvider: Array<{
     proveedorId: string | null
@@ -132,12 +137,53 @@ interface ItemStats {
     totalCantidad: number
     totalSubtotal: number
     proveedores: number
+    priceHistory: PricePoint[]
   }>
   monthlyTrend: Array<{
     mes: string
     totalItems: number
     totalSubtotal: number
   }>
+}
+
+// Sparkline component - minimalist line chart
+function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: number; height?: number }) {
+  if (!data.length || data.length < 2) return null
+
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+
+  // Normalize data to fit in height
+  const normalized = data.map(v => ((v - min) / range) * (height - 4) + 2)
+
+  // Create path
+  const stepX = width / (data.length - 1)
+  const points = normalized.map((y, i) => `${i * stepX},${height - y}`).join(' ')
+
+  // Color based on trend (first vs last)
+  const trend = data[data.length - 1] - data[0]
+  const color = trend > 0 ? '#ef4444' : trend < 0 ? '#10b981' : '#94a3b8'
+
+  return (
+    <svg width={width} height={height} className="inline-block">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* End dot */}
+      <circle
+        cx={(data.length - 1) * stepX}
+        cy={height - normalized[normalized.length - 1]}
+        r="2"
+        fill={color}
+      />
+    </svg>
+  )
 }
 
 interface Proveedor {
@@ -598,9 +644,18 @@ export default function ItemsPage() {
                   key={i}
                   className="py-2 border-b last:border-0"
                 >
-                  <p className="text-sm font-medium truncate" title={item.descripcion}>
-                    {item.descripcion}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate flex-1" title={item.descripcion}>
+                      {item.descripcion}
+                    </p>
+                    {item.priceHistory.length >= 2 && (
+                      <Sparkline
+                        data={item.priceHistory.map(p => p.precio)}
+                        width={60}
+                        height={20}
+                      />
+                    )}
+                  </div>
                   <div className="flex justify-between text-xs text-slate-500 mt-1">
                     <span>{item.totalCantidad.toLocaleString()} unid.</span>
                     <span className="text-emerald-600 font-medium">

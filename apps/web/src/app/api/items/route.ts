@@ -48,10 +48,12 @@ export async function GET(request: NextRequest) {
 
     // Build main where clause
     const where: any = {
-      documentos: documentosWhere,
+      documentos: {
+        is: documentosWhere,
+      },
     }
 
-    // Search by description
+    // Search by description (using contains for partial match)
     if (q) {
       where.descripcion = {
         contains: q,
