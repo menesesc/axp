@@ -25,11 +25,30 @@ export async function GET(request: NextRequest) {
     const fechaDesde = searchParams.get('fechaDesde') || ''
     const fechaHasta = searchParams.get('fechaHasta') || ''
 
-    // Build where clause
+    // Build where clause for documento relation
+    const documentosWhere: any = {
+      clienteId,
+    }
+
+    // Filter by provider
+    if (proveedorId) {
+      documentosWhere.proveedorId = proveedorId
+    }
+
+    // Filter by date range
+    if (fechaDesde || fechaHasta) {
+      documentosWhere.fechaEmision = {}
+      if (fechaDesde) {
+        documentosWhere.fechaEmision.gte = new Date(fechaDesde)
+      }
+      if (fechaHasta) {
+        documentosWhere.fechaEmision.lte = new Date(fechaHasta)
+      }
+    }
+
+    // Build main where clause
     const where: any = {
-      documentos: {
-        clienteId,
-      },
+      documentos: documentosWhere,
     }
 
     // Search by description
@@ -37,22 +56,6 @@ export async function GET(request: NextRequest) {
       where.descripcion = {
         contains: q,
         mode: 'insensitive',
-      }
-    }
-
-    // Filter by provider
-    if (proveedorId) {
-      where.documentos.proveedorId = proveedorId
-    }
-
-    // Filter by date range
-    if (fechaDesde || fechaHasta) {
-      where.documentos.fechaEmision = {}
-      if (fechaDesde) {
-        where.documentos.fechaEmision.gte = new Date(fechaDesde)
-      }
-      if (fechaHasta) {
-        where.documentos.fechaEmision.lte = new Date(fechaHasta)
       }
     }
 
