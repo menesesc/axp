@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthUser, requireAdmin } from '@/lib/auth'
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
+
+// Configurar cliente R2 para eliminar archivos
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY
+
+const r2Client = R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
+  ? new S3Client({
+      region: 'auto',
+      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    })
+  : null
 
 // GET: Obtener un documento por ID con todos sus detalles
 export async function GET(
@@ -124,21 +141,31 @@ export async function PATCH(
       subtotal,
       iva,
       proveedorId,
-      estadoRevision,
+      // estadoRevision se calcula automáticamente, no se acepta del cliente
     } = body
 
     /**
      * Parsea fecha con timezone de Argentina (GMT-3).
      * Convierte "YYYY-MM-DD" a Date con hora mediodía en Argentina.
+     * Si la fecha es futura, usa la fecha actual.
      */
     const parseArgentinaDate = (dateStr: string | null | undefined): Date | null => {
       if (!dateStr) return null
+      let date: Date
       // Si ya tiene hora/timezone, parsear directamente
       if (dateStr.includes('T')) {
-        return new Date(dateStr)
+        date = new Date(dateStr)
+      } else {
+        // Para fechas YYYY-MM-DD, usar mediodía en Argentina (GMT-3)
+        date = new Date(`${dateStr}T12:00:00-03:00`)
       }
-      // Para fechas YYYY-MM-DD, usar mediodía en Argentina (GMT-3)
-      return new Date(`${dateStr}T12:00:00-03:00`)
+      // Validar que no sea fecha futura
+      const today = new Date()
+      today.setHours(23, 59, 59, 999) // Fin del día actual
+      if (date > today) {
+        return new Date() // Usar fecha actual si es futura
+      }
+      return date
     }
 
     // Construir objeto de actualización solo con campos presentes
@@ -151,15 +178,17 @@ export async function PATCH(
     if (fechaVencimiento !== undefined)
       updateData.fechaVencimiento = parseArgentinaDate(fechaVencimiento)
     if (letra !== undefined) updateData.letra = letra || null
-    if (numeroCompleto !== undefined)
-      updateData.numeroCompleto = numeroCompleto || null
+    if (numeroCompleto !== undefined) {
+      // Strip non-digits from numeroCompleto (keep only digits)
+      updateData.numeroCompleto = numeroCompleto ? numeroCompleto.replace(/\D/g, '') : null
+    }
     if (total !== undefined)
       updateData.total = total ? parseFloat(total) : null
     if (subtotal !== undefined)
       updateData.subtotal = subtotal ? parseFloat(subtotal) : null
     if (iva !== undefined) updateData.iva = iva ? parseFloat(iva) : null
     if (proveedorId !== undefined) updateData.proveedorId = proveedorId || null
-    if (estadoRevision !== undefined) updateData.estadoRevision = estadoRevision
+    // estadoRevision se calcula automáticamente abajo
 
     // Actualizar documento
     const documento = await prisma.documentos.update({
@@ -196,15 +225,17 @@ export async function PATCH(
     if (!documento.subtotal) missingFields.push('subtotal')
     if (!documento.iva) missingFields.push('iva')
 
-    // Determinar nuevo estado (solo auto-cambiar si el usuario no lo especificó)
-    let newEstado = documento.estadoRevision
-    if (estadoRevision === undefined) {
-      // Auto-confirmar solo si no hay campos faltantes y estaba pendiente
-      if (
-        missingFields.length === 0 &&
-        documento.estadoRevision === 'PENDIENTE'
-      ) {
+    // Determinar nuevo estado automáticamente basado en los campos
+    let newEstado: 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO' = documento.estadoRevision as any
+
+    // Solo cambiar estado si no es ERROR o DUPLICADO (estados manuales)
+    if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO') {
+      if (missingFields.length === 0) {
+        // Tiene todos los campos requeridos
         newEstado = 'CONFIRMADO'
+      } else {
+        // Faltan campos
+        newEstado = 'PENDIENTE'
       }
     }
 
@@ -249,6 +280,100 @@ export async function PATCH(
     console.error('Error updating documento:', error)
     return NextResponse.json(
       { error: 'Failed to update documento' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE: Eliminar un documento y sus archivos de R2
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // Requiere permisos de administrador
+    const { user, error: authError } = await requireAdmin()
+    if (authError) return authError
+
+    const clienteId = user?.clienteId
+
+    if (!clienteId) {
+      return NextResponse.json(
+        { error: 'No tienes una empresa asignada' },
+        { status: 403 }
+      )
+    }
+
+    const { id } = await params
+
+    // Obtener documento con sus keys de PDF y cliente (para el bucket)
+    const documento = await prisma.documentos.findUnique({
+      where: { id },
+      select: {
+        clienteId: true,
+        pdfRawKey: true,
+        pdfFinalKey: true,
+        clientes: {
+          select: { cuit: true },
+        },
+      },
+    })
+
+    if (!documento) {
+      return NextResponse.json({ error: 'Documento not found' }, { status: 404 })
+    }
+
+    if (documento.clienteId !== clienteId) {
+      return NextResponse.json(
+        { error: 'No tienes acceso a este documento' },
+        { status: 403 }
+      )
+    }
+
+    // Eliminar archivos de R2 si tenemos cliente configurado
+    if (r2Client && documento.clientes?.cuit) {
+      const bucket = `axp-client-${documento.clientes.cuit}`
+
+      // Eliminar PDF procesado
+      if (documento.pdfFinalKey) {
+        try {
+          await r2Client.send(new DeleteObjectCommand({
+            Bucket: bucket,
+            Key: documento.pdfFinalKey,
+          }))
+        } catch (e) {
+          console.warn(`Failed to delete pdfFinalKey from R2: ${documento.pdfFinalKey}`, e)
+        }
+      }
+
+      // Eliminar PDF raw (si es diferente del final)
+      if (documento.pdfRawKey && documento.pdfRawKey !== documento.pdfFinalKey) {
+        try {
+          await r2Client.send(new DeleteObjectCommand({
+            Bucket: bucket,
+            Key: documento.pdfRawKey,
+          }))
+        } catch (e) {
+          console.warn(`Failed to delete pdfRawKey from R2: ${documento.pdfRawKey}`, e)
+        }
+      }
+    }
+
+    // Eliminar items del documento primero (FK constraint)
+    await prisma.documento_items.deleteMany({
+      where: { documentoId: id },
+    })
+
+    // Eliminar el documento
+    await prisma.documentos.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true, message: 'Documento eliminado' })
+  } catch (error) {
+    console.error('Error deleting documento:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete documento' },
       { status: 500 }
     )
   }

@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Menu,
   Activity,
+  Package,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +28,7 @@ import { useState } from 'react'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Documentos', href: '/documentos', icon: FileText, badge: true },
+  { name: 'Items', href: '/items', icon: Package },
   { name: 'Proveedores', href: '/proveedores', icon: Users },
   { name: 'Pagos', href: '/pagos', icon: CreditCard },
   { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },

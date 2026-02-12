@@ -20,13 +20,14 @@ interface Documento {
   numeroCompleto: string | null
   fechaEmision: string | null
   total: number | null
-  estadoRevision: 'PENDIENTE' | 'CONFIRMADO'
+  estadoRevision: 'PENDIENTE' | 'CONFIRMADO' | 'PAGADO'
   confidenceScore: number | null
   pdfFinalKey: string | null
   proveedores: {
     id: string
     razonSocial: string
   } | null
+  pagoId?: string | null
   _count?: {
     documento_items: number
   }
@@ -55,6 +56,7 @@ export default function DocumentosPage() {
   const [sinItems, setSinItems] = useState(false)
   const [dateFrom, setDateFrom] = useState<Date | undefined>()
   const [dateTo, setDateTo] = useState<Date | undefined>()
+  const [quickDateFilter, setQuickDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth'>('all')
   const [page, setPage] = useState(1)
   const pageSize = 25
 
@@ -132,6 +134,29 @@ export default function DocumentosPage() {
     },
   })
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (documentoIds: string[]) => {
+      const res = await fetch('/api/documentos/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentoIds }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to delete')
+      }
+      return res.json()
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      setSelectedDocs(new Set())
+      toast.success(`${data.deletedCount} documentos eliminados`)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Error al eliminar documentos')
+    },
+  })
+
   const hasActiveFilters = !!(
     search ||
     (confidenceFilter && confidenceFilter !== 'all') ||
@@ -148,6 +173,7 @@ export default function DocumentosPage() {
     setSinItems(false)
     setDateFrom(undefined)
     setDateTo(undefined)
+    setQuickDateFilter('all')
     setPage(1)
   }
 
@@ -194,6 +220,14 @@ export default function DocumentosPage() {
       documentoIds: Array.from(selectedDocs),
       proveedorId: selectedProveedor === 'null' ? null : selectedProveedor,
     })
+  }
+
+  const handleBulkDelete = () => {
+    if (selectedDocs.size === 0 || !isAdmin) return
+    if (!confirm(`¿Estás seguro de eliminar ${selectedDocs.size} documento${selectedDocs.size > 1 ? 's' : ''}? Esta acción no se puede deshacer.`)) {
+      return
+    }
+    bulkDeleteMutation.mutate(Array.from(selectedDocs))
   }
 
   const handleConfirmDoc = (_docId: string) => {
@@ -281,6 +315,8 @@ export default function DocumentosPage() {
           dateTo={dateTo}
           onDateFromChange={(d) => { setDateFrom(d); setPage(1) }}
           onDateToChange={(d) => { setDateTo(d); setPage(1) }}
+          quickDateFilter={quickDateFilter}
+          onQuickDateFilterChange={(v) => { setQuickDateFilter(v); setPage(1) }}
           onClearFilters={handleClearFilters}
           hasActiveFilters={hasActiveFilters}
         />
@@ -339,8 +375,10 @@ export default function DocumentosPage() {
             onProveedorChange={setSelectedProveedor}
             onAssign={handleBulkAssign}
             onAddToPayment={handleAddToPayment}
+            onDelete={handleBulkDelete}
             onCancel={() => setSelectedDocs(new Set())}
             isAssigning={bulkAssignMutation.isPending}
+            isDeleting={bulkDeleteMutation.isPending}
             canAddToPayment={paymentValidation.canAdd}
             {...(paymentValidation.reason ? { paymentDisabledReason: paymentValidation.reason } : {})}
           />

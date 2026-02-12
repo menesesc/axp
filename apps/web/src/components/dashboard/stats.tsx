@@ -108,9 +108,13 @@ export function DashboardStats({ clienteId }: { clienteId: string }) {
         icon={<DollarSign className="h-5 w-5 text-emerald-500" />}
       />
       <StatsCard
-        title="Total Documentos"
+        title="Documentos"
         value={stats?.totalDocumentos || 0}
-        description="En toda la base"
+        description={
+          stats?.documentosMesLimite
+            ? `${stats.documentosEsteMes || 0} este mes (quedan ${stats.documentosRestantes})`
+            : `${stats?.documentosEsteMes || 0} este mes`
+        }
         icon={<TrendingUp className="h-5 w-5" />}
       />
       <StatsCard

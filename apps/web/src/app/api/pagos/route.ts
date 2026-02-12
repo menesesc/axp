@@ -3,10 +3,16 @@ import { getAuthUser, requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
+const paymentAttachmentSchema = z.object({
+  key: z.string(),
+  filename: z.string(),
+})
+
 const createPagoSchema = z.object({
   proveedorId: z.string().uuid(),
   fecha: z.string().transform((s) => new Date(s)),
   nota: z.string().optional().nullable(),
+  emitir: z.boolean().optional().default(false),
   documentos: z.array(z.object({
     documentoId: z.string().uuid(),
     montoAplicado: z.number().positive(),
@@ -14,6 +20,9 @@ const createPagoSchema = z.object({
   metodos: z.array(z.object({
     tipo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'ECHEQ']),
     monto: z.number().positive(),
+    fecha: z.string().optional(),
+    referencia: z.string().optional(),
+    attachments: z.array(paymentAttachmentSchema).optional(),
   })),
 })
 
@@ -145,26 +154,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear la orden de pago con transacción
+    const pagoId = crypto.randomUUID()
+    const estadoInicial = data.emitir ? 'EMITIDA' : 'BORRADOR'
+
     const pago = await prisma.$transaction(async (tx) => {
-      // Crear el pago
-      const nuevoPago = await tx.pagos.create({
-        data: {
-          id: crypto.randomUUID(),
-          clienteId: user.clienteId!,
-          proveedorId: data.proveedorId,
-          fecha: data.fecha,
-          estado: 'BORRADOR',
-          montoTotal,
-          nota: data.nota || null,
-          updatedAt: new Date(),
-        },
-      })
+      // Crear el pago usando SQL directo para evitar problemas con el enum
+      await tx.$executeRaw`
+        INSERT INTO pagos (id, "clienteId", "proveedorId", fecha, estado, "montoTotal", nota, "updatedAt")
+        VALUES (
+          ${pagoId}::uuid,
+          ${user.clienteId}::uuid,
+          ${data.proveedorId}::uuid,
+          ${data.fecha},
+          ${estadoInicial}::"EstadoPago",
+          ${montoTotal},
+          ${data.nota || null},
+          NOW()
+        )
+      `
 
       // Crear los documentos asociados
       for (const doc of data.documentos) {
         await tx.pago_documentos.create({
           data: {
-            pagoId: nuevoPago.id,
+            pagoId: pagoId,
             documentoId: doc.documentoId,
             montoAplicado: doc.montoAplicado,
           },
@@ -173,17 +186,37 @@ export async function POST(request: NextRequest) {
 
       // Crear los métodos de pago
       for (const m of data.metodos) {
+        // Build meta object with optional fields
+        const meta: { fecha?: string; referencia?: string; attachments?: { key: string; filename: string }[] } = {}
+        if (m.fecha) meta.fecha = m.fecha
+        if (m.referencia) meta.referencia = m.referencia
+        if (m.attachments && m.attachments.length > 0) {
+          meta.attachments = m.attachments
+        }
+
         await tx.pago_metodos.create({
           data: {
             id: crypto.randomUUID(),
-            pagoId: nuevoPago.id,
+            pagoId: pagoId,
             tipo: m.tipo as 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE',
             monto: m.monto,
+            meta: meta as object,
           },
         })
       }
 
-      return nuevoPago
+      // Si se emite la orden, marcar los documentos como PAGADO
+      if (data.emitir) {
+        const documentoIds = data.documentos.map((d) => d.documentoId)
+        await tx.$executeRaw`
+          UPDATE documentos
+          SET "estadoRevision" = 'PAGADO'::"EstadoRevision", "updatedAt" = NOW()
+          WHERE id = ANY(${documentoIds}::uuid[])
+        `
+      }
+
+      // Obtener el pago creado
+      return tx.pagos.findUnique({ where: { id: pagoId } })
     })
 
     return NextResponse.json({ pago }, { status: 201 })

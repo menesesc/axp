@@ -34,7 +34,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Obtener documentos confirmados de este proveedor
+  // Obtener IDs de documentos que ya están en alguna orden de pago
+  const docsEnPago = await prisma.pago_documentos.findMany({
+    select: { documentoId: true },
+  })
+  const docsEnPagoIds = new Set(docsEnPago.map((d) => d.documentoId))
+
+  // Obtener documentos confirmados de este proveedor que no están pagados
   const documentos = await prisma.documentos.findMany({
     where: {
       clienteId: user.clienteId,
@@ -53,8 +59,15 @@ export async function GET(request: NextRequest) {
     orderBy: { fechaEmision: 'asc' },
   })
 
+  // Filtrar documentos que no están en una orden de pago
+  const documentosPendientes = documentos.filter((d) => !docsEnPagoIds.has(d.id))
+
   return NextResponse.json({
-    documentos,
+    documentos: documentosPendientes.map((d) => ({
+      ...d,
+      total: d.total ? Number(d.total) : null,
+      confidenceScore: d.confidenceScore ? Number(d.confidenceScore) : null,
+    })),
     proveedor: {
       id: proveedor.id,
       razonSocial: proveedor.razonSocial,

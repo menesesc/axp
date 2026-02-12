@@ -1,7 +1,6 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfidenceAverage } from '@/components/ui/confidence-badge'
 import {
   PieChart,
   Pie,
@@ -14,7 +13,7 @@ import {
 interface StatusChartProps {
   pendientes: number
   confirmados: number
-  confidencePromedio: number
+  confidencePromedio?: number
   isLoading?: boolean
 }
 
@@ -26,7 +25,6 @@ const COLORS = {
 export function StatusChart({
   pendientes,
   confirmados,
-  confidencePromedio,
   isLoading,
 }: StatusChartProps) {
   const data = [
@@ -66,56 +64,43 @@ export function StatusChart({
             Sin datos
           </div>
         ) : (
-          <>
-            <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={data}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {data.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => [
-                      (value as number).toLocaleString('es-AR'),
-                      'Documentos',
-                    ]}
-                    contentStyle={{
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                    }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    formatter={(value: string) => (
-                      <span className="text-xs text-slate-600">{value}</span>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="border-t pt-3 mt-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Confianza OCR promedio</span>
-                <span className="font-medium text-slate-700">
-                  {confidencePromedio.toFixed(0)}%
-                </span>
-              </div>
-              <div className="mt-2">
-                <ConfidenceAverage score={confidencePromedio} />
-              </div>
-            </div>
-          </>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={70}
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [
+                    (value as number).toLocaleString('es-AR'),
+                    'Documentos',
+                  ]}
+                  contentStyle={{
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value: string) => (
+                    <span className="text-xs text-slate-600">{value}</span>
+                  )}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </CardContent>
     </Card>

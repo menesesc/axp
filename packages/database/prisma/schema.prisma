@@ -28,7 +28,7 @@ model documento_items {
   id             String     @id @db.Uuid
   documentoId    String     @db.Uuid
   linea          Int
-  descripcion    String @db.Uuid
+  descripcion    String     @db.Text
   codigo         String?    @db.VarChar(100)
   cantidad       Decimal?   @db.Decimal(14, 3)
   unidad         String?    @db.VarChar(20)

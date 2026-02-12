@@ -22,7 +22,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard, FileIcon } from 'lucide-react'
+import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard, FileIcon, Loader2, Banknote } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 
 interface Document {
   id: string
@@ -31,9 +33,10 @@ interface Document {
   numeroCompleto: string | null
   fechaEmision: string | null
   total: number | null
-  estadoRevision: 'PENDIENTE' | 'CONFIRMADO'
+  estadoRevision: 'PENDIENTE' | 'CONFIRMADO' | 'PAGADO'
   confidenceScore: number | null
   pdfFinalKey: string | null
+  pagoId?: string | null
   proveedores: {
     id: string
     razonSocial: string
@@ -41,6 +44,59 @@ interface Document {
   _count?: {
     documento_items: number
   }
+}
+
+function PdfButton({ pdfKey }: { pdfKey: string | null }) {
+  const [isLoading, setIsLoading] = useState(false)
+
+  const openPdf = async () => {
+    if (!pdfKey) return
+    setIsLoading(true)
+    try {
+      const res = await fetch(`/api/pdf?key=${encodeURIComponent(pdfKey)}`)
+      const data = await res.json()
+      if (data.error) {
+        toast.error(data.error)
+        return
+      }
+      window.open(data.url, '_blank')
+    } catch {
+      toast.error('Error al abrir el PDF')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (!pdfKey) {
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        disabled
+        title="PDF no disponible"
+      >
+        <FileIcon className="h-4 w-4 text-slate-300" />
+      </Button>
+    )
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8"
+      onClick={openPdf}
+      disabled={isLoading}
+      title="Ver PDF"
+    >
+      {isLoading ? (
+        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+      ) : (
+        <FileIcon className="h-4 w-4 text-blue-600" />
+      )}
+    </Button>
+  )
 }
 
 interface DocumentsTableProps {
@@ -81,6 +137,7 @@ export function DocumentsTable({
               <TableHead>Items</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead>PDF</TableHead>
+              <TableHead>Pago</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -99,6 +156,7 @@ export function DocumentsTable({
                 <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-4" /></TableCell>
               </TableRow>
@@ -142,6 +200,7 @@ export function DocumentsTable({
             <TableHead className="w-16 text-center">Items</TableHead>
             <TableHead className="text-right w-28">Total</TableHead>
             <TableHead className="w-10">PDF</TableHead>
+            <TableHead className="w-10">Pago</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -201,25 +260,29 @@ export function DocumentsTable({
                 </Link>
               </TableCell>
               <TableCell onClick={(e) => e.stopPropagation()}>
-                {doc.pdfFinalKey ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => window.open(`/documento/${doc.id}?pdf=1`, '_blank')}
-                    title="Ver PDF"
-                  >
-                    <FileIcon className="h-4 w-4 text-blue-600" />
-                  </Button>
+                <PdfButton pdfKey={doc.pdfFinalKey} />
+              </TableCell>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                {doc.pagoId ? (
+                  <Link href={`/pagos/${doc.pagoId}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Ver orden de pago"
+                    >
+                      <Banknote className="h-4 w-4 text-green-600" />
+                    </Button>
+                  </Link>
                 ) : (
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
                     disabled
-                    title="PDF no disponible"
+                    title="Sin orden de pago"
                   >
-                    <FileIcon className="h-4 w-4 text-slate-300" />
+                    <Banknote className="h-4 w-4 text-slate-300" />
                   </Button>
                 )}
               </TableCell>
@@ -251,6 +314,14 @@ export function DocumentsTable({
                       <DropdownMenuItem onClick={() => onAddToPayment?.(doc.id)}>
                         <CreditCard className="h-4 w-4 mr-2" />
                         Agregar a pago
+                      </DropdownMenuItem>
+                    )}
+                    {doc.pagoId && (
+                      <DropdownMenuItem asChild>
+                        <Link href={`/pagos/${doc.pagoId}`}>
+                          <Banknote className="h-4 w-4 mr-2" />
+                          Ver orden de pago
+                        </Link>
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem>

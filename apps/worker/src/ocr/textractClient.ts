@@ -177,7 +177,14 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
       numeroCompleto = null;
     }
   }
-  
+
+  // VALIDACIÓN: Rechazar si parece ser un CAE (14 dígitos)
+  // El CAE es un código de autorización de AFIP con 14 dígitos
+  if (numeroCompleto && numeroCompleto.length === 14) {
+    logger.warn(`⚠️  INVOICE_RECEIPT_ID "${numeroCompletoRaw}" looks like a CAE (14 digits), rejecting`);
+    numeroCompleto = null;
+  }
+
   // Extracción básica (se reemplaza más abajo con smart extraction)
   const subtotalBasic = parseTextractAmount(getFieldValue('SUBTOTAL'));
   const ivaBasic = parseTextractAmount(getFieldValue('TAX'));
@@ -415,10 +422,26 @@ function extractFechaEmisionFromText(lines: string[]): string | null {
 /**
  * Extrae el número de factura del texto crudo
  * Busca patrones como "FACTURA A00012-00013515" o "A 0001-00013515"
+ * IMPORTANTE: Excluye números de CAE que tienen 14 dígitos sin guión
  */
 function extractNumeroFacturaFromText(lines: string[]): string | null {
+  // Helper para verificar si una línea contiene referencia a CAE
+  const isCAELine = (line: string): boolean => {
+    return /\bCAE\b/i.test(line);
+  };
+
+  // Helper para verificar si es un número de CAE (14 dígitos continuos)
+  const isCAENumber = (num: string): boolean => {
+    // CAE típico: 14 dígitos sin guiones ni espacios
+    const cleanNum = num.replace(/[-\s]/g, '');
+    return /^\d{14}$/.test(cleanNum);
+  };
+
   // Patrón 1: "FACTURA A00012-00013515" o "FACTURA A 00012-00013515"
   for (const line of lines) {
+    // Saltar líneas que mencionan CAE
+    if (isCAELine(line)) continue;
+
     // Buscar número de factura con formato típico argentino
     // Formato: [Letra][PtoVta 4-5 dígitos]-[Número 8 dígitos]
     const match = line.match(/FACTURA\s*([ABC])?[\s-]*(\d{4,5})[-\s]*(\d{8})/i);
@@ -431,11 +454,30 @@ function extractNumeroFacturaFromText(lines: string[]): string | null {
     }
   }
 
-  // Patrón 2: Línea con formato "A00012-00013515" o similar cerca de FACTURA
+  // Patrón 2: "Comp. Nro" o "Comprobante" con formato PtoVta-Numero
+  for (const line of lines) {
+    // Saltar líneas que mencionan CAE
+    if (isCAELine(line)) continue;
+
+    // Buscar "Comp. Nro:" seguido de formato con guión (más específico)
+    const match = line.match(/(?:Comp\.?\s*(?:Nro\.?)?|Comprobante)\s*:?\s*(\d{4,5})[-\s](\d{8})/i);
+    if (match && match[1] && match[2]) {
+      const ptoVta = match[1].padStart(5, '0');
+      const numero = match[2];
+      const result = `${ptoVta}${numero}`;
+      logger.info(`📝 Found invoice number from Comp. Nro pattern: ${result}`);
+      return result;
+    }
+  }
+
+  // Patrón 3: Línea con formato "A00012-00013515" o "0001-00013515" cerca del inicio
   for (let i = 0; i < Math.min(15, lines.length); i++) {
     const line = lines[i] || '';
-    // Buscar patrón de número de factura sin la palabra FACTURA
-    const match = line.match(/^[ABC]?(\d{4,5})[-\s](\d{8})$/);
+    // Saltar líneas que mencionan CAE
+    if (isCAELine(line)) continue;
+
+    // Buscar patrón de número de factura con guión obligatorio
+    const match = line.match(/^[ABC]?(\d{4,5})-(\d{8})$/);
     if (match && match[1] && match[2]) {
       const ptoVta = match[1].padStart(5, '0');
       const numero = match[2];
@@ -445,12 +487,28 @@ function extractNumeroFacturaFromText(lines: string[]): string | null {
     }
   }
 
-  // Patrón 3: Buscar "Comp. Nro:" o "Nro:" seguido de número
-  for (const line of lines) {
-    const match = line.match(/(?:Comp\.?\s*Nro\.?|N[°º]|Número)\s*:?\s*(\d{12,13})/i);
+  // Patrón 4: Buscar "Nro:" o "Número:" seguido de 12-13 dígitos (formato concatenado)
+  // PERO solo si NO es un CAE (verificar contexto)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] || '';
+    // Saltar líneas que mencionan CAE
+    if (isCAELine(line)) continue;
+
+    // También verificar líneas cercanas para contexto CAE
+    const prevLine = lines[i - 1] || '';
+    const nextLine = lines[i + 1] || '';
+    if (isCAELine(prevLine) || isCAELine(nextLine)) continue;
+
+    const match = line.match(/(?:N[°º]|Número)\s*:?\s*(\d{12,13})/i);
     if (match && match[1]) {
-      logger.info(`📝 Found invoice number from Nro pattern: ${match[1]}`);
-      return match[1];
+      const num = match[1];
+      // Verificar que no sea un CAE (14 dígitos) y tenga formato válido
+      if (!isCAENumber(num)) {
+        logger.info(`📝 Found invoice number from Nro pattern: ${num}`);
+        return num;
+      } else {
+        logger.info(`📝 Skipping CAE-like number: ${num}`);
+      }
     }
   }
 

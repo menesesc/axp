@@ -10,6 +10,7 @@ import { StatusChart } from '@/components/dashboard/status-chart'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { PaymentsSummary } from '@/components/dashboard/payments-summary'
 import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
+import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { toast } from 'sonner'
 
 export default function Home() {
@@ -68,6 +69,9 @@ export default function Home() {
   const confirmados = stats?.totalConfirmados || 0
   const confidencePromedio = stats?.confidencePromedio ?? 0
   const documentosPorDia = stats?.documentosPorDia || []
+  const totalesPorProveedor = stats?.totalesPorProveedor || []
+  const documentosEsteMes = stats?.documentosEsteMes || 0
+  const documentosMesLimite = stats?.documentosMesLimite ?? null
 
   const handleUpload = () => {
     toast.info('Función de subida próximamente')
@@ -103,17 +107,20 @@ export default function Home() {
           pendientes={pendientes}
           confirmados={confirmados}
           confidencePromedio={confidencePromedio}
+          documentosEsteMes={documentosEsteMes}
+          documentosMesLimite={documentosMesLimite}
           isLoading={statsLoading}
         />
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Recent Documents - 2 cols */}
-          <div className="lg:col-span-2">
+          {/* Left column - Recent docs + Provider chart */}
+          <div className="lg:col-span-2 space-y-4">
             <RecentDocumentsCard documents={recentDocs} isLoading={docsLoading} />
+            <ProviderTotalsChart data={totalesPorProveedor} isLoading={statsLoading} />
           </div>
 
-          {/* Charts - 1 col */}
+          {/* Right column - Charts */}
           <div className="space-y-4">
             <StatusChart
               pendientes={pendientes}

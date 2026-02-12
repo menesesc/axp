@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { prisma } from '@/lib/prisma'
 import { determineEstadoRevision, calculateMissingFields } from '@/lib/documento-estado'
 import { requireAdmin } from '@/lib/auth'
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 // POST: Asignar proveedor a múltiples documentos
 export async function POST(request: NextRequest) {
   try {
-    // Requiere permisos de administrador
+    // Autenticar usuario (solo admin puede asignar)
     const { user, error: authError } = await requireAdmin()
     if (authError) return authError
 
@@ -25,7 +20,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { documentoIds, proveedorId } = body
+    const { documentoIds, proveedorId: rawProveedorId } = body
+
+    // Normalizar proveedorId: convertir string "null" a null real
+    const proveedorId = rawProveedorId === 'null' || rawProveedorId === '' ? null : rawProveedorId
 
     if (!Array.isArray(documentoIds) || documentoIds.length === 0) {
       return NextResponse.json(
@@ -37,23 +35,18 @@ export async function POST(request: NextRequest) {
     // Si proveedorId es null, estamos desasignando
     // Si tiene valor, verificamos que el proveedor existe y pertenece al cliente
     if (proveedorId) {
-      const { data: proveedor, error: proveedorError } = await supabaseAdmin
-        .from('proveedores')
-        .select('id, activo, clienteId')
-        .eq('id', proveedorId)
-        .single()
+      const proveedor = await prisma.proveedores.findFirst({
+        where: {
+          id: proveedorId,
+          clienteId,
+        },
+        select: { id: true, activo: true },
+      })
 
-      if (proveedorError || !proveedor) {
+      if (!proveedor) {
         return NextResponse.json(
           { error: 'Proveedor no encontrado' },
           { status: 404 }
-        )
-      }
-
-      if (proveedor.clienteId !== clienteId) {
-        return NextResponse.json(
-          { error: 'El proveedor no pertenece a tu empresa' },
-          { status: 403 }
         )
       }
 
@@ -65,21 +58,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Primero obtener los documentos completos para verificar todos los campos
-    // Solo documentos que pertenezcan al cliente del usuario
-    const { data: documentos, error: fetchError } = await supabaseAdmin
-      .from('documentos')
-      .select('id, clienteId, fechaEmision, total, letra, numeroCompleto, subtotal, iva')
-      .in('id', documentoIds)
-      .eq('clienteId', clienteId)
-
-    if (fetchError) {
-      console.error('Error fetching documents:', fetchError)
-      return NextResponse.json(
-        { error: 'Failed to fetch documents' },
-        { status: 500 }
-      )
-    }
+    // Obtener los documentos completos para verificar todos los campos
+    const documentos = await prisma.documentos.findMany({
+      where: {
+        id: { in: documentoIds },
+        clienteId,
+      },
+      select: {
+        id: true,
+        clienteId: true,
+        fechaEmision: true,
+        total: true,
+        letra: true,
+        numeroCompleto: true,
+        subtotal: true,
+        iva: true,
+      },
+    })
 
     if (!documentos || documentos.length === 0) {
       return NextResponse.json(
@@ -89,58 +84,46 @@ export async function POST(request: NextRequest) {
     }
 
     // Actualizar cada documento evaluando su estado completo
-    const updates = documentos.map(async (doc) => {
+    const updatePromises = documentos.map(async (doc) => {
       // El documento con el nuevo proveedorId
       const docParaEvaluar = {
         clienteId: doc.clienteId,
         proveedorId: proveedorId || null,
         fechaEmision: doc.fechaEmision,
-        total: doc.total,
+        total: doc.total ? Number(doc.total) : null,
         letra: doc.letra,
         numeroCompleto: doc.numeroCompleto,
-        subtotal: doc.subtotal,
-        iva: doc.iva,
+        subtotal: doc.subtotal ? Number(doc.subtotal) : null,
+        iva: doc.iva ? Number(doc.iva) : null,
       }
 
       // Evaluar estado y calcular campos faltantes
       const estadoRevision = determineEstadoRevision(docParaEvaluar)
       const missingFields = calculateMissingFields(docParaEvaluar)
 
-      return supabaseAdmin
-        .from('documentos')
-        .update({
+      return prisma.documentos.update({
+        where: { id: doc.id },
+        data: {
           proveedorId: proveedorId || null,
-          estadoRevision,
+          estadoRevision: estadoRevision as any,
           missingFields,
-          updatedAt: new Date().toISOString(),
-        })
-        .eq('id', doc.id)
-        .select('id')
+          updatedAt: new Date(),
+        },
+        select: { id: true },
+      })
     })
 
-    const results = await Promise.all(updates)
-
-    // Verificar si hubo errores
-    const errors = results.filter((r) => r.error)
-    if (errors.length > 0) {
-      console.error('Error updating documents:', errors)
-      return NextResponse.json(
-        { error: 'Failed to update some documents' },
-        { status: 500 }
-      )
-    }
-
-    const updatedDocs = results.map((r) => r.data?.[0]).filter(Boolean)
+    const updatedDocs = await Promise.all(updatePromises)
 
     return NextResponse.json({
       message: `${updatedDocs.length} documentos actualizados correctamente`,
       updatedCount: updatedDocs.length,
-      documentoIds: updatedDocs.map((d) => d?.id).filter(Boolean),
+      documentoIds: updatedDocs.map((d) => d.id),
     })
   } catch (error) {
     console.error('Error in bulk assign:', error)
     return NextResponse.json(
-      { error: 'Failed to bulk assign proveedor' },
+      { error: 'Error al asignar proveedor' },
       { status: 500 }
     )
   }

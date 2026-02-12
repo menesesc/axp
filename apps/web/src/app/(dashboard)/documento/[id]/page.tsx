@@ -16,7 +16,9 @@ import {
   ExternalLink,
   Copy,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useUser } from '@/hooks/use-user'
 
 const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), {
@@ -99,17 +101,31 @@ export default function DocumentoPage() {
     staleTime: 1000 * 60 * 5,
   })
 
-  const { data: pdfData } = useQuery<{ url: string }>({
+  // Fetch proveedores for selector
+  const { data: proveedoresData } = useQuery<{ proveedores: Array<{ id: string; razonSocial: string }> }>({
+    queryKey: ['proveedores'],
+    queryFn: async () => {
+      const res = await fetch('/api/proveedores')
+      if (!res.ok) throw new Error('Failed to fetch proveedores')
+      return res.json()
+    },
+    enabled: isAdmin,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const { data: pdfData, isLoading: pdfLoading, isFetched: pdfFetched } = useQuery<{ url: string } | null>({
     queryKey: ['pdf-url', data?.documento.pdfFinalKey || data?.documento.pdfRawKey],
     queryFn: async () => {
       const key = data?.documento.pdfFinalKey || data?.documento.pdfRawKey
-      if (!key) throw new Error('No PDF key available')
+      if (!key) return null
       const res = await fetch(`/api/pdf?key=${encodeURIComponent(key)}`)
+      if (res.status === 404) return null // PDF no existe en R2
       if (!res.ok) throw new Error('Failed to get PDF URL')
       return res.json()
     },
     enabled: !!(data?.documento.pdfFinalKey || data?.documento.pdfRawKey),
     staleTime: 1000 * 60 * 30,
+    retry: false, // No reintentar si falla
   })
 
   const updateMutation = useMutation({
@@ -127,8 +143,33 @@ export default function DocumentoPage() {
       queryClient.invalidateQueries({ queryKey: ['documentos'] })
       setIsEditing(false)
       setEditData({})
+      toast.success('Documento actualizado')
     },
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/documentos/${documentoId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      toast.success('Documento eliminado')
+      router.push('/documentos')
+    },
+    onError: () => {
+      toast.error('Error al eliminar documento')
+    },
+  })
+
+  const handleDelete = () => {
+    if (confirm('¿Estás seguro de eliminar este documento? Esta acción no se puede deshacer.')) {
+      deleteMutation.mutate()
+    }
+  }
 
   const handleStartEdit = () => {
     if (!data?.documento || !isAdmin) return
@@ -140,7 +181,7 @@ export default function DocumentoPage() {
       iva: data.documento.iva ?? '',
       letra: data.documento.letra || '',
       numeroCompleto: data.documento.numeroCompleto || '',
-      estadoRevision: data.documento.estadoRevision,
+      proveedorId: data.documento.proveedores?.id || '',
     })
     setIsEditing(true)
   }
@@ -313,7 +354,21 @@ export default function DocumentoPage() {
                 </div>
 
                 {isEditing && (
+                  <>
                   <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Proveedor</label>
+                      <select
+                        value={editData.proveedorId}
+                        onChange={(e) => setEditData({ ...editData, proveedorId: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Sin asignar</option>
+                        {proveedoresData?.proveedores?.map((p) => (
+                          <option key={p.id} value={p.id}>{p.razonSocial}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Emisión</label>
                       <input
@@ -385,19 +440,24 @@ export default function DocumentoPage() {
                         className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Estado</label>
-                      <select
-                        value={editData.estadoRevision || documento.estadoRevision}
-                        onChange={(e) => setEditData({ ...editData, estadoRevision: e.target.value })}
-                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="PENDIENTE">Pendiente</option>
-                        <option value="CONFIRMADO">Confirmado</option>
-                        <option value="ERROR">Error</option>
-                        <option value="DUPLICADO">Duplicado</option>
-                      </select>
-                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    El estado se calcula automáticamente según los campos completados.
+                  </p>
+                  </>
+                )}
+
+                {/* Delete button */}
+                {!isEditing && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleteMutation.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded text-xs font-medium disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar documento'}
+                    </button>
                   </div>
                 )}
               </div>
@@ -448,7 +508,12 @@ export default function DocumentoPage() {
 
           {/* Right - PDF */}
           <div className="lg:sticky lg:top-16 h-fit space-y-2">
-            {pdfData?.url ? (
+            {pdfLoading || !pdfFetched ? (
+              <div className="bg-white rounded-lg border border-gray-200 h-[500px] flex flex-col items-center justify-center gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+                <p className="text-sm text-gray-500">Cargando PDF...</p>
+              </div>
+            ) : pdfData?.url ? (
               <>
                 <PDFViewer url={pdfData.url} />
                 <a
@@ -462,8 +527,10 @@ export default function DocumentoPage() {
                 </a>
               </>
             ) : (
-              <div className="bg-white rounded-lg border border-gray-200 h-[400px] flex items-center justify-center">
-                <p className="text-sm text-gray-400">PDF no disponible</p>
+              <div className="bg-white rounded-lg border border-gray-200 h-[400px] flex flex-col items-center justify-center gap-2">
+                <AlertCircle className="w-8 h-8 text-gray-300" />
+                <p className="text-sm text-gray-500 font-medium">PDF no disponible</p>
+                <p className="text-xs text-gray-400">El archivo no se encuentra en el almacenamiento</p>
               </div>
             )}
           </div>

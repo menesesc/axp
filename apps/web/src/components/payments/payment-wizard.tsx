@@ -26,10 +26,31 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { PaymentMethodsEditor, PaymentMethodLine } from './payment-methods-editor'
+import { Separator } from '@/components/ui/separator'
+import { PaymentMethodsEditor, PaymentMethodLine, PaymentAttachment } from './payment-methods-editor'
+import { PaymentMethodBadge } from '@/components/ui/payment-method-badge'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, ArrowRight, Check, FileText, Users, CreditCard } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  FileText,
+  CreditCard,
+  ClipboardList,
+  Download,
+  Share2,
+  MessageCircle,
+  Mail,
+  Loader2,
+  CheckCircle,
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface Proveedor {
   id: string
@@ -62,14 +83,23 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
   const [fecha, setFecha] = useState<Date>(new Date())
   const [nota, setNota] = useState('')
   const [methods, setMethods] = useState<PaymentMethodLine[]>([])
+  const [createdPagoId, setCreatedPagoId] = useState<string | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
-  // Cargar documentos preseleccionados desde sessionStorage
+  // Cargar documentos preseleccionados y proveedor desde sessionStorage
   useEffect(() => {
-    const pending = sessionStorage.getItem('pendingPaymentDocs')
-    if (pending) {
-      const docIds = JSON.parse(pending) as string[]
+    const pendingDocs = sessionStorage.getItem('pendingPaymentDocs')
+    const pendingProveedor = sessionStorage.getItem('pendingPaymentProveedor')
+
+    if (pendingDocs) {
+      const docIds = JSON.parse(pendingDocs) as string[]
       setSelectedDocs(new Set(docIds))
       sessionStorage.removeItem('pendingPaymentDocs')
+    }
+
+    if (pendingProveedor) {
+      setSelectedProveedor(pendingProveedor)
+      sessionStorage.removeItem('pendingPaymentProveedor')
     }
   }, [])
 
@@ -100,10 +130,12 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
   })
 
   const documentos: Documento[] = docsData?.documentos || []
+  const proveedorNombre = proveedores.find(p => p.id === selectedProveedor)?.razonSocial || ''
 
   // Calcular total de documentos seleccionados
   const selectedDocsList = documentos.filter((d) => selectedDocs.has(d.id))
   const totalOrden = selectedDocsList.reduce((sum, d) => sum + (d.total || 0), 0)
+  const totalMetodos = methods.reduce((sum, m) => sum + m.monto, 0)
 
   // Mutation para crear la orden
   const createMutation = useMutation({
@@ -111,8 +143,9 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
       proveedorId: string
       fecha: Date
       nota: string
+      emitir: boolean
       documentos: { documentoId: string; montoAplicado: number }[]
-      metodos: { tipo: string; monto: number; fecha?: Date; referencia?: string }[]
+      metodos: { tipo: string; monto: number; fecha?: string; referencia?: string; attachments?: PaymentAttachment[] }[]
     }) => {
       const res = await fetch('/api/pagos', {
         method: 'POST',
@@ -127,8 +160,8 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pagos'] })
-      toast.success('Orden de pago creada')
-      router.push(`/pagos/${data.pago.id}`)
+      setCreatedPagoId(data.pago.id)
+      toast.success('Orden de pago emitida')
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -151,10 +184,8 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
     }
   }
 
-  const handleSubmit = (saveAsDraft: boolean) => {
-    const totalMetodos = methods.reduce((sum, m) => sum + m.monto, 0)
-
-    if (!saveAsDraft && Math.abs(totalOrden - totalMetodos) > 0.01) {
+  const handleSubmit = () => {
+    if (Math.abs(totalOrden - totalMetodos) > 0.01) {
       toast.error('El total de pagos no coincide con el total de la orden')
       return
     }
@@ -163,6 +194,7 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
       proveedorId: selectedProveedor,
       fecha,
       nota,
+      emitir: true,
       documentos: selectedDocsList.map((d) => ({
         documentoId: d.id,
         montoAplicado: d.total || 0,
@@ -170,10 +202,71 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
       metodos: methods.map((m) => ({
         tipo: m.tipo,
         monto: m.monto,
-        ...(m.fecha && { fecha: m.fecha }),
+        ...(m.fecha && { fecha: m.fecha.toISOString() }),
         ...(m.referencia && { referencia: m.referencia }),
+        ...(m.attachments && m.attachments.length > 0 && { attachments: m.attachments }),
       })),
     })
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!createdPagoId) return
+    setIsDownloading(true)
+    try {
+      const res = await fetch(`/api/pagos/${createdPagoId}/pdf`)
+      if (!res.ok) throw new Error('Error al generar PDF')
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `orden-pago-${createdPagoId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('PDF descargado')
+    } catch {
+      toast.error('Error al descargar PDF')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleShareWhatsApp = async () => {
+    if (!createdPagoId) return
+    setIsDownloading(true)
+    try {
+      const res = await fetch(`/api/pagos/${createdPagoId}/pdf`)
+      if (!res.ok) throw new Error('Error al generar PDF')
+
+      const blob = await res.blob()
+      const file = new File([blob], `orden-pago-${createdPagoId}.pdf`, { type: 'application/pdf' })
+
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `Orden de pago - ${proveedorNombre}`,
+          files: [file],
+        })
+      } else {
+        handleDownloadPdf()
+        toast.info('Descarga el PDF y compártelo manualmente por WhatsApp')
+      }
+    } catch {
+      toast.error('Error al compartir')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleShareEmail = () => {
+    const subject = encodeURIComponent(`Orden de pago - ${proveedorNombre}`)
+    const body = encodeURIComponent(
+      `Adjunto la orden de pago para ${proveedorNombre} por ${formatCurrency(totalOrden)}.\n\nFecha: ${formatDate(fecha)}`
+    )
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank')
+    toast.info('Descarga el PDF y adjúntalo al correo')
+    handleDownloadPdf()
   }
 
   const toggleDoc = (docId: string) => {
@@ -195,15 +288,91 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
   }
 
   const stepIcons = {
-    1: Users,
-    2: FileText,
-    3: CreditCard,
+    1: FileText,
+    2: CreditCard,
+    3: ClipboardList,
   }
 
   const stepTitles = {
-    1: 'Elegir proveedor y documentos',
-    2: 'Confirmar documentos',
-    3: 'Formas de pago',
+    1: 'Documentos a pagar',
+    2: 'Formas de pago',
+    3: 'Resumen y confirmación',
+  }
+
+  // Si ya se creó la orden, mostrar pantalla de éxito
+  if (createdPagoId) {
+    return (
+      <div className="space-y-6">
+        <Card className="border shadow-sm">
+          <CardContent className="pt-8 pb-8">
+            <div className="text-center space-y-4">
+              <div className="flex justify-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <CheckCircle className="h-8 w-8 text-emerald-600" />
+                </div>
+              </div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Orden de pago emitida
+              </h2>
+              <p className="text-slate-500">
+                La orden de pago para {proveedorNombre} por {formatCurrency(totalOrden)} ha sido creada exitosamente.
+              </p>
+
+              <div className="flex items-center justify-center gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloading}
+                >
+                  {isDownloading ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-1.5" />
+                  )}
+                  Descargar PDF
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" disabled={isDownloading}>
+                      <Share2 className="h-4 w-4 mr-1.5" />
+                      Compartir
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center">
+                    <DropdownMenuItem onClick={handleShareWhatsApp}>
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareEmail}>
+                      <Mail className="h-4 w-4 mr-2" />
+                      Email
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  variant="primary"
+                  onClick={() => router.push(`/pagos/${createdPagoId}`)}
+                >
+                  Ver orden
+                </Button>
+              </div>
+
+              <div className="pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => router.push('/pagos')}
+                  className="text-slate-500"
+                >
+                  Volver a órdenes de pago
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -250,27 +419,43 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
           <CardTitle className="text-base">{stepTitles[step]}</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Step 1: Elegir proveedor y documentos */}
+          {/* Step 1: Documentos a pagar */}
           {step === 1 && (
             <div className="space-y-4">
-              <div className="max-w-xs">
-                <Label>Proveedor</Label>
-                <Select value={selectedProveedor} onValueChange={setSelectedProveedor}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar proveedor..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {proveedores.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.razonSocial}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label>Proveedor</Label>
+                  <Select value={selectedProveedor} onValueChange={setSelectedProveedor}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar proveedor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {proveedores.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.razonSocial}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Fecha de la orden</Label>
+                  <DatePicker date={fecha} onDateChange={(d) => setFecha(d || new Date())} />
+                </div>
+                <div>
+                  <Label>Observaciones</Label>
+                  <Input
+                    placeholder="Notas (opcional)..."
+                    value={nota}
+                    onChange={(e) => setNota(e.target.value)}
+                  />
+                </div>
               </div>
 
               {selectedProveedor && (
                 <>
+                  <Separator className="my-4" />
+
                   <div className="text-sm text-slate-500">
                     Documentos pendientes de pago
                   </div>
@@ -292,7 +477,7 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
                           <TableRow>
                             <TableHead className="w-10">
                               <Checkbox
-                                checked={selectedDocs.size === documentos.length}
+                                checked={selectedDocs.size === documentos.length && documentos.length > 0}
                                 onCheckedChange={toggleAll}
                               />
                             </TableHead>
@@ -343,75 +528,145 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
             </div>
           )}
 
-          {/* Step 2: Confirmar documentos */}
+          {/* Step 2: Formas de pago */}
           {step === 2 && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Fecha de la orden</Label>
-                  <DatePicker date={fecha} onDateChange={(d) => setFecha(d || new Date())} />
-                </div>
-                <div>
-                  <Label>Nota (opcional)</Label>
-                  <Input
-                    placeholder="Observaciones..."
-                    value={nota}
-                    onChange={(e) => setNota(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="text-sm text-slate-500 mt-4">
-                Documentos incluidos en la orden
-              </div>
-
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Documento</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Confianza</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedDocsList.map((doc) => (
-                      <TableRow key={doc.id}>
-                        <TableCell>
-                          {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
-                        </TableCell>
-                        <TableCell className="text-slate-500">
-                          {doc.fechaEmision ? formatDate(doc.fechaEmision) : '-'}
-                        </TableCell>
-                        <TableCell>
-                          <ConfidenceBadge score={doc.confidenceScore || 0} />
-                        </TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {doc.total ? formatCurrency(doc.total) : '-'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="flex justify-end pt-2 border-t">
-                <span className="text-slate-500">Total de la orden:</span>
-                <span className="ml-2 text-lg font-semibold text-slate-900">
-                  {formatCurrency(totalOrden)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Formas de pago */}
-          {step === 3 && (
             <PaymentMethodsEditor
               methods={methods}
               onChange={setMethods}
               totalOrden={totalOrden}
             />
+          )}
+
+          {/* Step 3: Resumen y confirmación */}
+          {step === 3 && (
+            <div className="space-y-6">
+              {/* Información general */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-500">Proveedor:</span>
+                  <span className="ml-2 font-medium">{proveedorNombre}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Fecha:</span>
+                  <span className="ml-2 font-medium">{formatDate(fecha)}</span>
+                </div>
+                {nota && (
+                  <div className="col-span-2">
+                    <span className="text-slate-500">Observaciones:</span>
+                    <span className="ml-2">{nota}</span>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Documentos */}
+              <div>
+                <h4 className="text-sm font-medium text-slate-900 mb-3">
+                  Documentos incluidos ({selectedDocsList.length})
+                </h4>
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Documento</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedDocsList.map((doc) => (
+                        <TableRow key={doc.id}>
+                          <TableCell>
+                            {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
+                          </TableCell>
+                          <TableCell className="text-slate-500">
+                            {doc.fechaEmision ? formatDate(doc.fechaEmision) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {doc.total ? formatCurrency(doc.total) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex justify-end pt-2 text-sm">
+                  <span className="text-slate-500">Total documentos:</span>
+                  <span className="ml-2 font-semibold">{formatCurrency(totalOrden)}</span>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Formas de pago */}
+              <div>
+                <h4 className="text-sm font-medium text-slate-900 mb-3">
+                  Formas de pago ({methods.length})
+                </h4>
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Método</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Referencia</TableHead>
+                        <TableHead>Comprobantes</TableHead>
+                        <TableHead className="text-right">Importe</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {methods.map((m) => (
+                        <TableRow key={m.id}>
+                          <TableCell>
+                            <PaymentMethodBadge method={m.tipo} />
+                          </TableCell>
+                          <TableCell className="text-slate-500">
+                            {formatDate(m.fecha)}
+                          </TableCell>
+                          <TableCell className="text-slate-500">
+                            {m.referencia || '-'}
+                          </TableCell>
+                          <TableCell>
+                            {m.attachments && m.attachments.length > 0 ? (
+                              <span className="text-xs text-blue-600">
+                                {m.attachments.length} PDF
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {formatCurrency(m.monto)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex justify-end pt-2 text-sm">
+                  <span className="text-slate-500">Total pagos:</span>
+                  <span className="ml-2 font-semibold">{formatCurrency(totalMetodos)}</span>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Total final */}
+              <div className="flex items-center justify-between bg-slate-50 rounded-lg p-4">
+                <span className="font-medium text-slate-700">Total de la orden:</span>
+                <span className="text-2xl font-bold text-slate-900">
+                  {formatCurrency(totalOrden)}
+                </span>
+              </div>
+
+              {Math.abs(totalOrden - totalMetodos) > 0.01 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                  El total de pagos ({formatCurrency(totalMetodos)}) no coincide con el total de documentos ({formatCurrency(totalOrden)}).
+                  Por favor ajusta las formas de pago.
+                </div>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -424,15 +679,6 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
         </Button>
 
         <div className="flex items-center gap-2">
-          {step === 3 && (
-            <Button
-              variant="outline"
-              onClick={() => handleSubmit(true)}
-              disabled={createMutation.isPending}
-            >
-              Guardar borrador
-            </Button>
-          )}
           {step < 3 ? (
             <Button variant="primary" onClick={handleNext}>
               Siguiente
@@ -441,10 +687,20 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
           ) : (
             <Button
               variant="primary"
-              onClick={() => handleSubmit(false)}
-              disabled={createMutation.isPending || methods.length === 0}
+              onClick={handleSubmit}
+              disabled={createMutation.isPending || methods.length === 0 || Math.abs(totalOrden - totalMetodos) > 0.01}
             >
-              {createMutation.isPending ? 'Creando...' : 'Emitir orden'}
+              {createMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Emitiendo...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-1.5" />
+                  Emitir orden
+                </>
+              )}
             </Button>
           )}
         </div>

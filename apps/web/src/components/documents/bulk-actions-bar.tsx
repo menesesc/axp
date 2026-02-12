@@ -8,7 +8,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { X, Users, CreditCard } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { X, Users, CreditCard, Trash2 } from 'lucide-react'
 
 interface Proveedor {
   id: string
@@ -22,8 +28,12 @@ interface BulkActionsBarProps {
   onProveedorChange: (value: string) => void
   onAssign: () => void
   onAddToPayment: () => void
+  onDelete: () => void
   onCancel: () => void
   isAssigning: boolean
+  isDeleting?: boolean
+  canAddToPayment?: boolean
+  paymentDisabledReason?: string
 }
 
 export function BulkActionsBar({
@@ -33,8 +43,12 @@ export function BulkActionsBar({
   onProveedorChange,
   onAssign,
   onAddToPayment,
+  onDelete,
   onCancel,
   isAssigning,
+  isDeleting = false,
+  canAddToPayment = true,
+  paymentDisabledReason,
 }: BulkActionsBarProps) {
   if (selectedCount === 0) return null
 
@@ -75,14 +89,41 @@ export function BulkActionsBar({
 
         <div className="h-4 w-px bg-slate-700" />
 
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onAddToPayment}
+                  disabled={!canAddToPayment}
+                  className="text-white hover:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                >
+                  <CreditCard className="h-4 w-4 mr-1.5" />
+                  Crear orden de pago
+                </Button>
+              </span>
+            </TooltipTrigger>
+            {!canAddToPayment && paymentDisabledReason && (
+              <TooltipContent side="top" className="max-w-xs">
+                <p>{paymentDisabledReason}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+
+        <div className="h-4 w-px bg-slate-700" />
+
         <Button
           size="sm"
           variant="ghost"
-          onClick={onAddToPayment}
-          className="text-white hover:bg-slate-800"
+          onClick={onDelete}
+          disabled={isDeleting}
+          className="text-red-400 hover:text-red-300 hover:bg-red-900/30"
         >
-          <CreditCard className="h-4 w-4 mr-1.5" />
-          Crear orden de pago
+          <Trash2 className="h-4 w-4 mr-1.5" />
+          {isDeleting ? 'Eliminando...' : 'Eliminar'}
         </Button>
 
         <button

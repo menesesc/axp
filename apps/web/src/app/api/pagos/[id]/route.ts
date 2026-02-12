@@ -62,13 +62,25 @@ export async function GET(
       id: pago.id,
       fecha: pago.fecha,
       estado: pago.estado,
-      montoTotal: pago.montoTotal,
+      montoTotal: Number(pago.montoTotal),
       nota: pago.nota,
       proveedor: pago.proveedores,
-      metodos: pago.pago_metodos,
+      metodos: pago.pago_metodos.map((m) => {
+        const meta = (m.meta || {}) as Record<string, unknown>
+        return {
+          id: m.id,
+          tipo: m.tipo,
+          monto: Number(m.monto),
+          fecha: meta.fecha || pago.fecha,
+          referencia: meta.referencia || null,
+          attachments: meta.attachments || [],
+        }
+      }),
       documentos: pago.pago_documentos.map((pd) => ({
         ...pd.documentos,
-        montoAplicado: pd.montoAplicado,
+        total: pd.documentos.total ? Number(pd.documentos.total) : null,
+        confidenceScore: pd.documentos.confidenceScore ? Number(pd.documentos.confidenceScore) : null,
+        montoAplicado: Number(pd.montoAplicado),
       })),
     },
   })
@@ -102,24 +114,29 @@ export async function PATCH(
       return NextResponse.json({ error: 'Pago no encontrado' }, { status: 404 })
     }
 
-    // Actualizar el pago - usar el estado existente si no se proporciona uno nuevo
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateData: any = {
-      updatedAt: new Date(),
-    }
-
+    // Actualizar el pago usando SQL directo para evitar problemas de tipos con el enum
     if (data.estado) {
-      // Mapear EMITIDA a un estado válido si no existe en el enum de Prisma
-      updateData.estado = data.estado === 'EMITIDA' ? 'BORRADOR' : data.estado
+      await prisma.$executeRaw`UPDATE pagos SET estado = ${data.estado}::"EstadoPago", "updatedAt" = NOW() WHERE id = ${id}::uuid`
+
+      // Si se emite la orden (estado = EMITIDA), marcar los documentos como PAGADO
+      if (data.estado === 'EMITIDA') {
+        await prisma.$executeRaw`
+          UPDATE documentos
+          SET "estadoRevision" = 'PAGADO'::"EstadoRevision", "updatedAt" = NOW()
+          WHERE id IN (
+            SELECT "documentoId" FROM pago_documentos WHERE "pagoId" = ${id}::uuid
+          )
+        `
+      }
     }
 
     if (data.nota !== undefined) {
-      updateData.nota = data.nota
+      await prisma.$executeRaw`UPDATE pagos SET nota = ${data.nota}, "updatedAt" = NOW() WHERE id = ${id}::uuid`
     }
 
-    const pagoActualizado = await prisma.pagos.update({
+    // Obtener el pago actualizado
+    const pagoActualizado = await prisma.pagos.findUnique({
       where: { id },
-      data: updateData,
       include: {
         proveedores: {
           select: {

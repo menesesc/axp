@@ -222,6 +222,7 @@ enum AccionRevision {
 
 enum EstadoPago {
   BORRADOR
+  EMITIDA
   PAGADO
   ANULADO
 }
@@ -231,6 +232,7 @@ enum EstadoRevision {
   CONFIRMADO
   ERROR
   DUPLICADO
+  PAGADO
 }
 
 enum LetraFactura {
@@ -274,4 +276,5 @@ enum TipoPagoMetodo {
   EFECTIVO
   TRANSFERENCIA
   CHEQUE
+  ECHEQ
 }

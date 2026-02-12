@@ -31,25 +31,33 @@ const generateId = (): string => {
  * Parsea una fecha string (YYYY-MM-DD) a Date con timezone de Argentina (GMT-3).
  * Las facturas argentinas usan fechas locales de Argentina, así que las guardamos
  * explícitamente en GMT-3 para evitar problemas de conversión.
+ * Si la fecha es futura, se usa la fecha actual.
  */
 const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
   if (!dateStr) return null;
 
+  let date: Date;
+
   // Si ya tiene timezone offset, parsearlo directamente
   if (dateStr.includes('+') || dateStr.includes('Z') || /-\d{2}:\d{2}$/.test(dateStr)) {
-    return new Date(dateStr);
-  }
-
-  // Si tiene hora pero no timezone, asumir Argentina (GMT-3)
-  if (dateStr.includes('T') || dateStr.includes(' ')) {
+    date = new Date(dateStr);
+  } else if (dateStr.includes('T') || dateStr.includes(' ')) {
+    // Si tiene hora pero no timezone, asumir Argentina (GMT-3)
     const normalized = dateStr.replace(' ', 'T');
-    return new Date(`${normalized}-03:00`);
+    date = new Date(`${normalized}-03:00`);
+  } else {
+    // Para fechas solo (YYYY-MM-DD), usar mediodía en Argentina (GMT-3)
+    date = new Date(`${dateStr}T12:00:00-03:00`);
   }
 
-  // Para fechas solo (YYYY-MM-DD), usar mediodía en Argentina (GMT-3)
-  // Esto garantiza que la fecha se interprete correctamente sin importar
-  // la timezone del servidor o del cliente
-  return new Date(`${dateStr}T12:00:00-03:00`);
+  // Validar que no sea fecha futura
+  const today = new Date();
+  today.setHours(23, 59, 59, 999); // Fin del día actual
+  if (date > today) {
+    return new Date(); // Usar fecha actual si es futura
+  }
+
+  return date;
 };
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { createDbLogger, flushAllLogs } from '../utils/dbLogger';
@@ -282,7 +290,28 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       items: parsed.items?.length || 0,
       confidence: parsed.confidenceScore,
     });
-    
+
+    // VALIDACIÓN ADICIONAL: Verificar que el número de factura no sea el CUIT del cliente
+    const cliente = await prisma.clientes.findUnique({
+      where: { id: file.clienteId },
+      select: { cuit: true, razonSocial: true },
+    });
+
+    if (cliente?.cuit && parsed.numeroCompleto) {
+      // Normalizar ambos CUITs (solo dígitos)
+      const clienteCuitNormalized = cliente.cuit.replace(/\D/g, '');
+      const numeroNormalized = parsed.numeroCompleto.replace(/\D/g, '');
+
+      if (numeroNormalized === clienteCuitNormalized) {
+        logger.warn(`⚠️  WARNING: numeroCompleto "${parsed.numeroCompleto}" matches cliente CUIT!`);
+        logger.warn(`   This is the client's CUIT, not the invoice number. Clearing.`);
+        parsed.numeroCompleto = null;
+        if (!parsed.missingFields.includes('numeroCompleto')) {
+          parsed.missingFields.push('numeroCompleto');
+        }
+      }
+    }
+
     // 6. Determinar fecha para organización (usar fechaEmision o fallback a fecha del filename)
     const organizationDate = parsed.fechaEmision 
       ? new Date(parsed.fechaEmision)
@@ -321,17 +350,16 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       logger.info(`   Razón Social: ${razonSocial}`);
       
       // VALIDACIÓN CRÍTICA: El CUIT del proveedor NO puede ser igual al del cliente
-      if (cuit) {
-        const cliente = await prisma.clientes.findUnique({
-          where: { id: file.clienteId },
-          select: { cuit: true, razonSocial: true },
-        });
-        
-        if (cliente && cliente.cuit === cuit) {
+      // (reutilizando el cliente que ya obtuvimos antes)
+      if (cuit && cliente?.cuit) {
+        const cuitNormalized = cuit.replace(/\D/g, '');
+        const clienteCuitNormalized = cliente.cuit.replace(/\D/g, '');
+
+        if (cuitNormalized === clienteCuitNormalized) {
           logger.warn(`⚠️  WARNING: CUIT ${cuit} matches cliente CUIT!`);
           logger.warn(`   This is likely the client's CUIT, not the supplier's.`);
           logger.warn(`   Ignoring this CUIT and searching only by razón social.`);
-          
+
           // Limpiar el CUIT para no usarlo (es del cliente, no del proveedor)
           parsed.proveedorCUIT = null;
         }
@@ -543,14 +571,72 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         }
       }
 
-      // ESTRATEGIA 5: Marcar para revisión manual si no encontró match
+      // ESTRATEGIA 5: Buscar por similitud de items/productos
+      // Si los items del documento coinciden con items de documentos anteriores de un proveedor
+      if (!proveedor && parsed.items && parsed.items.length > 0) {
+        logger.info(`🔍 Attempting item-based provider matching...`);
+
+        // Extraer palabras significativas de los items (>= 4 caracteres)
+        const significantWords = new Set<string>();
+        for (const item of parsed.items) {
+          const desc = (item.descripcion || '').toLowerCase().replace(/[^a-z0-9\s]/g, '');
+          const words = desc.split(/\s+/).filter((w: string) => w.length >= 4);
+          words.forEach((w: string) => significantWords.add(w));
+        }
+
+        const wordList = Array.from(significantWords).slice(0, 10); // Limitar a 10 palabras
+        logger.info(`   Significant words: ${wordList.join(', ')}`);
+
+        if (wordList.length >= 2) {
+          // Construir condiciones OR para cada palabra
+          const likeConditions = wordList
+            .map((word) => `LOWER(di.descripcion) LIKE '%${word.replace(/'/g, "''")}%'`)
+            .join(' OR ');
+
+          const sql = `
+            SELECT d."proveedorId", COUNT(DISTINCT di.descripcion) as "matchCount"
+            FROM documento_items di
+            JOIN documentos d ON di."documentoId" = d.id
+            WHERE d."clienteId" = '${file.clienteId}'::uuid
+              AND d."proveedorId" IS NOT NULL
+              AND (${likeConditions})
+            GROUP BY d."proveedorId"
+            HAVING COUNT(DISTINCT di.descripcion) >= 1
+            ORDER BY "matchCount" DESC
+            LIMIT 1
+          `;
+
+          try {
+            const matchingItems = await prisma.$queryRawUnsafe<Array<{ proveedorId: string; matchCount: bigint }>>(sql);
+
+            if (matchingItems.length > 0 && matchingItems[0]) {
+              const matchedProveedorId = matchingItems[0].proveedorId;
+              const matchedProveedor = await prisma.proveedores.findUnique({
+                where: { id: matchedProveedorId },
+                select: { id: true, razonSocial: true, letra: true, alias: true, cuit: true },
+              });
+
+              if (matchedProveedor) {
+                proveedor = matchedProveedor;
+                logger.info(`✅ Proveedor found by item matching: ${proveedor.id} (${proveedor.razonSocial})`);
+                logger.info(`   Matched ${matchingItems[0].matchCount} items with words: ${wordList.join(', ')}`);
+                proveedorLetra = proveedor.letra;
+              }
+            }
+          } catch (itemMatchError) {
+            logger.warn(`⚠️  Item matching query failed: ${itemMatchError}`);
+          }
+        }
+      }
+
+      // ESTRATEGIA 6: Marcar para revisión manual si no encontró match
       // NO crear automáticamente, requiere intervención humana
       if (!proveedor) {
         logger.warn(`⚠️  NO MATCH FOUND - Proveedor requires manual assignment`);
         logger.warn(`   OCR detected: "${razonSocial}"`);
         logger.warn(`   CUIT: ${cuit || 'not detected'}`);
         logger.warn(`   Document will be marked as PENDIENTE for manual review`);
-        
+
         // Dejar proveedorId en null - el documento se marcará como PENDIENTE
         // El usuario deberá asignar manualmente el proveedor correcto desde el dashboard
         proveedorId = null;
@@ -622,7 +708,8 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         letra: finalLetra, // Usar letra del proveedor si OCR no detectó
         puntoVenta: parsed.puntoVenta,
         numero: parsed.numero,
-        numeroCompleto: parsed.numeroCompleto,
+        // Guardar solo dígitos (sin guiones ni espacios)
+        numeroCompleto: parsed.numeroCompleto ? parsed.numeroCompleto.replace(/\D/g, '') : null,
         fechaEmision: parseLocalDate(parsed.fechaEmision),
         fechaVencimiento: parseLocalDate(finalFechaVencimiento),
         moneda: parsed.moneda || 'ARS',

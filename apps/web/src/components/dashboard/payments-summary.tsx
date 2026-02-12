@@ -18,6 +18,15 @@ interface PaymentOrder {
   }
 }
 
+function formatShortDate(dateStr: string): string {
+  if (!dateStr) return '--';
+  // Usar split para evitar problemas de timezone con fechas ISO
+  const datePart = dateStr.split('T')[0] || dateStr;
+  const parts = datePart.split('-');
+  if (parts.length < 3) return '--';
+  return `${parts[2]}-${parts[1]}`;
+}
+
 interface PaymentsSummaryProps {
   proveedoresConSaldo: number
   montoPendiente: number
@@ -110,15 +119,20 @@ export function PaymentsSummary({
                 <Link
                   key={orden.id}
                   href={`/pagos/${orden.id}`}
-                  className="flex items-center gap-3 py-2 px-2 -mx-2 rounded-md hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-2 py-2 px-2 -mx-2 rounded-md hover:bg-slate-50 transition-colors"
                 >
+                  <span className="text-[10px] text-slate-400 tabular-nums w-10 flex-shrink-0">
+                    {formatShortDate(orden.fecha)}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <span className="text-sm font-medium text-slate-900 truncate block">
                       {orden.proveedor.razonSocial}
                     </span>
                   </div>
-                  <StatusBadge status={orden.estado} />
-                  <span className="text-sm font-medium text-slate-900 tabular-nums">
+                  <div className="w-16 flex justify-center flex-shrink-0">
+                    <StatusBadge status={orden.estado} size="sm" />
+                  </div>
+                  <span className="text-xs font-medium text-slate-900 tabular-nums min-w-[100px] text-right flex-shrink-0">
                     {formatCurrency(orden.total)}
                   </span>
                 </Link>

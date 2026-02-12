@@ -13,11 +13,55 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { Search, SlidersHorizontal, X, Calendar } from 'lucide-react'
 
 interface Proveedor {
   id: string
   razonSocial: string
+}
+
+type QuickDateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth'
+
+function getDateRange(filter: QuickDateFilter): { desde: Date | undefined; hasta: Date | undefined } {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  switch (filter) {
+    case 'today':
+      return { desde: today, hasta: today }
+    case 'yesterday': {
+      const yesterday = new Date(today)
+      yesterday.setDate(yesterday.getDate() - 1)
+      return { desde: yesterday, hasta: yesterday }
+    }
+    case 'week': {
+      const weekStart = new Date(today)
+      const day = weekStart.getDay()
+      const diff = day === 0 ? 6 : day - 1
+      weekStart.setDate(weekStart.getDate() - diff)
+      return { desde: weekStart, hasta: today }
+    }
+    case 'lastWeek': {
+      const lastWeekEnd = new Date(today)
+      const day = lastWeekEnd.getDay()
+      const diffToLastSunday = day === 0 ? 7 : day
+      lastWeekEnd.setDate(lastWeekEnd.getDate() - diffToLastSunday)
+      const lastWeekStart = new Date(lastWeekEnd)
+      lastWeekStart.setDate(lastWeekStart.getDate() - 6)
+      return { desde: lastWeekStart, hasta: lastWeekEnd }
+    }
+    case 'month': {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+      return { desde: monthStart, hasta: today }
+    }
+    case 'lastMonth': {
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+      return { desde: lastMonthStart, hasta: lastMonthEnd }
+    }
+    default:
+      return { desde: undefined, hasta: undefined }
+  }
 }
 
 interface DocumentFiltersProps {
@@ -36,6 +80,8 @@ interface DocumentFiltersProps {
   dateTo?: Date | undefined
   onDateFromChange: (date: Date | undefined) => void
   onDateToChange: (date: Date | undefined) => void
+  quickDateFilter: QuickDateFilter
+  onQuickDateFilterChange: (filter: QuickDateFilter) => void
   onClearFilters: () => void
   hasActiveFilters: boolean
 }
@@ -56,13 +102,48 @@ export function DocumentFilters({
   dateTo,
   onDateFromChange,
   onDateToChange,
+  quickDateFilter,
+  onQuickDateFilterChange,
   onClearFilters,
   hasActiveFilters,
 }: DocumentFiltersProps) {
   const [showAdvanced, setShowAdvanced] = useState(false)
 
+  const handleQuickDateChange = (filter: QuickDateFilter) => {
+    onQuickDateFilterChange(filter)
+    const { desde, hasta } = getDateRange(filter)
+    onDateFromChange(desde)
+    onDateToChange(hasta)
+  }
+
   return (
     <div className="space-y-4">
+      {/* Quick Date Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-500 flex items-center gap-1.5 mr-1">
+          <Calendar className="h-4 w-4" />
+          Período:
+        </span>
+        {[
+          { value: 'all' as const, label: 'Todo' },
+          { value: 'today' as const, label: 'Hoy' },
+          { value: 'yesterday' as const, label: 'Ayer' },
+          { value: 'week' as const, label: 'Semana' },
+          { value: 'lastWeek' as const, label: 'Sem. Ant.' },
+          { value: 'month' as const, label: 'Mes' },
+          { value: 'lastMonth' as const, label: 'Mes Ant.' },
+        ].map((opt) => (
+          <Button
+            key={opt.value}
+            variant={quickDateFilter === opt.value ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleQuickDateChange(opt.value)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+
       {/* Main Filter Row */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Estado Tabs */}
@@ -71,6 +152,7 @@ export function DocumentFilters({
             <TabsTrigger value="all">Todos</TabsTrigger>
             <TabsTrigger value="PENDIENTE">Pendientes</TabsTrigger>
             <TabsTrigger value="CONFIRMADO">Confirmados</TabsTrigger>
+            <TabsTrigger value="PAGADO">Pagados</TabsTrigger>
           </TabsList>
         </Tabs>
 

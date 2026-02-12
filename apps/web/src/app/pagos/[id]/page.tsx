@@ -1,9 +1,9 @@
 'use client'
 
-import { use } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,7 +24,19 @@ import { Separator } from '@/components/ui/separator'
 import { useUser } from '@/hooks/use-user'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, CheckCircle, Download, Trash2 } from 'lucide-react'
+import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface Documento {
   id: string
@@ -37,12 +49,18 @@ interface Documento {
   montoAplicado: number
 }
 
+interface PaymentAttachment {
+  key: string
+  filename: string
+}
+
 interface PaymentMethodItem {
   id: string
   tipo: PaymentMethod
   monto: number
   fecha: string
   referencia: string | null
+  attachments?: PaymentAttachment[]
 }
 
 interface Pago {
@@ -60,15 +78,15 @@ interface Pago {
   documentos: Documento[]
 }
 
-export default function PagoDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
+export default function PagoDetailPage() {
+  const params = useParams()
+  const id = params.id as string
   const router = useRouter()
   const queryClient = useQueryClient()
   const { clienteId, isAdmin } = useUser()
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null)
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false)
 
   const { data, isLoading } = useQuery<{ pago: Pago }>({
     queryKey: ['pago', id],
@@ -117,6 +135,90 @@ export default function PagoDetailPage({
       toast.error('Error al eliminar la orden')
     },
   })
+
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true)
+    try {
+      const res = await fetch(`/api/pagos/${id}/pdf`)
+      if (!res.ok) throw new Error('Error al generar PDF')
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `orden-pago-${id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('PDF descargado')
+    } catch {
+      toast.error('Error al descargar PDF')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleShareWhatsApp = async () => {
+    setIsDownloading(true)
+    try {
+      const res = await fetch(`/api/pagos/${id}/pdf`)
+      if (!res.ok) throw new Error('Error al generar PDF')
+
+      const blob = await res.blob()
+      const file = new File([blob], `orden-pago-${id}.pdf`, { type: 'application/pdf' })
+
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `Orden de pago - ${pago?.proveedor.razonSocial}`,
+          files: [file],
+        })
+      } else {
+        // Fallback: download and show instructions
+        handleDownloadPdf()
+        toast.info('Descarga el PDF y compártelo manualmente por WhatsApp')
+      }
+    } catch {
+      toast.error('Error al compartir')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleShareEmail = () => {
+    if (!pago) return
+    const subject = encodeURIComponent(`Orden de pago - ${pago.proveedor.razonSocial}`)
+    const body = encodeURIComponent(
+      `Adjunto la orden de pago para ${pago.proveedor.razonSocial} por ${formatCurrency(pago.montoTotal)}.\n\nFecha: ${formatDate(pago.fecha)}`
+    )
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank')
+    toast.info('Descarga el PDF y adjúntalo al correo')
+    handleDownloadPdf()
+  }
+
+  const handleViewAttachment = async (key: string, filename: string) => {
+    setIsLoadingPdf(true)
+    try {
+      const res = await fetch(`/api/pagos/attachment?key=${encodeURIComponent(key)}`)
+      if (!res.ok) throw new Error('Error al obtener URL')
+      const data = await res.json()
+      setPdfPreview({ url: data.url, filename })
+    } catch {
+      toast.error('Error al cargar el comprobante')
+    } finally {
+      setIsLoadingPdf(false)
+    }
+  }
+
+  const handleOpenInNewTab = () => {
+    if (pdfPreview?.url) {
+      window.open(pdfPreview.url, '_blank')
+    }
+  }
+
+  const handlePrint = () => {
+    window.open(`/api/pagos/${id}/pdf?view=true`, '_blank')
+  }
 
   const pago = data?.pago
 
@@ -202,20 +304,43 @@ export default function PagoDetailPage({
                 </Button>
               </>
             )}
-            {pago.estado === 'EMITIDA' && (
-              <Button
-                variant="primary"
-                onClick={() => updateMutation.mutate('PAGADO')}
-                disabled={updateMutation.isPending}
-              >
-                <CheckCircle className="h-4 w-4 mr-1.5" />
-                Marcar como pagada
-              </Button>
-            )}
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-1.5" />
-              Exportar PDF
+            <Button
+              variant="outline"
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1.5" />
+              )}
+              Descargar PDF
             </Button>
+            <Button
+              variant="outline"
+              onClick={handlePrint}
+            >
+              <Printer className="h-4 w-4 mr-1.5" />
+              Imprimir
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={isDownloading}>
+                  <Share2 className="h-4 w-4 mr-1.5" />
+                  Compartir
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleShareWhatsApp}>
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  WhatsApp
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareEmail}>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Email
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {pago.estado === 'BORRADOR' && (
               <Button
                 variant="outline"
@@ -263,7 +388,7 @@ export default function PagoDetailPage({
                   <span className="font-medium">{formatCurrency(totalDocumentos)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Total métodos:</span>
+                  <span className="text-slate-500">Total pagos:</span>
                   <span className="font-medium">{formatCurrency(totalMetodos)}</span>
                 </div>
                 <Separator />
@@ -350,6 +475,7 @@ export default function PagoDetailPage({
                   <TableHead>Método</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Referencia</TableHead>
+                  <TableHead>Comprobantes</TableHead>
                   <TableHead className="text-right">Importe</TableHead>
                 </TableRow>
               </TableHeader>
@@ -365,6 +491,29 @@ export default function PagoDetailPage({
                     <TableCell className="text-slate-500">
                       {m.referencia || '-'}
                     </TableCell>
+                    <TableCell>
+                      {m.attachments && m.attachments.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {m.attachments.map((att, idx) => (
+                            <Button
+                              key={idx}
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => handleViewAttachment(att.key, att.filename)}
+                              disabled={isLoadingPdf}
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1" />
+                              <span className="text-xs truncate max-w-[100px]">
+                                {att.filename}
+                              </span>
+                            </Button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
                       {formatCurrency(m.monto)}
                     </TableCell>
@@ -374,6 +523,47 @@ export default function PagoDetailPage({
             </Table>
           </CardContent>
         </Card>
+
+        {/* PDF Preview Dialog */}
+        <Dialog open={!!pdfPreview} onOpenChange={(open) => !open && setPdfPreview(null)}>
+          <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0">
+            <DialogHeader className="px-4 py-3 border-b flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-sm font-medium truncate pr-4">
+                  {pdfPreview?.filename}
+                </DialogTitle>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOpenInNewTab}
+                    className="h-8"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1.5" />
+                    Abrir en nueva pestaña
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPdfPreview(null)}
+                    className="h-8 w-8"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </DialogHeader>
+            <div className="flex-1 min-h-0">
+              {pdfPreview?.url && (
+                <iframe
+                  src={pdfPreview.url}
+                  className="w-full h-full border-0"
+                  title={pdfPreview.filename}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

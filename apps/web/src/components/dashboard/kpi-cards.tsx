@@ -10,6 +10,8 @@ interface KpiCardsProps {
   pendientes: number
   confirmados: number
   confidencePromedio: number
+  documentosEsteMes?: number
+  documentosMesLimite?: number | null
   isLoading?: boolean
 }
 
@@ -18,17 +20,15 @@ export function KpiCards({
   pendientes,
   confirmados,
   confidencePromedio,
+  documentosEsteMes = 0,
+  documentosMesLimite,
   isLoading,
 }: KpiCardsProps) {
+  const porcentajeUsado = documentosMesLimite
+    ? Math.min(100, Math.round((documentosEsteMes / documentosMesLimite) * 100))
+    : 0
+
   const kpis = [
-    {
-      label: 'Documentos',
-      value: totalDocumentos,
-      icon: FileText,
-      description: 'Total en el sistema',
-      color: 'text-slate-600',
-      bgColor: 'bg-slate-100',
-    },
     {
       label: 'Pendientes',
       value: pendientes,
@@ -49,6 +49,47 @@ export function KpiCards({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Documentos Card con límite */}
+      <Card className="border shadow-sm">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm text-slate-500">Documentos</p>
+              <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
+                {isLoading ? '-' : (
+                  documentosMesLimite
+                    ? `${documentosEsteMes} / ${documentosMesLimite}`
+                    : documentosEsteMes.toLocaleString('es-AR')
+                )}
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {documentosMesLimite ? 'Límite este mes' : 'Este mes'}
+              </p>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-100">
+              <FileText className="h-4 w-4 text-slate-600" />
+            </div>
+          </div>
+          {documentosMesLimite && !isLoading && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-slate-500">{totalDocumentos.toLocaleString('es-AR')} total en sistema</span>
+                <span className="font-medium text-slate-700">{porcentajeUsado}%</span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-all',
+                    porcentajeUsado >= 90 ? 'bg-red-500' : porcentajeUsado >= 75 ? 'bg-amber-500' : 'bg-slate-600'
+                  )}
+                  style={{ width: `${porcentajeUsado}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {kpis.map((kpi) => {
         const Icon = kpi.icon
         return (
