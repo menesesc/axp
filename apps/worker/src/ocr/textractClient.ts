@@ -260,6 +260,10 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   const proveedorCUIT = extractProveedorCUIT(allText);
   const fechaVencimientoFallback = fechaVencimiento || extractFechaVencimiento(allText);
 
+  // Detectar tipo de documento (FACTURA, NOTA_CREDITO, REMITO)
+  const tipo = detectTipoDocumento(allText);
+  logger.info(`📋 Tipo documento detectado: ${tipo}`);
+
   // EXTRACCIÓN INTELIGENTE DE TOTALES
   // El total es siempre el más grande, subtotal + IVA = total
   const smartTotals = extractSmartTotals(summaryFields, allText);
@@ -290,7 +294,7 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
     : 0;
 
   const parsed = {
-    tipo: 'FACTURA',
+    tipo: tipo,
     letra: letra, // Detectada con extractor legacy
     puntoVenta: null,
     numero: null,
@@ -307,6 +311,19 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
     confidenceScore: confidenceScore,
     missingFields: [] as string[],
   };
+
+  // NOTA DE CREDITO: Los importes deben ser negativos
+  if (parsed.tipo === 'NOTA_CREDITO') {
+    if (parsed.subtotal && parsed.subtotal > 0) parsed.subtotal = -parsed.subtotal;
+    if (parsed.iva && parsed.iva > 0) parsed.iva = -parsed.iva;
+    if (parsed.total && parsed.total > 0) parsed.total = -parsed.total;
+    // Negar importes de items también
+    parsed.items = parsed.items.map((item: any) => ({
+      ...item,
+      subtotal: item.subtotal && item.subtotal > 0 ? -item.subtotal : item.subtotal,
+    }));
+    logger.info(`💳 Nota de crédito: importes negados → total: ${parsed.total}`);
+  }
 
   // Detectar campos faltantes (para missingFields en BD)
   // NOTA: fechaVencimiento NO es campo crítico - no incluir
@@ -697,11 +714,8 @@ function extractExpenseLineItems(lineItemGroups: any[]): any[] {
 }
 
 // ============================================================================
-// EXTRACTORS LEGACY (ya no se usan con AnalyzeExpense)
-// TODO: Eliminar estas funciones después de validar que AnalyzeExpense funciona correctamente
+// EXTRACTORS LEGACY (algunos reactivados para mejorar detección)
 // ============================================================================
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 function detectTipoDocumento(lines: string[]): 'FACTURA' | 'REMITO' | 'NOTA_CREDITO' {
   const text = lines.join(' ').toUpperCase();

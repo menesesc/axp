@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatTipoDocumento } from '@/lib/utils'
 import {
   ArrowLeft,
   Building2,
@@ -276,7 +276,7 @@ export default function DocumentoPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-base font-semibold text-gray-900">
-                    {documento.tipo} {documento.letra} {documento.numeroCompleto || 'S/N'}
+                    {formatTipoDocumento(documento.tipo)} {documento.letra} {documento.numeroCompleto || 'S/N'}
                   </h1>
                   {documento.numeroCompleto && (
                     <button onClick={handleCopyNumber} className="p-1 hover:bg-gray-100 rounded" title="Copiar">

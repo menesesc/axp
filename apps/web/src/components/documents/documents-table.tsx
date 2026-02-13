@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatTipoDocumento } from '@/lib/utils'
 import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard, FileIcon, Loader2, Banknote } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -227,7 +227,7 @@ export function DocumentsTable({
               <TableCell>
                 <Link href={`/documento/${doc.id}`} className="block">
                   <span className="font-medium text-slate-900">
-                    {doc.tipo} {doc.letra || ''}
+                    {formatTipoDocumento(doc.tipo)} {doc.letra || ''}
                   </span>
                   <span className="text-slate-500 ml-1">
                     {doc.numeroCompleto || 'S/N'}

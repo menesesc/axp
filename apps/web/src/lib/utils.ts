@@ -5,6 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+const tipoDocLabels: Record<string, string> = {
+  FACTURA: 'FACTURA',
+  NOTA_CREDITO: 'NOTA DE CREDITO',
+  REMITO: 'REMITO',
+}
+
+export function formatTipoDocumento(tipo: string): string {
+  return tipoDocLabels[tipo] || tipo
+}
+
 export function formatCurrency(amount: number | null): string {
   if (amount === null) return '-'
   return new Intl.NumberFormat('es-AR', {

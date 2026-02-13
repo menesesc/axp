@@ -36,6 +36,12 @@ function formatDate(date: Date | string): string {
   })
 }
 
+const tipoDocLabels: Record<string, string> = {
+  FACTURA: 'FACTURA',
+  NOTA_CREDITO: 'NOTA DE CREDITO',
+  REMITO: 'REMITO',
+}
+
 const estadoLabels: Record<string, string> = {
   BORRADOR: 'Borrador',
   EMITIDA: 'Emitida',
@@ -274,7 +280,7 @@ export async function GET(
     for (const pd of pago.pago_documentos) {
       const doc = pd.documentos
       const fechaStr = doc.fechaEmision ? formatDate(doc.fechaEmision) : '-'
-      const docName = `${doc.tipo} ${doc.letra || ''} ${doc.numeroCompleto || 'S/N'}`
+      const docName = `${tipoDocLabels[doc.tipo] || doc.tipo} ${doc.letra || ''} ${doc.numeroCompleto || 'S/N'}`
       const totalStr = doc.total ? formatCurrency(Number(doc.total)) : '-'
       totalDocs += Number(doc.total || 0)
 

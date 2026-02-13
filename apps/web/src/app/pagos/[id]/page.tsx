@@ -22,7 +22,7 @@ import { ConfidenceBadge } from '@/components/ui/confidence-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { useUser } from '@/hooks/use-user'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatTipoDocumento } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer } from 'lucide-react'
 import {
@@ -440,7 +440,7 @@ export default function PagoDetailPage() {
                         href={`/documento/${doc.id}`}
                         className="hover:underline"
                       >
-                        {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
+                        {formatTipoDocumento(doc.tipo)} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
                       </Link>
                     </TableCell>
                     <TableCell className="text-slate-500">
