@@ -67,6 +67,10 @@ export default function Home() {
   const totalDocumentos = stats?.totalDocumentos || 0
   const pendientes = stats?.totalPendientes || 0
   const confirmados = stats?.totalConfirmados || 0
+  const pagados = stats?.totalPagados || 0
+  const errores = stats?.totalErrores || 0
+  const duplicados = stats?.totalDuplicados || 0
+  const revisados = stats?.totalRevisados || 0
   const confidencePromedio = stats?.confidencePromedio ?? 0
   const documentosPorDia = stats?.documentosPorDia || []
   const totalesPorProveedor = stats?.totalesPorProveedor || []
@@ -105,7 +109,7 @@ export default function Home() {
         <KpiCards
           totalDocumentos={totalDocumentos}
           pendientes={pendientes}
-          confirmados={confirmados}
+          revisados={revisados}
           confidencePromedio={confidencePromedio}
           documentosEsteMes={documentosEsteMes}
           documentosMesLimite={documentosMesLimite}
@@ -125,7 +129,9 @@ export default function Home() {
             <StatusChart
               pendientes={pendientes}
               confirmados={confirmados}
-              confidencePromedio={confidencePromedio}
+              pagados={pagados}
+              errores={errores}
+              duplicados={duplicados}
               isLoading={statsLoading}
             />
             <DocumentsTrendCard data={documentosPorDia} isLoading={statsLoading} />

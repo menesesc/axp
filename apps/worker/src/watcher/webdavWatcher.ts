@@ -26,6 +26,7 @@ import {
   createLogger,
   sleep,
 } from '../utils/fileUtils';
+import { createDbLogger } from '../utils/dbLogger';
 import { getClienteByPrefix } from '../config/prefixMap';
 import { isShuttingDown } from '../index';
 
@@ -37,9 +38,13 @@ const PROCESSED_DIR = process.env.PROCESSED_DIR || '/srv/webdav/processed';
 // FAILED_DIR ya no se usa - los archivos fallidos se eliminan directamente
 const POLLING_INTERVAL_MS = parseInt(process.env.WATCHER_POLL_INTERVAL || '2000');
 const FILE_STABLE_CHECKS = parseInt(process.env.FILE_STABLE_CHECKS || '3');
+const FILE_STABLE_INTERVAL_MS = parseInt(process.env.FILE_STABLE_INTERVAL || '1000');
+const MAX_STABILITY_RETRIES = parseInt(process.env.MAX_STABILITY_RETRIES || '30');
 
 // Set para trackear archivos en proceso
 const filesInProcess = new Set<string>();
+// Map para trackear reintentos de estabilidad por archivo
+const stabilityRetries = new Map<string, number>();
 
 /**
  * Procesa un archivo individual
@@ -64,13 +69,47 @@ async function processFile(filename: string): Promise<void> {
     logger.info(`📄 Found new file: ${filename}`);
 
     // Esperar a que el archivo esté estable
-    logger.info(`⏳ Waiting for file to be stable: ${filename}`);
-    const isStable = await waitForFileStable(filePath, FILE_STABLE_CHECKS);
+    const retryCount = stabilityRetries.get(filename) || 0;
+    logger.info(`⏳ Waiting for file to be stable: ${filename}${retryCount > 0 ? ` (attempt ${retryCount + 1}/${MAX_STABILITY_RETRIES})` : ''}`);
+    const isStable = await waitForFileStable(filePath, FILE_STABLE_CHECKS, FILE_STABLE_INTERVAL_MS);
 
     if (!isStable) {
-      logger.warn(`⚠️  File not stable or disappeared: ${filename}`);
+      const newRetryCount = retryCount + 1;
+      stabilityRetries.set(filename, newRetryCount);
+
+      if (newRetryCount >= MAX_STABILITY_RETRIES) {
+        logger.error(`❌ File never stabilized after ${MAX_STABILITY_RETRIES} attempts, skipping: ${filename}`);
+        stabilityRetries.delete(filename);
+
+        // Registrar en processing_logs para que aparezca en la UI
+        const prefix = extractPrefixFromFilename(filename);
+        if (prefix) {
+          const clienteConfig = await getClienteByPrefix(prefix);
+          if (clienteConfig) {
+            const dbLog = createDbLogger(clienteConfig.clienteId, 'WATCHER');
+            dbLog.error(
+              `Archivo nunca se estabilizó tras ${MAX_STABILITY_RETRIES} intentos. Posible problema con el escáner.`,
+              { filename, attempts: MAX_STABILITY_RETRIES },
+              filename
+            );
+          }
+        }
+
+        // Eliminar archivo parcial/corrupto
+        try {
+          await unlink(filePath);
+          logger.info(`🗑️  Unstable file deleted: ${filename}`);
+        } catch {
+          // Ignorar si ya no existe
+        }
+      } else {
+        logger.warn(`⚠️  File not stable or disappeared: ${filename}`);
+      }
       return;
     }
+
+    // Archivo estable - limpiar contador de reintentos
+    stabilityRetries.delete(filename);
 
     // Extraer prefijo
     const prefix = extractPrefixFromFilename(filename);

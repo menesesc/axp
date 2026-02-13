@@ -44,6 +44,8 @@ import {
   Mail,
   Loader2,
   CheckCircle,
+  AlertTriangle,
+  MessageSquareWarning,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -65,6 +67,7 @@ interface Documento {
   fechaEmision: string | null
   total: number | null
   confidenceScore: number | null
+  anotacionesCount?: number
 }
 
 interface PaymentWizardProps {
@@ -489,7 +492,7 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
                         </TableHeader>
                         <TableBody>
                           {documentos.map((doc) => (
-                            <TableRow key={doc.id}>
+                            <TableRow key={doc.id} className={doc.anotacionesCount ? 'bg-amber-50/50' : ''}>
                               <TableCell>
                                 <Checkbox
                                   checked={selectedDocs.has(doc.id)}
@@ -497,7 +500,15 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
                                 />
                               </TableCell>
                               <TableCell>
-                                {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
+                                <div className="flex items-center gap-2">
+                                  <span>{doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}</span>
+                                  {doc.anotacionesCount ? (
+                                    <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium" title="Documento con anotaciones">
+                                      <MessageSquareWarning className="h-3 w-3" />
+                                      {doc.anotacionesCount}
+                                    </span>
+                                  ) : null}
+                                </div>
                               </TableCell>
                               <TableCell className="text-slate-500">
                                 {doc.fechaEmision ? formatDate(doc.fechaEmision) : '-'}
@@ -516,12 +527,29 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
                   )}
 
                   {selectedDocs.size > 0 && (
-                    <div className="flex justify-end text-sm">
-                      <span className="text-slate-500">Total seleccionado:</span>
-                      <span className="ml-2 font-semibold text-slate-900">
-                        {formatCurrency(totalOrden)}
-                      </span>
-                    </div>
+                    <>
+                      {/* Warning for documents with annotations */}
+                      {selectedDocsList.some(d => d.anotacionesCount && d.anotacionesCount > 0) && (
+                        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-amber-800">
+                              Documentos con anotaciones
+                            </p>
+                            <p className="text-sm text-amber-700 mt-0.5">
+                              Algunos documentos seleccionados tienen anotaciones pendientes. Revísalas antes de emitir la orden de pago.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end text-sm">
+                        <span className="text-slate-500">Total seleccionado:</span>
+                        <span className="ml-2 font-semibold text-slate-900">
+                          {formatCurrency(totalOrden)}
+                        </span>
+                      </div>
+                    </>
                   )}
                 </>
               )}

@@ -54,6 +54,19 @@ model documento_revisiones {
   @@index([documentoId, createdAt(sort: Desc)])
 }
 
+model documento_anotaciones {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentoId String     @db.Uuid
+  usuarioId   String     @db.Uuid
+  texto       String     @db.Text
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @default(now()) @db.Timestamptz(3)
+  documentos  documentos @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  usuarios    usuarios   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([documentoId])
+}
+
 model documentos {
   id                   String                 @id @db.Uuid
   clienteId            String                 @db.Uuid
@@ -80,12 +93,13 @@ model documentos {
   textractRawKey       String?                @db.VarChar(500)
   createdAt            DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime               @db.Timestamptz(3)
-  documento_items      documento_items[]
-  documento_revisiones documento_revisiones[]
-  clientes             clientes               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  proveedores          proveedores?           @relation(fields: [proveedorId], references: [id])
-  pago_documentos      pago_documentos[]
-  processing_logs      processing_logs[]
+  documento_items       documento_items[]
+  documento_revisiones  documento_revisiones[]
+  documento_anotaciones documento_anotaciones[]
+  clientes              clientes               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  proveedores           proveedores?           @relation(fields: [proveedorId], references: [id])
+  pago_documentos       pago_documentos[]
+  processing_logs       processing_logs[]
 
   @@unique([clienteId, hashSha256])
   @@index([clienteId, estadoRevision])
@@ -181,12 +195,14 @@ model usuarios {
   email                String                 @unique @db.VarChar(255)
   nombre               String                 @db.VarChar(255)
   rol                  RolUsuario
+  tipo_acceso          String?                @default("VIEWER") @db.VarChar(255)
   clienteId            String?                @db.Uuid
   activo               Boolean                @default(true)
   createdAt            DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime               @db.Timestamptz(3)
-  documento_revisiones documento_revisiones[]
-  clientes             clientes?              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  documento_revisiones  documento_revisiones[]
+  documento_anotaciones documento_anotaciones[]
+  clientes              clientes?              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@index([clienteId])
   @@index([rol])

@@ -36,6 +36,9 @@ export async function GET() {
       totalDocumentos,
       totalPendientes,
       totalConfirmados,
+      totalPagados,
+      totalErrores,
+      totalDuplicados,
       totalMes,
       documentosEsteMes,
       documentosHoy,
@@ -43,7 +46,6 @@ export async function GET() {
       documentosPorDiaRaw,
       montosPorDiaRaw,
       confidenceAvg,
-      totalesPorProveedorRaw,
     ] = await Promise.all([
       // Total documentos
       prisma.documentos.count({
@@ -63,6 +65,30 @@ export async function GET() {
         where: {
           clienteId,
           estadoRevision: 'CONFIRMADO',
+        },
+      }),
+
+      // Pagados
+      prisma.documentos.count({
+        where: {
+          clienteId,
+          estadoRevision: 'PAGADO',
+        },
+      }),
+
+      // Errores
+      prisma.documentos.count({
+        where: {
+          clienteId,
+          estadoRevision: 'ERROR',
+        },
+      }),
+
+      // Duplicados
+      prisma.documentos.count({
+        where: {
+          clienteId,
+          estadoRevision: 'DUPLICADO',
         },
       }),
 
@@ -156,33 +182,6 @@ export async function GET() {
           confidenceScore: true,
         },
       }),
-
-      // Totales por proveedor (últimos 7 días de ingreso)
-      prisma.documentos.groupBy({
-        where: {
-          clienteId,
-          createdAt: {
-            gte: from7Days,
-          },
-          proveedorId: {
-            not: null,
-          },
-        },
-        by: ['proveedorId'],
-        _sum: {
-          total: true,
-        },
-        _count: {
-          _all: true,
-        },
-        orderBy: {
-          _sum: {
-            total: 'desc',
-          },
-        },
-        take: 10, // Top 10 proveedores
-      }),
-
     ])
 
     // Obtener límite de documentos del plan (raw query ya que no está en Prisma)
@@ -199,9 +198,12 @@ export async function GET() {
     `
     const suscripcion = suscripcionRaw[0] || null
 
-    // Calcular tasa de éxito (confirmados / total)
+    // Calcular revisados (confirmados + pagados = documentos que pasaron revisión)
+    const totalRevisados = totalConfirmados + totalPagados
+
+    // Calcular tasa de éxito (revisados / total)
     const tasaExito = totalDocumentos > 0
-      ? Math.round((totalConfirmados / totalDocumentos) * 100 * 10) / 10
+      ? Math.round((totalRevisados / totalDocumentos) * 100 * 10) / 10
       : 0
 
     // Normalizar serie de documentos por día a los últimos 30 días
@@ -236,26 +238,72 @@ export async function GET() {
     // Calcular promedio de confianza (0 si no hay documentos)
     const confidencePromedio = confidenceAvg?._avg?.confidenceScore ?? 0
 
-    // Obtener nombres de proveedores para el gráfico
-    const proveedorIds = totalesPorProveedorRaw
-      .map(r => r.proveedorId)
-      .filter((id): id is string => id !== null)
+    // Obtener totales por proveedor con desglose por estado
+    const proveedorEstadosRaw = await prisma.$queryRaw<Array<{
+      proveedor_id: string
+      razon_social: string
+      estado: string
+      total: number
+      count: bigint
+    }>>`
+      SELECT
+        d."proveedorId" as proveedor_id,
+        p."razonSocial" as razon_social,
+        d."estadoRevision"::text as estado,
+        COALESCE(SUM(d.total), 0)::float as total,
+        COUNT(*)::bigint as count
+      FROM documentos d
+      JOIN proveedores p ON d."proveedorId" = p.id
+      WHERE d."clienteId" = ${clienteId}::uuid
+        AND d."createdAt" >= ${from7Days}
+        AND d."proveedorId" IS NOT NULL
+      GROUP BY d."proveedorId", p."razonSocial", d."estadoRevision"
+      ORDER BY SUM(d.total) DESC
+    `
 
-    const proveedoresInfo = proveedorIds.length > 0
-      ? await prisma.proveedores.findMany({
-          where: { id: { in: proveedorIds } },
-          select: { id: true, razonSocial: true },
-        })
-      : []
+    // Agrupar por proveedor
+    const proveedorMap = new Map<string, {
+      proveedorId: string
+      proveedor: string
+      total: number
+      count: number
+      pendientes: number
+      confirmados: number
+      pagados: number
+      errores: number
+      duplicados: number
+    }>()
 
-    const proveedoresMap = new Map(proveedoresInfo.map(p => [p.id, p.razonSocial]))
+    for (const row of proveedorEstadosRaw) {
+      const existing = proveedorMap.get(row.proveedor_id) || {
+        proveedorId: row.proveedor_id,
+        proveedor: row.razon_social,
+        total: 0,
+        count: 0,
+        pendientes: 0,
+        confirmados: 0,
+        pagados: 0,
+        errores: 0,
+        duplicados: 0,
+      }
 
-    const totalesPorProveedor = totalesPorProveedorRaw.map(row => ({
-      proveedorId: row.proveedorId,
-      proveedor: proveedoresMap.get(row.proveedorId!) || 'Desconocido',
-      total: Number(row._sum?.total) || 0,
-      count: (row._count as any)?._all || 0,
-    }))
+      existing.total += Number(row.total)
+      existing.count += Number(row.count)
+
+      switch (row.estado) {
+        case 'PENDIENTE': existing.pendientes += Number(row.count); break
+        case 'CONFIRMADO': existing.confirmados += Number(row.count); break
+        case 'PAGADO': existing.pagados += Number(row.count); break
+        case 'ERROR': existing.errores += Number(row.count); break
+        case 'DUPLICADO': existing.duplicados += Number(row.count); break
+      }
+
+      proveedorMap.set(row.proveedor_id, existing)
+    }
+
+    const totalesPorProveedor = Array.from(proveedorMap.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10)
 
     // Calcular documentos restantes del mes
     const documentosMesLimite = suscripcion?.documentos_mes_limite ?? null
@@ -267,6 +315,10 @@ export async function GET() {
       totalDocumentos,
       totalPendientes,
       totalConfirmados,
+      totalPagados,
+      totalErrores,
+      totalDuplicados,
+      totalRevisados,
       totalMes: totalMes._sum.total || 0,
       documentosEsteMes,
       documentosMesLimite,

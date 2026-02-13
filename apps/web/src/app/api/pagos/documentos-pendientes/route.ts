@@ -55,6 +55,9 @@ export async function GET(request: NextRequest) {
       fechaEmision: true,
       total: true,
       confidenceScore: true,
+      _count: {
+        select: { documento_anotaciones: true },
+      },
     },
     orderBy: { fechaEmision: 'asc' },
   })
@@ -64,9 +67,14 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     documentos: documentosPendientes.map((d) => ({
-      ...d,
+      id: d.id,
+      tipo: d.tipo,
+      letra: d.letra,
+      numeroCompleto: d.numeroCompleto,
+      fechaEmision: d.fechaEmision,
       total: d.total ? Number(d.total) : null,
       confidenceScore: d.confidenceScore ? Number(d.confidenceScore) : null,
+      anotacionesCount: d._count.documento_anotaciones,
     })),
     proveedor: {
       id: proveedor.id,

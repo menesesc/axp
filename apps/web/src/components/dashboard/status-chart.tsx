@@ -13,26 +13,41 @@ import {
 interface StatusChartProps {
   pendientes: number
   confirmados: number
-  confidencePromedio?: number
+  pagados: number
+  errores: number
+  duplicados: number
   isLoading?: boolean
 }
 
-const COLORS = {
-  pendiente: '#f59e0b',
-  confirmado: '#10b981',
+const COLORS: Record<string, string> = {
+  Pendientes: '#f59e0b',
+  Confirmados: '#10b981',
+  Pagados: '#3b82f6',
+  Errores: '#ef4444',
+  Duplicados: '#94a3b8',
 }
 
 export function StatusChart({
   pendientes,
   confirmados,
+  pagados,
+  errores,
+  duplicados,
   isLoading,
 }: StatusChartProps) {
-  const data = [
-    { name: 'Pendientes', value: pendientes, color: COLORS.pendiente },
-    { name: 'Confirmados', value: confirmados, color: COLORS.confirmado },
+  const allStates = [
+    { name: 'Pendientes', value: pendientes },
+    { name: 'Confirmados', value: confirmados },
+    { name: 'Pagados', value: pagados },
+    { name: 'Errores', value: errores },
+    { name: 'Duplicados', value: duplicados },
   ]
 
-  const total = pendientes + confirmados
+  const data = allStates
+    .filter((s) => s.value > 0)
+    .map((s) => ({ ...s, color: COLORS[s.name] || '#94a3b8' }))
+
+  const total = data.reduce((sum, s) => sum + s.value, 0)
 
   if (isLoading) {
     return (

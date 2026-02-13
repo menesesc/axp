@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
         priceHistoryByItem[desc] = []
       }
       priceHistoryByItem[desc].push({
-        fecha: row.fecha.toISOString().split('T')[0],
+        fecha: row.fecha?.toISOString().split('T')[0] ?? '',
         precio: row.precio_unitario ? Number(row.precio_unitario) : 0,
       })
     }

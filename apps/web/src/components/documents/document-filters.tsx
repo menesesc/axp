@@ -13,7 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Search, SlidersHorizontal, X, Calendar } from 'lucide-react'
+import { Search, SlidersHorizontal, X, Calendar, MessageSquareWarning, Package, CheckCircle } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface Proveedor {
   id: string
@@ -76,6 +77,8 @@ interface DocumentFiltersProps {
   proveedores: Proveedor[]
   sinItems: boolean
   onSinItemsChange: (value: boolean) => void
+  conAnotaciones: boolean
+  onConAnotacionesChange: (value: boolean) => void
   dateFrom?: Date | undefined
   dateTo?: Date | undefined
   onDateFromChange: (date: Date | undefined) => void
@@ -98,6 +101,8 @@ export function DocumentFilters({
   proveedores,
   sinItems,
   onSinItemsChange,
+  conAnotaciones,
+  onConAnotacionesChange,
   dateFrom,
   dateTo,
   onDateFromChange,
@@ -152,20 +157,8 @@ export function DocumentFilters({
             <TabsTrigger value="all">Todos</TabsTrigger>
             <TabsTrigger value="PENDIENTE">Pendientes</TabsTrigger>
             <TabsTrigger value="CONFIRMADO">Confirmados</TabsTrigger>
-            <TabsTrigger value="PAGADO">Pagados</TabsTrigger>
           </TabsList>
         </Tabs>
-
-        {/* Sin Items Toggle */}
-        <Button
-          variant={sinItems ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onSinItemsChange(!sinItems)}
-          className="gap-1.5"
-        >
-          Sin items
-          {sinItems && <X className="h-3 w-3" />}
-        </Button>
 
         {/* Search */}
         <div className="relative flex-1 max-w-xs">
@@ -252,6 +245,52 @@ export function DocumentFilters({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Checkbox Filters */}
+              <div className="space-y-3 pt-2 border-t">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="soloPagados"
+                    checked={estado === 'PAGADO'}
+                    onCheckedChange={(checked) => onEstadoChange(checked ? 'PAGADO' : '')}
+                  />
+                  <label
+                    htmlFor="soloPagados"
+                    className="text-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle className="h-4 w-4 text-blue-500" />
+                    Solo pagados
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="conAnotaciones"
+                    checked={conAnotaciones}
+                    onCheckedChange={(checked) => onConAnotacionesChange(checked === true)}
+                  />
+                  <label
+                    htmlFor="conAnotaciones"
+                    className="text-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <MessageSquareWarning className="h-4 w-4 text-amber-500" />
+                    Con anotaciones
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="sinItems"
+                    checked={sinItems}
+                    onCheckedChange={(checked) => onSinItemsChange(checked === true)}
+                  />
+                  <label
+                    htmlFor="sinItems"
+                    className="text-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Package className="h-4 w-4 text-slate-400" />
+                    Solo sin items
+                  </label>
+                </div>
               </div>
 
               {/* Clear Filters */}

@@ -1,24 +1,32 @@
-"use client";
+'use client'
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatCurrency } from '@/lib/utils'
 
 interface ProviderTotal {
-  proveedorId: string;
-  proveedor: string;
-  total: number;
-  count: number;
+  proveedorId: string
+  proveedor: string
+  total: number
+  count: number
+  pendientes: number
+  confirmados: number
+  pagados: number
+  errores: number
+  duplicados: number
 }
 
 interface ProviderTotalsChartProps {
-  data: ProviderTotal[];
-  isLoading?: boolean;
+  data: ProviderTotal[]
+  isLoading?: boolean
 }
 
-const COLORS = [
-  '#0f172a', '#334155', '#475569', '#64748b', '#94a3b8',
-  '#a3a3a3', '#737373', '#525252', '#404040', '#262626'
-];
+const STATE_COLORS: Record<string, { bg: string; label: string }> = {
+  pagados: { bg: 'bg-blue-500', label: 'Pagados' },
+  confirmados: { bg: 'bg-emerald-500', label: 'Confirmados' },
+  pendientes: { bg: 'bg-amber-400', label: 'Pendientes' },
+  errores: { bg: 'bg-red-500', label: 'Errores' },
+  duplicados: { bg: 'bg-slate-400', label: 'Duplicados' },
+}
 
 export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProps) {
   if (isLoading) {
@@ -26,7 +34,7 @@ export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProp
       <Card className="border shadow-sm">
         <CardHeader className="pb-2 pt-3 px-4">
           <CardTitle className="text-sm font-medium">
-            Proveedores (7 días)
+            Top proveedores (7 días)
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-3">
@@ -35,32 +43,17 @@ export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProp
           </div>
         </CardContent>
       </Card>
-    );
+    )
   }
 
-  const hasData = data && data.length > 0;
+  const hasData = data && data.length > 0
+  const items = data.slice(0, 8)
+  const maxCount = items.length > 0 ? Math.max(...items.map((d) => d.count)) : 0
 
-  const formatAmount = (value: number) => {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(1)}M`;
-    }
-    if (value >= 1000) {
-      return `$${(value / 1000).toFixed(0)}K`;
-    }
-    return `$${value.toFixed(0)}`;
-  };
-
-  // Truncar nombres largos de proveedores
-  const truncateName = (name: string, maxLength: number = 12) => {
-    if (name.length <= maxLength) return name;
-    return name.slice(0, maxLength - 1) + '…';
-  };
-
-  // Preparar datos para el gráfico
-  const chartData = data.slice(0, 8).map((item) => ({
-    ...item,
-    shortName: truncateName(item.proveedor),
-  }));
+  // Detect which states are present across all data
+  const activeStates = (['pagados', 'confirmados', 'pendientes', 'errores', 'duplicados'] as const).filter(
+    (state) => items.some((d) => d[state] > 0)
+  )
 
   return (
     <Card className="border shadow-sm">
@@ -75,57 +68,55 @@ export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProp
             Sin datos
           </div>
         ) : (
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                layout="vertical"
-                margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
-              >
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={formatAmount}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="shortName"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={80}
-                />
-                <Tooltip
-                  formatter={(value) => [
-                    `$${(value as number).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-                    "Total"
-                  ]}
-                  labelFormatter={(_, payload) => {
-                    if (payload && payload[0]) {
-                      const item = payload[0].payload as ProviderTotal & { shortName: string };
-                      return `${item.proveedor} (${item.count} docs)`;
-                    }
-                    return '';
-                  }}
-                  contentStyle={{
-                    borderRadius: "8px",
-                    border: "1px solid #e2e8f0",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                    fontSize: "12px",
-                  }}
-                />
-                <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                  {chartData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length] ?? '#0f172a'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="space-y-3">
+            {items.map((item) => (
+              <div key={item.proveedorId}>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm text-slate-700 truncate max-w-[60%]" title={item.proveedor}>
+                    {item.proveedor}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
+                    <span>{item.count} docs</span>
+                    <span className="font-medium text-slate-700">{formatCurrency(item.total)}</span>
+                  </div>
+                </div>
+                {/* Stacked bar */}
+                <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100">
+                  {(['pagados', 'confirmados', 'pendientes', 'errores', 'duplicados'] as const).map((state) => {
+                    const value = item[state]
+                    if (value === 0) return null
+                    const widthPercent = (value / maxCount) * 100
+                    const stateConfig = STATE_COLORS[state]!
+                    return (
+                      <div
+                        key={state}
+                        className={`${stateConfig.bg} transition-all`}
+                        style={{ width: `${widthPercent}%` }}
+                        title={`${stateConfig.label}: ${value}`}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Legend */}
+            {activeStates.length > 1 && (
+              <div className="flex items-center gap-3 pt-1 border-t mt-2">
+                {activeStates.map((state) => {
+                  const cfg = STATE_COLORS[state]!
+                  return (
+                    <div key={state} className="flex items-center gap-1.5">
+                      <div className={`h-2 w-2 rounded-full ${cfg.bg}`} />
+                      <span className="text-[10px] text-slate-500">{cfg.label}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </CardContent>
     </Card>
-  );
+  )
 }

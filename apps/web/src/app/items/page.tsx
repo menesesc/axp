@@ -32,7 +32,6 @@ import {
   ChevronRight,
   Package,
   TrendingUp,
-  TrendingDown,
   BarChart3,
   FileText,
   Filter,
@@ -172,7 +171,7 @@ function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: 
   const points = normalized.map((y, i) => `${i * stepX},${height - y}`).join(' ')
 
   // Color based on trend (first vs last)
-  const trend = data[data.length - 1] - data[0]
+  const trend = (data[data.length - 1] ?? 0) - (data[0] ?? 0)
   const color = trend > 0 ? '#ef4444' : trend < 0 ? '#10b981' : '#94a3b8'
 
   return (
@@ -188,7 +187,7 @@ function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: 
       {/* End dot */}
       <circle
         cx={(data.length - 1) * stepX}
-        cy={height - normalized[normalized.length - 1]}
+        cy={height - (normalized[normalized.length - 1] ?? 0)}
         r="2"
         fill={color}
       />
@@ -207,7 +206,7 @@ function getDateRange(filter: QuickDateFilter): { desde: string; hasta: string }
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const formatDate = (d: Date) => d.toISOString().split('T')[0]
+  const formatDate = (d: Date) => d.toISOString().split('T')[0]!
 
   switch (filter) {
     case 'today':

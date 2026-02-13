@@ -34,6 +34,7 @@ export async function GET(request: Request) {
     const proveedorId = searchParams.get('proveedorId')
     const busqueda = searchParams.get('q')
     const sinItems = searchParams.get('sinItems') === 'true'
+    const conAnotaciones = searchParams.get('conAnotaciones') === 'true'
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
     const confidence = searchParams.get('confidence')
@@ -76,6 +77,13 @@ export async function GET(request: Request) {
     if (sinItems) {
       where.documento_items = {
         none: {},
+      }
+    }
+
+    // Filtro para documentos con anotaciones
+    if (conAnotaciones) {
+      where.documento_anotaciones = {
+        some: {},
       }
     }
 
@@ -150,7 +158,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error en /api/documentos:', error)
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

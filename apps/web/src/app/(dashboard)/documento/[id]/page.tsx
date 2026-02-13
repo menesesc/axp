@@ -21,6 +21,8 @@ import {
 import { toast } from 'sonner'
 import { useUser } from '@/hooks/use-user'
 
+import { DocumentAnnotations } from '@/components/documents/document-annotations'
+
 const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), {
   ssr: false,
   loading: () => (
@@ -54,7 +56,7 @@ interface Documento {
   total: number | null
   subtotal: number | null
   iva: number | null
-  estadoRevision: 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO'
+  estadoRevision: 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO' | 'PAGADO'
   missingFields: string[]
   pdfFinalKey: string | null
   pdfRawKey: string
@@ -67,6 +69,7 @@ const estadoBadge = {
   CONFIRMADO: 'bg-emerald-100 text-emerald-700',
   ERROR: 'bg-red-100 text-red-700',
   DUPLICADO: 'bg-gray-100 text-gray-600',
+  PAGADO: 'bg-blue-100 text-blue-700',
 }
 
 const fieldNames: Record<string, string> = {
@@ -90,6 +93,13 @@ export default function DocumentoPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState<any>({})
   const [copied, setCopied] = useState(false)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editItemData, setEditItemData] = useState<{
+    descripcion: string
+    cantidad: string
+    precioUnitario: string
+    subtotal: string
+  }>({ descripcion: '', cantidad: '', precioUnitario: '', subtotal: '' })
 
   const { data, isLoading, error } = useQuery<{ documento: Documento; items: DocumentoItem[] }>({
     queryKey: ['documento', documentoId],
@@ -162,6 +172,30 @@ export default function DocumentoPage() {
     },
     onError: () => {
       toast.error('Error al eliminar documento')
+    },
+  })
+
+  const updateItemMutation = useMutation({
+    mutationFn: async ({ itemId, updates }: { itemId: string; updates: any }) => {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to update item')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documento', documentoId] })
+      setEditingItemId(null)
+      setEditItemData({ descripcion: '', cantidad: '', precioUnitario: '', subtotal: '' })
+      toast.success('Item actualizado')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Error al actualizar item')
     },
   })
 
@@ -478,32 +512,134 @@ export default function DocumentoPage() {
                         <th className="px-3 py-2 text-right">Cant.</th>
                         <th className="px-3 py-2 text-right">P.Unit.</th>
                         <th className="px-3 py-2 text-right">Subtotal</th>
+                        {isAdmin && documento.estadoRevision !== 'PAGADO' && (
+                          <th className="px-3 py-2 text-center w-20"></th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {items.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-gray-500">{item.linea}</td>
-                          <td className="px-3 py-2">
-                            <p className="text-gray-900">{item.descripcion}</p>
-                            {item.codigo && <p className="text-xs text-gray-400">{item.codigo}</p>}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-600">
-                            {item.cantidad ? `${item.cantidad} ${item.unidad || ''}` : '-'}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-600">
-                            {item.precioUnitario ? formatCurrency(item.precioUnitario) : '-'}
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium text-gray-900">
-                            {item.subtotal ? formatCurrency(item.subtotal) : '-'}
-                          </td>
-                        </tr>
-                      ))}
+                      {items.map((item) => {
+                        const isEditingThis = editingItemId === item.id
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-500">{item.linea}</td>
+                            <td className="px-3 py-2">
+                              {isEditingThis ? (
+                                <input
+                                  type="text"
+                                  value={editItemData.descripcion}
+                                  onChange={(e) => setEditItemData({ ...editItemData, descripcion: e.target.value })}
+                                  className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                                />
+                              ) : (
+                                <>
+                                  <p className="text-gray-900">{item.descripcion}</p>
+                                  {item.codigo && <p className="text-xs text-gray-400">{item.codigo}</p>}
+                                </>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {isEditingThis ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editItemData.cantidad}
+                                  onChange={(e) => setEditItemData({ ...editItemData, cantidad: e.target.value })}
+                                  className="w-20 px-2 py-1 text-sm border rounded text-right focus:ring-1 focus:ring-blue-500"
+                                />
+                              ) : (
+                                item.cantidad ? `${item.cantidad} ${item.unidad || ''}` : '-'
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {isEditingThis ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editItemData.precioUnitario}
+                                  onChange={(e) => setEditItemData({ ...editItemData, precioUnitario: e.target.value })}
+                                  className="w-24 px-2 py-1 text-sm border rounded text-right focus:ring-1 focus:ring-blue-500"
+                                />
+                              ) : (
+                                item.precioUnitario ? formatCurrency(item.precioUnitario) : '-'
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-medium text-gray-900">
+                              {isEditingThis ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editItemData.subtotal}
+                                  onChange={(e) => setEditItemData({ ...editItemData, subtotal: e.target.value })}
+                                  className="w-24 px-2 py-1 text-sm border rounded text-right focus:ring-1 focus:ring-blue-500"
+                                />
+                              ) : (
+                                item.subtotal ? formatCurrency(item.subtotal) : '-'
+                              )}
+                            </td>
+                            {isAdmin && documento.estadoRevision !== 'PAGADO' && (
+                              <td className="px-3 py-2 text-center">
+                                {isEditingThis ? (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      onClick={() => {
+                                        updateItemMutation.mutate({
+                                          itemId: item.id,
+                                          updates: {
+                                            descripcion: editItemData.descripcion,
+                                            cantidad: editItemData.cantidad || null,
+                                            precioUnitario: editItemData.precioUnitario || null,
+                                            subtotal: editItemData.subtotal || null,
+                                          },
+                                        })
+                                      }}
+                                      disabled={updateItemMutation.isPending}
+                                      className="p-1 text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-50"
+                                      title="Guardar"
+                                    >
+                                      <Save className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingItemId(null)
+                                        setEditItemData({ descripcion: '', cantidad: '', precioUnitario: '', subtotal: '' })
+                                      }}
+                                      className="p-1 text-gray-500 hover:bg-gray-100 rounded"
+                                      title="Cancelar"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingItemId(item.id)
+                                      setEditItemData({
+                                        descripcion: item.descripcion,
+                                        cantidad: item.cantidad?.toString() || '',
+                                        precioUnitario: item.precioUnitario?.toString() || '',
+                                        subtotal: item.subtotal?.toString() || '',
+                                      })
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Editar item"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
             )}
+
+            {/* Anotaciones */}
+            <DocumentAnnotations documentoId={documentoId} />
           </div>
 
           {/* Right - PDF */}

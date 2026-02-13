@@ -54,6 +54,7 @@ export default function DocumentosPage() {
   const [confidenceFilter, setConfidenceFilter] = useState('')
   const [proveedorFilter, setProveedorFilter] = useState('')
   const [sinItems, setSinItems] = useState(false)
+  const [conAnotaciones, setConAnotaciones] = useState(false)
   const [dateFrom, setDateFrom] = useState<Date | undefined>()
   const [dateTo, setDateTo] = useState<Date | undefined>()
   const [quickDateFilter, setQuickDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth'>('all')
@@ -79,10 +80,11 @@ export default function DocumentosPage() {
       params.append('confidence', confidenceFilter)
     }
     if (sinItems) params.append('sinItems', 'true')
+    if (conAnotaciones) params.append('conAnotaciones', 'true')
     if (dateFrom) params.append('dateFrom', dateFrom.toISOString())
     if (dateTo) params.append('dateTo', dateTo.toISOString())
     return params.toString()
-  }, [page, pageSize, estado, search, proveedorFilter, confidenceFilter, sinItems, dateFrom, dateTo])
+  }, [page, pageSize, estado, search, proveedorFilter, confidenceFilter, sinItems, conAnotaciones, dateFrom, dateTo])
 
   const { data, isLoading } = useQuery<DocumentosResponse>({
     queryKey: ['documentos', clienteId, queryParams],
@@ -162,6 +164,7 @@ export default function DocumentosPage() {
     (confidenceFilter && confidenceFilter !== 'all') ||
     (proveedorFilter && proveedorFilter !== 'all') ||
     sinItems ||
+    conAnotaciones ||
     dateFrom ||
     dateTo
   )
@@ -171,6 +174,7 @@ export default function DocumentosPage() {
     setConfidenceFilter('')
     setProveedorFilter('')
     setSinItems(false)
+    setConAnotaciones(false)
     setDateFrom(undefined)
     setDateTo(undefined)
     setQuickDateFilter('all')
@@ -311,6 +315,8 @@ export default function DocumentosPage() {
           proveedores={proveedores}
           sinItems={sinItems}
           onSinItemsChange={(v) => { setSinItems(v); setPage(1) }}
+          conAnotaciones={conAnotaciones}
+          onConAnotacionesChange={(v) => { setConAnotaciones(v); setPage(1) }}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateFromChange={(d) => { setDateFrom(d); setPage(1) }}
