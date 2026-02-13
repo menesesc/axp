@@ -22,7 +22,7 @@ import { ConfidenceBadge } from '@/components/ui/confidence-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { useUser } from '@/hooks/use-user'
-import { formatCurrency, formatDate, formatTipoDocumento } from '@/lib/utils'
+import { formatCurrency, formatDate, formatTipoDocumento, formatNumeroOrden } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer } from 'lucide-react'
 import {
@@ -147,7 +147,7 @@ export default function PagoDetailPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `orden-pago-${pago?.numero ?? id}.pdf`
+      a.download = `orden-pago-${pago ? formatNumeroOrden(pago.numero) : id}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -167,11 +167,11 @@ export default function PagoDetailPage() {
       if (!res.ok) throw new Error('Error al generar PDF')
 
       const blob = await res.blob()
-      const file = new File([blob], `orden-pago-${pago?.numero ?? id}.pdf`, { type: 'application/pdf' })
+      const file = new File([blob], `orden-pago-${pago ? formatNumeroOrden(pago.numero) : id}.pdf`, { type: 'application/pdf' })
 
       if (navigator.share && navigator.canShare({ files: [file] })) {
         await navigator.share({
-          title: `Orden de pago #${pago?.numero} - ${pago?.proveedor.razonSocial}`,
+          title: `Orden de pago #${pago ? formatNumeroOrden(pago.numero) : ''} - ${pago?.proveedor.razonSocial}`,
           files: [file],
         })
       } else {
@@ -276,7 +276,7 @@ export default function PagoDetailPage() {
               </Link>
             </Button>
             <Header
-              title={`Orden de pago #${pago.numero} - ${pago.proveedor.razonSocial}`}
+              title={`Orden de pago #${formatNumeroOrden(pago.numero)} - ${pago.proveedor.razonSocial}`}
               description={`Fecha: ${formatDate(pago.fecha)}`}
             />
           </div>

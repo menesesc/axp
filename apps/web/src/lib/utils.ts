@@ -15,6 +15,10 @@ export function formatTipoDocumento(tipo: string): string {
   return tipoDocLabels[tipo] || tipo
 }
 
+export function formatNumeroOrden(numero: number): string {
+  return String(numero).padStart(6, '0')
+}
+
 export function formatCurrency(amount: number | null): string {
   if (amount === null) return '-'
   return new Intl.NumberFormat('es-AR', {

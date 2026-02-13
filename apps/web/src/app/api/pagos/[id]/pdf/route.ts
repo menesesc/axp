@@ -27,6 +27,10 @@ function formatCurrency(value: number): string {
   }).format(value)
 }
 
+function formatNumeroOrden(numero: number): string {
+  return String(numero).padStart(6, '0')
+}
+
 function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date
   return d.toLocaleDateString('es-AR', {
@@ -122,7 +126,7 @@ export async function GET(
     const accentColor = rgb(0.2, 0.4, 0.8)
 
     // Header with title and number
-    page.drawText(`ORDEN DE PAGO #${pago.numero}`, {
+    page.drawText(`ORDEN DE PAGO #${formatNumeroOrden(pago.numero)}`, {
       x: 50,
       y,
       size: 24,
@@ -518,8 +522,8 @@ export async function GET(
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': isView
-          ? `inline; filename="orden-pago-${pago.numero}.pdf"`
-          : `attachment; filename="orden-pago-${pago.numero}.pdf"`,
+          ? `inline; filename="orden-pago-${formatNumeroOrden(pago.numero)}.pdf"`
+          : `attachment; filename="orden-pago-${formatNumeroOrden(pago.numero)}.pdf"`,
       },
     })
   } catch (error) {

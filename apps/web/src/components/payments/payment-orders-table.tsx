@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatNumeroOrden } from '@/lib/utils'
 import { CreditCard, MoreHorizontal, Eye, Edit, CheckCircle, Download, Trash2 } from 'lucide-react'
 import type { PaymentMethod } from '@/components/ui/payment-method-badge'
 
@@ -130,7 +130,7 @@ export function PaymentOrdersTable({
             <TableRow key={order.id} className="group">
               <TableCell className="text-slate-500 text-sm font-medium tabular-nums">
                 <Link href={`/pagos/${order.id}`} className="block">
-                  {order.numero}
+                  {formatNumeroOrden(order.numero)}
                 </Link>
               </TableCell>
               <TableCell className="text-slate-500 text-sm">
