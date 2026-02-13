@@ -70,7 +70,6 @@ export default function Home() {
   const pagados = stats?.totalPagados || 0
   const errores = stats?.totalErrores || 0
   const duplicados = stats?.totalDuplicados || 0
-  const revisados = stats?.totalRevisados || 0
   const confidencePromedio = stats?.confidencePromedio ?? 0
   const documentosPorDia = stats?.documentosPorDia || []
   const totalesPorProveedor = stats?.totalesPorProveedor || []
@@ -109,7 +108,8 @@ export default function Home() {
         <KpiCards
           totalDocumentos={totalDocumentos}
           pendientes={pendientes}
-          revisados={revisados}
+          confirmados={confirmados}
+          pagados={pagados}
           confidencePromedio={confidencePromedio}
           documentosEsteMes={documentosEsteMes}
           documentosMesLimite={documentosMesLimite}

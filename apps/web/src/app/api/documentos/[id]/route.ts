@@ -80,8 +80,19 @@ export async function GET(
       )
     }
 
+    // Recalcular missingFields basado en datos actuales
+    const actualMissing: string[] = []
+    if (!documento.proveedorId) actualMissing.push('proveedor')
+    if (!documento.fechaEmision) actualMissing.push('fechaEmision')
+    if (!documento.total) actualMissing.push('total')
+    if (!documento.letra) actualMissing.push('letra')
+    if (!documento.numeroCompleto) actualMissing.push('numeroCompleto')
+
     return NextResponse.json({
-      documento,
+      documento: {
+        ...documento,
+        missingFields: actualMissing,
+      },
       items: documento.documento_items || [],
     })
   } catch (error) {

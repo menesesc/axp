@@ -3,12 +3,13 @@
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { ConfidenceAverage } from '@/components/ui/confidence-badge'
-import { FileText, Clock, CheckCircle, Sparkles } from 'lucide-react'
+import { FileText, Clock, CheckCircle, CreditCard, Sparkles } from 'lucide-react'
 
 interface KpiCardsProps {
   totalDocumentos: number
   pendientes: number
-  revisados: number
+  confirmados: number
+  pagados: number
   confidencePromedio: number
   documentosEsteMes?: number
   documentosMesLimite?: number | null
@@ -18,7 +19,8 @@ interface KpiCardsProps {
 export function KpiCards({
   totalDocumentos,
   pendientes,
-  revisados,
+  confirmados,
+  pagados,
   confidencePromedio,
   documentosEsteMes = 0,
   documentosMesLimite,
@@ -29,7 +31,7 @@ export function KpiCards({
     : 0
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       {/* Total Documentos */}
       <Card className="border shadow-sm">
         <CardContent className="pt-4 pb-4">
@@ -87,19 +89,37 @@ export function KpiCards({
         </CardContent>
       </Card>
 
-      {/* Revisados (confirmados + pagados) */}
+      {/* Confirmados */}
       <Card className="border shadow-sm">
         <CardContent className="pt-4 pb-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-slate-500">Revisados</p>
+              <p className="text-sm text-slate-500">Confirmados</p>
               <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
-                {isLoading ? '-' : revisados.toLocaleString('es-AR')}
+                {isLoading ? '-' : confirmados.toLocaleString('es-AR')}
               </p>
-              <p className="text-xs text-slate-400 mt-0.5">Confirmados y pagados</p>
+              <p className="text-xs text-slate-400 mt-0.5">Listos para pagar</p>
             </div>
             <div className="p-2 rounded-lg bg-emerald-50">
               <CheckCircle className="h-4 w-4 text-emerald-600" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pagados */}
+      <Card className="border shadow-sm">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Pagados</p>
+              <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
+                {isLoading ? '-' : pagados.toLocaleString('es-AR')}
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5">Con orden de pago</p>
+            </div>
+            <div className="p-2 rounded-lg bg-blue-50">
+              <CreditCard className="h-4 w-4 text-blue-600" />
             </div>
           </div>
         </CardContent>
