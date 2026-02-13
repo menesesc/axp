@@ -156,6 +156,7 @@ model pagos {
   id              String            @id @db.Uuid
   clienteId       String            @db.Uuid
   proveedorId     String            @db.Uuid
+  numero          Int
   fecha           DateTime          @db.Date
   estado          EstadoPago        @default(BORRADOR)
   moneda          String            @default("ARS") @db.VarChar(3)
@@ -169,6 +170,7 @@ model pagos {
   clientes        clientes          @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   proveedores     proveedores       @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
 
+  @@unique([clienteId, numero])
   @@index([clienteId, fecha])
   @@index([clienteId, proveedorId])
 }

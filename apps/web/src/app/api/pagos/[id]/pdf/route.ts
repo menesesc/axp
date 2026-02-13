@@ -115,8 +115,8 @@ export async function GET(
     const lightGray = rgb(0.85, 0.85, 0.85)
     const accentColor = rgb(0.2, 0.4, 0.8)
 
-    // Header with title and status
-    page.drawText('ORDEN DE PAGO', {
+    // Header with title and number
+    page.drawText(`ORDEN DE PAGO #${pago.numero}`, {
       x: 50,
       y,
       size: 24,
@@ -512,8 +512,8 @@ export async function GET(
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': isView
-          ? `inline; filename="orden-pago-${id}.pdf"`
-          : `attachment; filename="orden-pago-${id}.pdf"`,
+          ? `inline; filename="orden-pago-${pago.numero}.pdf"`
+          : `attachment; filename="orden-pago-${pago.numero}.pdf"`,
       },
     })
   } catch (error) {

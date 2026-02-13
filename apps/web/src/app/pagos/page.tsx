@@ -21,6 +21,7 @@ import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface PaymentOrder {
   id: string
+  numero: number
   fecha: string
   estado: 'BORRADOR' | 'EMITIDA' | 'PAGADO'
   montoTotal: number

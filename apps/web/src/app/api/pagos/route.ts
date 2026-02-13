@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     pagos: pagos.map((p) => ({
       id: p.id,
+      numero: p.numero,
       fecha: p.fecha,
       estado: p.estado,
       montoTotal: p.montoTotal,
@@ -158,13 +159,20 @@ export async function POST(request: NextRequest) {
     const estadoInicial = data.emitir ? 'EMITIDA' : 'BORRADOR'
 
     const pago = await prisma.$transaction(async (tx) => {
+      // Obtener próximo número correlativo para este cliente
+      const lastPago = await tx.$queryRaw<Array<{ max_numero: number | null }>>`
+        SELECT MAX(numero) as max_numero FROM pagos WHERE "clienteId" = ${user.clienteId}::uuid
+      `
+      const numero = (lastPago[0]?.max_numero ?? 0) + 1
+
       // Crear el pago usando SQL directo para evitar problemas con el enum
       await tx.$executeRaw`
-        INSERT INTO pagos (id, "clienteId", "proveedorId", fecha, estado, "montoTotal", nota, "updatedAt")
+        INSERT INTO pagos (id, "clienteId", "proveedorId", numero, fecha, estado, "montoTotal", nota, "updatedAt")
         VALUES (
           ${pagoId}::uuid,
           ${user.clienteId}::uuid,
           ${data.proveedorId}::uuid,
+          ${numero},
           ${data.fecha},
           ${estadoInicial}::"EstadoPago",
           ${montoTotal},

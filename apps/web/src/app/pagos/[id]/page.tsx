@@ -65,6 +65,7 @@ interface PaymentMethodItem {
 
 interface Pago {
   id: string
+  numero: number
   fecha: string
   estado: 'BORRADOR' | 'EMITIDA' | 'PAGADO'
   montoTotal: number
@@ -146,7 +147,7 @@ export default function PagoDetailPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `orden-pago-${id}.pdf`
+      a.download = `orden-pago-${pago?.numero ?? id}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -166,11 +167,11 @@ export default function PagoDetailPage() {
       if (!res.ok) throw new Error('Error al generar PDF')
 
       const blob = await res.blob()
-      const file = new File([blob], `orden-pago-${id}.pdf`, { type: 'application/pdf' })
+      const file = new File([blob], `orden-pago-${pago?.numero ?? id}.pdf`, { type: 'application/pdf' })
 
       if (navigator.share && navigator.canShare({ files: [file] })) {
         await navigator.share({
-          title: `Orden de pago - ${pago?.proveedor.razonSocial}`,
+          title: `Orden de pago #${pago?.numero} - ${pago?.proveedor.razonSocial}`,
           files: [file],
         })
       } else {
@@ -275,7 +276,7 @@ export default function PagoDetailPage() {
               </Link>
             </Button>
             <Header
-              title={`Orden de pago - ${pago.proveedor.razonSocial}`}
+              title={`Orden de pago #${pago.numero} - ${pago.proveedor.razonSocial}`}
               description={`Fecha: ${formatDate(pago.fecha)}`}
             />
           </div>

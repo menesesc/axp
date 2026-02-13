@@ -33,6 +33,7 @@ interface PaymentMethodItem {
 
 interface PaymentOrder {
   id: string
+  numero: number
   fecha: string
   estado: 'BORRADOR' | 'EMITIDA' | 'PAGADO'
   montoTotal: number
@@ -114,6 +115,7 @@ export function PaymentOrdersTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-16">#</TableHead>
             <TableHead className="w-24">Fecha</TableHead>
             <TableHead>Proveedor</TableHead>
             <TableHead className="w-20">Docs</TableHead>
@@ -126,6 +128,11 @@ export function PaymentOrdersTable({
         <TableBody>
           {orders.map((order) => (
             <TableRow key={order.id} className="group">
+              <TableCell className="text-slate-500 text-sm font-medium tabular-nums">
+                <Link href={`/pagos/${order.id}`} className="block">
+                  {order.numero}
+                </Link>
+              </TableCell>
               <TableCell className="text-slate-500 text-sm">
                 <Link href={`/pagos/${order.id}`} className="block">
                   {formatDate(order.fecha)}

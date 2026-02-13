@@ -60,6 +60,7 @@ export async function GET(
   return NextResponse.json({
     pago: {
       id: pago.id,
+      numero: pago.numero,
       fecha: pago.fecha,
       estado: pago.estado,
       montoTotal: Number(pago.montoTotal),
