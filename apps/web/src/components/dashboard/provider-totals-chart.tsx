@@ -80,22 +80,27 @@ export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProp
                     <span className="font-medium text-slate-700">{formatCurrency(item.total)}</span>
                   </div>
                 </div>
-                {/* Stacked bar */}
-                <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100">
-                  {(['pagados', 'confirmados', 'pendientes', 'errores', 'duplicados'] as const).map((state) => {
-                    const value = item[state]
-                    if (value === 0) return null
-                    const widthPercent = (value / maxCount) * 100
-                    const stateConfig = STATE_COLORS[state]!
-                    return (
-                      <div
-                        key={state}
-                        className={`${stateConfig.bg} transition-all`}
-                        style={{ width: `${widthPercent}%` }}
-                        title={`${stateConfig.label}: ${value}`}
-                      />
-                    )
-                  })}
+                {/* Stacked bar: ancho total proporcional a maxCount, interior proporcional al estado */}
+                <div className="h-2.5 rounded-full overflow-hidden bg-slate-100">
+                  <div
+                    className="flex h-full rounded-full overflow-hidden"
+                    style={{ width: `${(item.count / maxCount) * 100}%` }}
+                  >
+                    {(['pagados', 'confirmados', 'pendientes', 'errores', 'duplicados'] as const).map((state) => {
+                      const value = item[state]
+                      if (value === 0) return null
+                      const widthPercent = (value / item.count) * 100
+                      const stateConfig = STATE_COLORS[state]!
+                      return (
+                        <div
+                          key={state}
+                          className={`${stateConfig.bg}`}
+                          style={{ width: `${widthPercent}%` }}
+                          title={`${stateConfig.label}: ${value}`}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             ))}
