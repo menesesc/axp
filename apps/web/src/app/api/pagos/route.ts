@@ -15,15 +15,15 @@ const createPagoSchema = z.object({
   emitir: z.boolean().optional().default(false),
   documentos: z.array(z.object({
     documentoId: z.string().uuid(),
-    montoAplicado: z.number().positive(),
-  })),
+    montoAplicado: z.number(),
+  })).optional().default([]),
   metodos: z.array(z.object({
     tipo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'ECHEQ']),
-    monto: z.number().positive(),
+    monto: z.number(),
     fecha: z.string().optional(),
     referencia: z.string().optional(),
     attachments: z.array(paymentAttachmentSchema).optional(),
-  })),
+  })).optional().default([]),
 })
 
 export async function GET(request: NextRequest) {
@@ -123,35 +123,70 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar que todos los documentos pertenecen al cliente y al proveedor
-    const documentoIds = data.documentos.map((d) => d.documentoId)
-    const documentos = await prisma.documentos.findMany({
-      where: {
-        id: { in: documentoIds },
-        clienteId: user.clienteId,
-        proveedorId: data.proveedorId,
-      },
-    })
+    // Verificar documentos si se incluyen
+    if (data.documentos.length > 0) {
+      const documentoIds = data.documentos.map((d) => d.documentoId)
+      const documentos = await prisma.documentos.findMany({
+        where: {
+          id: { in: documentoIds },
+          clienteId: user.clienteId,
+          proveedorId: data.proveedorId,
+        },
+      })
 
-    if (documentos.length !== documentoIds.length) {
-      return NextResponse.json(
-        { error: 'Algunos documentos no son válidos' },
-        { status: 400 }
-      )
+      if (documentos.length !== documentoIds.length) {
+        return NextResponse.json(
+          { error: 'Algunos documentos no son válidos' },
+          { status: 400 }
+        )
+      }
     }
 
-    // Calcular monto total de documentos
-    const montoTotal = data.documentos.reduce((sum, d) => sum + d.montoAplicado, 0)
-
-    // Calcular total de métodos de pago
+    // Calcular montos
+    const montoDocumentos = data.documentos.reduce((sum, d) => sum + d.montoAplicado, 0)
     const totalMetodos = data.metodos.reduce((sum, m) => sum + m.monto, 0)
+    const montoTotal = montoDocumentos || totalMetodos || 0
 
-    // Verificar que los totales coinciden
-    if (Math.abs(montoTotal - totalMetodos) > 0.01) {
-      return NextResponse.json(
-        { error: 'El total de métodos de pago no coincide con el total de documentos' },
-        { status: 400 }
-      )
+    // Validaciones estrictas solo al emitir
+    if (data.emitir) {
+      if (data.documentos.length === 0) {
+        return NextResponse.json(
+          { error: 'Debe incluir documentos para emitir la orden' },
+          { status: 400 }
+        )
+      }
+      if (data.metodos.length === 0) {
+        return NextResponse.json(
+          { error: 'Debe incluir formas de pago para emitir la orden' },
+          { status: 400 }
+        )
+      }
+      if (Math.abs(montoDocumentos - totalMetodos) > 0.01) {
+        return NextResponse.json(
+          { error: 'El total de métodos de pago no coincide con el total de documentos' },
+          { status: 400 }
+        )
+      }
+      // Validar fechas de cheque/eCheq
+      for (const m of data.metodos) {
+        if ((m.tipo === 'CHEQUE' || m.tipo === 'ECHEQ') && !m.fecha) {
+          return NextResponse.json(
+            { error: 'Los cheques y eCheqs requieren fecha de pago' },
+            { status: 400 }
+          )
+        }
+        if (m.fecha) {
+          const fechaPago = new Date(m.fecha)
+          const maxDate = new Date(data.fecha)
+          maxDate.setFullYear(maxDate.getFullYear() + 1)
+          if (fechaPago > maxDate) {
+            return NextResponse.json(
+              { error: 'La fecha de pago no puede exceder 365 días desde la fecha de la orden' },
+              { status: 400 }
+            )
+          }
+        }
+      }
     }
 
     // Crear la orden de pago con transacción

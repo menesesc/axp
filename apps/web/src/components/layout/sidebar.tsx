@@ -10,6 +10,7 @@ import {
   FileText,
   Users,
   CreditCard,
+  CalendarDays,
   BarChart3,
   LogOut,
   ChevronLeft,
@@ -65,6 +66,7 @@ const navigationSections: NavSection[] = [
     title: 'Finanzas',
     items: [
       { name: 'Pagos', href: '/pagos', icon: CreditCard },
+      { name: 'Calendario', href: '/finanzas', icon: CalendarDays },
       { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
     ],
   },

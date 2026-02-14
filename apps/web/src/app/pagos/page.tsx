@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { PaymentOrdersTable } from '@/components/payments/payment-orders-table'
+import { UpcomingPayments } from '@/components/payments/upcoming-payments'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -196,47 +197,55 @@ export default function PagosPage() {
           </Select>
         </div>
 
-        <PaymentOrdersTable
-          orders={orders}
-          isLoading={isLoading}
-          onMarkPaid={(id) => markPaidMutation.mutate(id)}
-          onDelete={(id) => deleteMutation.mutate(id)}
-          onExportPdf={handleExportPdf}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-3 space-y-4">
+            <PaymentOrdersTable
+              orders={orders}
+              isLoading={isLoading}
+              onMarkPaid={(id) => markPaidMutation.mutate(id)}
+              onDelete={(id) => deleteMutation.mutate(id)}
+              onExportPdf={handleExportPdf}
+            />
 
-        {/* Pagination */}
-        {pagination && pagination.pages > 1 && (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">
-              Mostrando {(pagination.page - 1) * pageSize + 1} a{' '}
-              {Math.min(pagination.page * pageSize, pagination.total)} de{' '}
-              {pagination.total} resultados
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Anterior
-              </Button>
-              <span className="text-sm text-slate-500 px-2">
-                {pagination.page} / {pagination.pages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page >= pagination.pages}
-              >
-                Siguiente
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
+            {/* Pagination */}
+            {pagination && pagination.pages > 1 && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-slate-500">
+                  Mostrando {(pagination.page - 1) * pageSize + 1} a{' '}
+                  {Math.min(pagination.page * pageSize, pagination.total)} de{' '}
+                  {pagination.total} resultados
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-slate-500 px-2">
+                    {pagination.page} / {pagination.pages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={page >= pagination.pages}
+                  >
+                    Siguiente
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="lg:col-span-1">
+            <UpcomingPayments />
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   )

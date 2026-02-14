@@ -46,6 +46,7 @@ import {
   CheckCircle,
   AlertTriangle,
   MessageSquareWarning,
+  Save,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -70,23 +71,36 @@ interface Documento {
   anotacionesCount?: number
 }
 
+export interface EditModeData {
+  pagoId: string
+  proveedorId: string
+  fecha: Date
+  nota: string
+  documentos: { documentoId: string; montoAplicado: number }[]
+  metodos: PaymentMethodLine[]
+}
+
 interface PaymentWizardProps {
   clienteId: string
+  editMode?: EditModeData
 }
 
 type Step = 1 | 2 | 3
 
-export function PaymentWizard({ clienteId }: PaymentWizardProps) {
+export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
 
   const [step, setStep] = useState<Step>(1)
-  const [selectedProveedor, setSelectedProveedor] = useState('')
-  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set())
-  const [fecha, setFecha] = useState<Date>(new Date())
-  const [nota, setNota] = useState('')
-  const [methods, setMethods] = useState<PaymentMethodLine[]>([])
+  const [selectedProveedor, setSelectedProveedor] = useState(editMode?.proveedorId || '')
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(
+    new Set(editMode?.documentos.map(d => d.documentoId) || [])
+  )
+  const [fecha, setFecha] = useState<Date>(editMode?.fecha || new Date())
+  const [nota, setNota] = useState(editMode?.nota || '')
+  const [methods, setMethods] = useState<PaymentMethodLine[]>(editMode?.metodos || [])
   const [createdPagoId, setCreatedPagoId] = useState<string | null>(null)
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
 
   // Cargar documentos preseleccionados y proveedor desde sessionStorage
@@ -140,7 +154,7 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
   const totalOrden = selectedDocsList.reduce((sum, d) => sum + (d.total || 0), 0)
   const totalMetodos = methods.reduce((sum, m) => sum + m.monto, 0)
 
-  // Mutation para crear la orden
+  // Mutation para crear/actualizar la orden
   const createMutation = useMutation({
     mutationFn: async (data: {
       proveedorId: string
@@ -150,21 +164,35 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
       documentos: { documentoId: string; montoAplicado: number }[]
       metodos: { tipo: string; monto: number; fecha?: string; referencia?: string; attachments?: PaymentAttachment[] }[]
     }) => {
-      const res = await fetch('/api/pagos', {
-        method: 'POST',
+      const isEdit = !!editMode
+      const url = isEdit ? `/api/pagos/${editMode.pagoId}` : '/api/pagos'
+      const method = isEdit ? 'PATCH' : 'POST'
+
+      const body = isEdit
+        ? { ...data, estado: data.emitir ? 'EMITIDA' : undefined }
+        : data
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const error = await res.json()
-        throw new Error(error.error || 'Error al crear orden')
+        throw new Error(error.error || 'Error al guardar orden')
       }
       return res.json()
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['pagos'] })
-      setCreatedPagoId(data.pago.id)
-      toast.success('Orden de pago emitida')
+      const pagoId = editMode?.pagoId || data.pago?.id
+      if (variables.emitir) {
+        setCreatedPagoId(pagoId)
+        toast.success('Orden de pago emitida')
+      } else {
+        setSavedDraftId(pagoId)
+        toast.success('Borrador guardado')
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -172,8 +200,8 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
   })
 
   const handleNext = () => {
-    if (step === 1 && selectedDocs.size === 0) {
-      toast.error('Selecciona al menos un documento')
+    if (step === 1 && !selectedProveedor) {
+      toast.error('Selecciona un proveedor')
       return
     }
     if (step < 3) {
@@ -198,6 +226,31 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
       fecha,
       nota,
       emitir: true,
+      documentos: selectedDocsList.map((d) => ({
+        documentoId: d.id,
+        montoAplicado: d.total || 0,
+      })),
+      metodos: methods.map((m) => ({
+        tipo: m.tipo,
+        monto: m.monto,
+        ...(m.fecha && { fecha: m.fecha.toISOString() }),
+        ...(m.referencia && { referencia: m.referencia }),
+        ...(m.attachments && m.attachments.length > 0 && { attachments: m.attachments }),
+      })),
+    })
+  }
+
+  const handleSaveDraft = () => {
+    if (!selectedProveedor) {
+      toast.error('Selecciona un proveedor para guardar')
+      return
+    }
+
+    createMutation.mutate({
+      proveedorId: selectedProveedor,
+      fecha,
+      nota,
+      emitir: false,
       documentos: selectedDocsList.map((d) => ({
         documentoId: d.id,
         montoAplicado: d.total || 0,
@@ -301,6 +354,13 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
     2: 'Formas de pago',
     3: 'Resumen y confirmación',
   }
+
+  // Redirigir si se guardó como borrador
+  useEffect(() => {
+    if (savedDraftId) {
+      router.push(`/pagos/${savedDraftId}`)
+    }
+  }, [savedDraftId, router])
 
   // Si ya se creó la orden, mostrar pantalla de éxito
   if (createdPagoId) {
@@ -701,10 +761,26 @@ export function PaymentWizard({ clienteId }: PaymentWizardProps) {
 
       {/* Navigation Buttons */}
       <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={handleBack} disabled={step === 1}>
-          <ArrowLeft className="h-4 w-4 mr-1.5" />
-          Anterior
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleBack} disabled={step === 1}>
+            <ArrowLeft className="h-4 w-4 mr-1.5" />
+            Anterior
+          </Button>
+          {selectedProveedor && (
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={createMutation.isPending}
+            >
+              {createMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-1.5" />
+              )}
+              Guardar borrador
+            </Button>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           {step < 3 ? (

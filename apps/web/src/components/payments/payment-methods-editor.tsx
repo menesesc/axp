@@ -250,13 +250,28 @@ export function PaymentMethodsEditor({
 
                   {/* Fecha */}
                   <div className="col-span-2">
-                    <Label className="text-xs">Fecha</Label>
+                    <Label className="text-xs">
+                      {method.tipo === 'CHEQUE' || method.tipo === 'ECHEQ'
+                        ? 'Fecha de pago *'
+                        : 'Fecha'}
+                    </Label>
                     <DatePicker
                       date={method.fecha}
                       onDateChange={(d) =>
                         updateMethod(method.id, { fecha: d || new Date() })
                       }
                     />
+                    {(method.tipo === 'CHEQUE' || method.tipo === 'ECHEQ') && (() => {
+                      const diffDays = Math.round((method.fecha.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                      if (diffDays > 365) {
+                        return (
+                          <p className="text-[10px] text-red-500 mt-0.5">
+                            Max. 365 dias desde hoy
+                          </p>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
 
                   {/* Referencia */}

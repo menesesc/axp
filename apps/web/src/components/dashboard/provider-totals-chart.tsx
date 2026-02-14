@@ -48,7 +48,7 @@ export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProp
 
   const hasData = data && data.length > 0
   const items = data.slice(0, 8)
-  const maxCount = items.length > 0 ? Math.max(...items.map((d) => d.count)) : 0
+  const maxTotal = items.length > 0 ? Math.max(...items.map((d) => Math.abs(d.total))) : 0
 
   // Detect which states are present across all data
   const activeStates = (['pagados', 'confirmados', 'pendientes', 'errores', 'duplicados'] as const).filter(
@@ -76,15 +76,15 @@ export function ProviderTotalsChart({ data, isLoading }: ProviderTotalsChartProp
                     {item.proveedor}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
-                    <span>{item.count} docs</span>
                     <span className="font-medium text-slate-700">{formatCurrency(item.total)}</span>
+                    <span>{item.count} docs</span>
                   </div>
                 </div>
                 {/* Stacked bar: ancho total proporcional a maxCount, interior proporcional al estado */}
                 <div className="h-2.5 rounded-full overflow-hidden bg-slate-100">
                   <div
                     className="flex h-full rounded-full overflow-hidden"
-                    style={{ width: `${(item.count / maxCount) * 100}%` }}
+                    style={{ width: `${(Math.abs(item.total) / maxTotal) * 100}%` }}
                   >
                     {(['pagados', 'confirmados', 'pendientes', 'errores', 'duplicados'] as const).map((state) => {
                       const value = item[state]

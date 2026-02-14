@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 import { Hash, DollarSign } from "lucide-react";
 
 interface DocumentsTrendPoint {
@@ -38,6 +38,12 @@ export function DocumentsTrendCard({ data, isLoading }: DocumentsTrendCardProps)
   }
 
   const hasData = data && data.some((d) => viewMode === 'count' ? d.count > 0 : d.amount > 0);
+
+  // Calcular promedio
+  const nonZeroDays = data?.filter((d) => viewMode === 'count' ? d.count > 0 : d.amount > 0) || [];
+  const average = nonZeroDays.length > 0
+    ? nonZeroDays.reduce((sum, d) => sum + (viewMode === 'count' ? d.count : d.amount), 0) / nonZeroDays.length
+    : 0;
 
   return (
     <Card className="border shadow-sm">
@@ -108,8 +114,23 @@ export function DocumentsTrendCard({ data, isLoading }: DocumentsTrendCardProps)
                   strokeWidth={2}
                   fill="url(#colorGradient)"
                 />
+                {average > 0 && (
+                  <ReferenceLine
+                    y={average}
+                    stroke="#94a3b8"
+                    strokeDasharray="4 4"
+                    strokeWidth={1}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
+          </div>
+        )}
+        {hasData && average > 0 && (
+          <div className="text-xs text-slate-500 mt-1">
+            Promedio: {viewMode === 'count'
+              ? Math.round(average).toLocaleString('es-AR')
+              : `$${Math.round(average).toLocaleString('es-AR')}`}
           </div>
         )}
       </CardContent>
