@@ -18,6 +18,10 @@ COPY apps/web/package.json ./apps/web/package.json
 # pnpm necesita pnpm-workspace.yaml para resolver workspace:*
 RUN printf 'packages:\n  - "packages/*"\n  - "apps/*"\n' > pnpm-workspace.yaml
 
+# node-linker=hoisted genera node_modules plano (sin symlinks)
+# compatible con Next.js standalone output
+RUN printf 'node-linker=hoisted\n' > .npmrc
+
 RUN pnpm install --no-frozen-lockfile
 
 # ------- Builder -------
