@@ -18,10 +18,4 @@ services:
       - R2_BUCKET_NAME=${R2_BUCKET_NAME}
     ports:
       - "8080:8080"
-    networks:
-      - dokploy-network
     restart: unless-stopped
-
-networks:
-  dokploy-network:
-    external: true
