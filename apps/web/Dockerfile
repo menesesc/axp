@@ -2,6 +2,7 @@
 # Build desde el ROOT del monorepo: docker build -f apps/web/Dockerfile .
 
 FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # ------- Dependencies -------
 FROM base AS deps
@@ -14,16 +15,22 @@ COPY packages/database/package.json ./packages/database/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./apps/web/package.json
 
-# Instalar con npm (node_modules plano, compatible con standalone output)
-RUN npm install --legacy-peer-deps
+# pnpm necesita pnpm-workspace.yaml para resolver workspace:*
+RUN echo 'packages:\n  - "packages/*"\n  - "apps/*"' > pnpm-workspace.yaml
+
+# Instalar con pnpm (soporta workspace:* y genera node_modules compatible)
+RUN pnpm install --no-frozen-lockfile
 
 # ------- Builder -------
 FROM base AS builder
 RUN apk add --no-cache openssl
 WORKDIR /app
 
-# Copiar node_modules
+# Copiar node_modules (root + workspace packages)
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 
 # Copiar código fuente
 COPY packages ./packages
@@ -38,7 +45,7 @@ RUN npx prisma generate --schema=apps/web/prisma/schema.prisma
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN cd apps/web && npm run build
+RUN cd apps/web && npx next build
 
 # ------- Runner -------
 FROM base AS runner
