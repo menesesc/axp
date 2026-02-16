@@ -15,19 +15,19 @@ COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./apps/web/package.json
 
 # Instalar bun para resolver workspaces
-RUN npm install -g bun && bun install --frozen-lockfile || bun install
+RUN npm install -g bun && (bun install --frozen-lockfile || bun install)
 
 # ------- Builder -------
 FROM base AS builder
 RUN npm install -g bun
 WORKDIR /app
 
+# Copiar node_modules del stage deps
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules 2>/dev/null || true
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules 2>/dev/null || true
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules 2>/dev/null || true
+COPY --from=deps /app/packages ./packages
+COPY --from=deps /app/apps ./apps
 
-# Copiar código fuente
+# Copiar código fuente (sobreescribe package.json pero mantiene node_modules)
 COPY packages ./packages
 COPY apps/web ./apps/web
 COPY package.json tsconfig.json ./
