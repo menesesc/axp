@@ -42,9 +42,6 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN cd apps/web && bun run build
 
-# DEBUG: ver estructura del standalone output
-RUN echo "=== STANDALONE ROOT ===" && ls -la apps/web/.next/standalone/ && echo "=== STANDALONE/apps? ===" && ls -la apps/web/.next/standalone/apps/web/ 2>/dev/null || echo "No apps/web dir in standalone" && echo "=== FIND server.js ===" && find apps/web/.next/standalone -name "server.js" 2>/dev/null
-
 # ------- Runner -------
 FROM base AS runner
 WORKDIR /app
@@ -56,11 +53,11 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copiar archivos estáticos
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/public ./public
 
 # Copiar standalone output
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
 
 USER nextjs
 
@@ -69,4 +66,4 @@ EXPOSE 8080
 ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
