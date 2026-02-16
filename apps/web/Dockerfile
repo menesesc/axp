@@ -18,8 +18,9 @@ COPY apps/web/package.json ./apps/web/package.json
 # pnpm necesita pnpm-workspace.yaml para resolver workspace:*
 RUN printf 'packages:\n  - "packages/*"\n  - "apps/*"\n' > pnpm-workspace.yaml
 
-# Permitir build scripts de prisma y instalar
-RUN pnpm config set onlyBuiltDependencies '["@prisma/client","@prisma/engines","prisma"]'
+# Configurar pnpm para permitir build scripts de prisma
+RUN printf 'onlyBuiltDependencies[]=@prisma/client\nonlyBuiltDependencies[]=@prisma/engines\nonlyBuiltDependencies[]=prisma\n' > .npmrc
+
 RUN pnpm install --no-frozen-lockfile
 
 # ------- Builder -------
@@ -37,6 +38,9 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY packages ./packages
 COPY apps/web ./apps/web
 COPY package.json tsconfig.json .eslintrc.json ./
+
+# pnpm necesita workspace yaml en builder tambien
+COPY --from=deps /app/pnpm-workspace.yaml ./
 
 # Generar Prisma Client
 RUN pnpm exec prisma generate --schema=packages/database/prisma/schema.prisma
