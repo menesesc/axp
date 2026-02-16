@@ -24,7 +24,7 @@ export function LandingPage() {
               <Link href={"/dashboard" as Route}>Ingresar</Link>
             </Button>
             <Button asChild variant="primary" size="sm">
-              <Link href="/demo">Pedir demo</Link>
+              <Link href={"/demo" as Route}>Pedir demo</Link>
             </Button>
           </div>
         </Container>
@@ -45,7 +45,7 @@ export function LandingPage() {
         <Container className="flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <p>AXP - Gestion inteligente de facturas y pagos.</p>
           <div className="flex items-center gap-4">
-            <Link href="/privacidad" className="hover:text-slate-700 underline-offset-2 hover:underline">
+            <Link href={"/privacidad" as Route} className="hover:text-slate-700 underline-offset-2 hover:underline">
               Política de privacidad
             </Link>
             <p>© {new Date().getFullYear()} AXP</p>

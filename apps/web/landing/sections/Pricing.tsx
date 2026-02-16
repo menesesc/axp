@@ -1,3 +1,4 @@
+import type { Route } from 'next';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ export function Pricing() {
                   ))}
                 </ul>
                 <Button asChild className="mt-6 w-full" variant={plan.highlighted ? 'primary' : 'outline'}>
-                  <Link href="/demo">Consultar</Link>
+                  <Link href={"/demo" as Route}>Consultar</Link>
                 </Button>
               </CardContent>
             </Card>

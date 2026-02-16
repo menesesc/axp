@@ -1,5 +1,6 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ export function FinalCTA() {
           <p className="mt-3 max-w-2xl text-sm text-blue-50 sm:text-base">{landingCopy.finalSubtitle}</p>
           <div className="mt-6">
             <Button asChild size="lg" variant="secondary" onClick={() => track('cta_demo_click', { location: 'final' })}>
-              <Link href="/demo">
+              <Link href={"/demo" as Route}>
                 Ir al formulario
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

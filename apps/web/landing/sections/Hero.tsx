@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { ArrowRight, PlayCircle, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,13 +26,13 @@ export function Hero() {
               <p className="mt-5 text-lg text-slate-600">{landingCopy.heroSubtitle}</p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Button asChild size="lg" variant="primary" onClick={() => track('cta_demo_click', { location: 'hero' })}>
-                  <Link href="/demo">
+                  <Link href={"/demo" as Route}>
                     Pedir demo
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" onClick={() => track('cta_how_it_works_click', { location: 'hero' })}>
-                  <Link href="#como-funciona">
+                  <Link href={"#como-funciona" as Route}>
                     <PlayCircle className="mr-2 h-4 w-4" />
                     Ver como funciona
                   </Link>
