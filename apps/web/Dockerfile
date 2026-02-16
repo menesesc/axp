@@ -16,7 +16,7 @@ COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./apps/web/package.json
 
 # pnpm necesita pnpm-workspace.yaml para resolver workspace:*
-RUN echo 'packages:\n  - "packages/*"\n  - "apps/*"' > pnpm-workspace.yaml
+RUN printf 'packages:\n  - "packages/*"\n  - "apps/*"\n' > pnpm-workspace.yaml
 
 # Instalar con pnpm (soporta workspace:* y genera node_modules compatible)
 RUN pnpm install --no-frozen-lockfile
