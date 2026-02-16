@@ -29,11 +29,8 @@ FROM base AS builder
 RUN apk add --no-cache openssl
 WORKDIR /app
 
-# Copiar node_modules (root + workspace packages)
+# Copiar node_modules (hoisted = todo en root)
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 
 # Copiar código fuente
 COPY packages ./packages
@@ -51,7 +48,7 @@ RUN pnpm dlx prisma@5.22.0 generate --schema=apps/web/prisma/schema.prisma
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN cd apps/web && ./node_modules/.bin/next build
+RUN cd apps/web && ../../node_modules/.bin/next build
 
 # ------- Runner -------
 FROM base AS runner
