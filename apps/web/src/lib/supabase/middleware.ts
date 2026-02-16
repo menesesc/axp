@@ -39,10 +39,12 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Rutas públicas que no requieren autenticación
-  const publicPaths = ['/login', '/auth/callback', '/auth/error']
-  const isPublicPath = publicPaths.some(path =>
-    request.nextUrl.pathname.startsWith(path)
-  )
+  const pathname = request.nextUrl.pathname
+  const publicPaths = new Set(['/', '/demo', '/login', '/auth/callback', '/auth/error', '/privacidad'])
+  const isPublicPath =
+    publicPaths.has(pathname) ||
+    pathname.startsWith('/demo/') ||
+    pathname === '/api/lead'
 
   // Si no hay usuario y no es una ruta pública, redirigir a login
   if (!user && !isPublicPath) {
@@ -52,9 +54,9 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Si hay usuario y está en login, redirigir al dashboard
-  if (user && request.nextUrl.pathname === '/login') {
+  if (user && pathname === '/login') {
     const url = request.nextUrl.clone()
-    url.pathname = '/'
+    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
