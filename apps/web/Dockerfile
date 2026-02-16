@@ -49,11 +49,6 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN cd apps/web && ./node_modules/.bin/next build
 
-# Debug: ver estructura del standalone output
-RUN echo "=== standalone root ===" && ls -la apps/web/.next/standalone/ && \
-    echo "=== standalone/apps? ===" && ls -la apps/web/.next/standalone/apps/web/ 2>/dev/null || true && \
-    echo "=== find server.js ===" && find apps/web/.next/standalone -name "server.js" -type f
-
 # ------- Runner -------
 FROM base AS runner
 WORKDIR /app
@@ -65,11 +60,11 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copiar archivos estáticos
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/public ./public
 
-# Copiar standalone output (monorepo preserva estructura apps/web/)
+# Copiar standalone output (flat structure - server.js at root)
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
 
 USER nextjs
 
@@ -78,5 +73,4 @@ EXPOSE 8080
 ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
 
-# En monorepo standalone, server.js esta en apps/web/
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
