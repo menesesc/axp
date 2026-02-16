@@ -1,3 +1,4 @@
+import type { Route } from 'next';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Container } from './components/Container';
@@ -20,7 +21,7 @@ export function LandingPage() {
           </Link>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
-              <Link href="/dashboard">Ingresar</Link>
+              <Link href={"/dashboard" as Route}>Ingresar</Link>
             </Button>
             <Button asChild variant="primary" size="sm">
               <Link href="/demo">Pedir demo</Link>
