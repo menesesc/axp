@@ -3,9 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   transpilePackages: ['shared', 'database'],
-  experimental: {
-    typedRoutes: true,
-  },
+  experimental: {},
 };
 
 module.exports = nextConfig;
