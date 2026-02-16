@@ -42,6 +42,9 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN cd apps/web && bun run build
 
+# DEBUG: ver estructura del standalone output
+RUN echo "=== STANDALONE ROOT ===" && ls -la apps/web/.next/standalone/ && echo "=== STANDALONE/apps? ===" && ls -la apps/web/.next/standalone/apps/web/ 2>/dev/null || echo "No apps/web dir in standalone" && echo "=== FIND server.js ===" && find apps/web/.next/standalone -name "server.js" 2>/dev/null
+
 # ------- Runner -------
 FROM base AS runner
 WORKDIR /app
