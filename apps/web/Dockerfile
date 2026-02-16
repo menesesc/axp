@@ -18,9 +18,6 @@ COPY apps/web/package.json ./apps/web/package.json
 # pnpm necesita pnpm-workspace.yaml para resolver workspace:*
 RUN printf 'packages:\n  - "packages/*"\n  - "apps/*"\n' > pnpm-workspace.yaml
 
-# Configurar pnpm para permitir build scripts de prisma
-RUN printf 'onlyBuiltDependencies[]=@prisma/client\nonlyBuiltDependencies[]=@prisma/engines\nonlyBuiltDependencies[]=prisma\n' > .npmrc
-
 RUN pnpm install --no-frozen-lockfile
 
 # ------- Builder -------
@@ -42,15 +39,15 @@ COPY package.json tsconfig.json .eslintrc.json ./
 # pnpm necesita workspace yaml en builder tambien
 COPY --from=deps /app/pnpm-workspace.yaml ./
 
-# Generar Prisma Client
-RUN pnpm exec prisma generate --schema=packages/database/prisma/schema.prisma
-RUN pnpm exec prisma generate --schema=apps/web/prisma/schema.prisma
+# Generar Prisma Client (pnpm dlx bypasses build script restrictions)
+RUN pnpm dlx prisma@5.22.0 generate --schema=packages/database/prisma/schema.prisma
+RUN pnpm dlx prisma@5.22.0 generate --schema=apps/web/prisma/schema.prisma
 
 # Build de Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN cd apps/web && pnpm exec next build
+RUN cd apps/web && ./node_modules/.bin/next build
 
 # ------- Runner -------
 FROM base AS runner
