@@ -50,7 +50,7 @@ const navigationSections: NavSection[] = [
   {
     title: 'Principal',
     items: [
-      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     ],
   },
   {
