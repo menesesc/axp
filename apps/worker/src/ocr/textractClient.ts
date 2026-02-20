@@ -355,8 +355,36 @@ function normalizeText(text: string | null): string | null {
  * Parsea fecha de Textract (varios formatos)
  * Valida que la fecha sea razonable (> 2020, < año actual + 2)
  */
+/**
+ * Mapa de meses en español para parsear fechas largas
+ */
+const MESES_ES: Record<string, string> = {
+  'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+  'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+  'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12',
+};
+
 function parseTextractDate(dateStr: string | null): string | null {
   if (!dateStr) return null;
+
+  const currentYear = new Date().getFullYear();
+
+  // Formato largo español: "viernes 6 de febrero de 2026", "6 de febrero de 2026"
+  const matchLong = dateStr.match(/(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
+  if (matchLong && matchLong[1] && matchLong[2] && matchLong[3]) {
+    const day = matchLong[1].padStart(2, '0');
+    const mesStr = matchLong[2].toLowerCase();
+    const year = matchLong[3];
+    const month = MESES_ES[mesStr];
+
+    if (month) {
+      const yearNum = parseInt(year);
+      if (yearNum >= 2020 && yearNum <= currentYear + 2) {
+        logger.info(`📅 Parsed Spanish long date: "${dateStr}" → ${year}-${month}-${day}`);
+        return `${year}-${month}-${day}`;
+      }
+    }
+  }
 
   // Formatos comunes: "30/12/2025", "2025-12-30", "12/30/2025"
   const match1 = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
@@ -368,7 +396,6 @@ function parseTextractDate(dateStr: string | null): string | null {
     // VALIDACIÓN: Rechazar fechas antes de 2020 o muy en el futuro
     // Esto evita capturar "Inicio Actividades" o fechas incorrectas
     const yearNum = parseInt(year);
-    const currentYear = new Date().getFullYear();
     if (yearNum < 2020 || yearNum > currentYear + 2) {
       logger.warn(`⚠️  Date ${dateStr} rejected: year ${year} out of range (2020-${currentYear + 2})`);
       return null;
@@ -385,6 +412,28 @@ function parseTextractDate(dateStr: string | null): string | null {
  * Prioriza líneas que contengan "FECHA" explícitamente
  */
 function extractFechaEmisionFromText(lines: string[]): string | null {
+  const currentYear = new Date().getFullYear();
+
+  // Patrón 0: Fecha larga español "FECHA: viernes 6 de febrero de 2026"
+  for (const line of lines) {
+    if (/inicio|actividades/i.test(line)) continue;
+
+    const matchLong = line.match(/\bFECHA\b[:\s]*(?:\w+\s+)?(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
+    if (matchLong && matchLong[1] && matchLong[2] && matchLong[3]) {
+      const day = matchLong[1].padStart(2, '0');
+      const mesStr = matchLong[2].toLowerCase();
+      const year = matchLong[3];
+      const month = MESES_ES[mesStr];
+      if (month) {
+        const yearNum = parseInt(year);
+        if (yearNum >= 2020 && yearNum <= currentYear + 2) {
+          logger.info(`📅 Found fecha larga from text: "${line}" → ${year}-${month}-${day}`);
+          return `${year}-${month}-${day}`;
+        }
+      }
+    }
+  }
+
   // Patrón 1: "FECHA DD/MM/YYYY" o "FECHA: DD/MM/YYYY"
   for (const line of lines) {
     // Buscar específicamente la palabra FECHA seguida de una fecha
@@ -399,10 +448,31 @@ function extractFechaEmisionFromText(lines: string[]): string | null {
 
       // Validar año razonable
       const yearNum = parseInt(year);
-      const currentYear = new Date().getFullYear();
       if (yearNum >= 2020 && yearNum <= currentYear + 2) {
         logger.info(`📅 Found fecha from text pattern "FECHA": ${year}-${month}-${day}`);
         return `${year}-${month}-${day}`;
+      }
+    }
+  }
+
+  // Patrón 1.5: Fecha larga español sin "FECHA:" al inicio, cerca de FACTURA
+  // ej: "viernes 6 de febrero de 2026" en las primeras líneas
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
+    const line = lines[i] || '';
+    if (/inicio|actividades/i.test(line)) continue;
+
+    const matchLong = line.match(/(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
+    if (matchLong && matchLong[1] && matchLong[2] && matchLong[3]) {
+      const day = matchLong[1].padStart(2, '0');
+      const mesStr = matchLong[2].toLowerCase();
+      const year = matchLong[3];
+      const month = MESES_ES[mesStr];
+      if (month) {
+        const yearNum = parseInt(year);
+        if (yearNum >= 2020 && yearNum <= currentYear + 2) {
+          logger.info(`📅 Found fecha larga near top: "${line}" → ${year}-${month}-${day}`);
+          return `${year}-${month}-${day}`;
+        }
       }
     }
   }
@@ -423,7 +493,6 @@ function extractFechaEmisionFromText(lines: string[]): string | null {
           const year = dateMatch[3];
 
           const yearNum = parseInt(year);
-          const currentYear = new Date().getFullYear();
           if (yearNum >= 2020 && yearNum <= currentYear + 2) {
             logger.info(`📅 Found fecha near FACTURA: ${year}-${month}-${day}`);
             return `${year}-${month}-${day}`;
@@ -527,6 +596,29 @@ function extractNumeroFacturaFromText(lines: string[]): string | null {
         logger.info(`📝 Skipping CAE-like number: ${num}`);
       }
     }
+  }
+
+  // Patrón 5: "Punto de Venta: XXXX" y "Comp. Nro: XXXXXXXX" en líneas separadas
+  // Común en facturas con formato tabular donde punto de venta y número están separados
+  let puntoVentaFound: string | null = null;
+  let compNroFound: string | null = null;
+  for (const line of lines) {
+    if (isCAELine(line)) continue;
+
+    const pvMatch = line.match(/(?:Punto\s+de\s+Venta|Pto\.?\s*(?:de\s+)?Vta\.?)\s*:?\s*(\d{4,5})/i);
+    if (pvMatch && pvMatch[1]) {
+      puntoVentaFound = pvMatch[1].padStart(5, '0');
+    }
+
+    const nroMatch = line.match(/(?:Comp\.?\s*(?:Nro\.?)?|Comprobante)\s*:?\s*(\d{5,8})/i);
+    if (nroMatch && nroMatch[1]) {
+      compNroFound = nroMatch[1].padStart(8, '0');
+    }
+  }
+  if (puntoVentaFound && compNroFound) {
+    const result = `${puntoVentaFound}${compNroFound}`;
+    logger.info(`📝 Found invoice number from separate Punto de Venta + Comp. Nro: ${result}`);
+    return result;
   }
 
   return null;
@@ -724,9 +816,24 @@ function detectTipoDocumento(lines: string[]): 'FACTURA' | 'REMITO' | 'NOTA_CRED
   if (/NOTA\s+(DE\s+)?CR[ÉE]DITO/.test(text)) {
     return 'NOTA_CREDITO';
   }
-  if (text.includes('REMITO')) {
-    return 'REMITO';
+
+  // Si dice FACTURA explícitamente, es FACTURA (prioridad sobre REMITO)
+  // Muchas facturas mencionan "Remito:" como referencia o "CONDICION DE VENTA: REMITO"
+  if (/\bFACTURA\b/.test(text)) {
+    return 'FACTURA';
   }
+
+  // Solo clasificar como REMITO si aparece como título del documento,
+  // no como referencia dentro de una factura (ej: "Remito: 00001-00011115")
+  // Buscar REMITO que NO esté precedido por palabras como "Condición", "Nro", números
+  for (const line of lines) {
+    const upper = line.trim().toUpperCase();
+    // Línea que es solo "REMITO" o empieza con "REMITO" como título
+    if (/^\s*REMITO\s*$/.test(upper) || /^\s*REMITO\s+[A-Z]/.test(upper)) {
+      return 'REMITO';
+    }
+  }
+
   return 'FACTURA'; // Default
 }
 
@@ -793,10 +900,32 @@ function extractNumeroCompleto(lines: string[]): string | null {
       return `${match[1]}-${match[2]}`;
     }
   }
+
+  // Buscar "Punto de Venta: XXXX" + "Comp. Nro: XXXXXXXX" en líneas separadas
+  const pv = extractPuntoVenta(lines);
+  const num = extractNumero(lines);
+  if (pv && num) {
+    return `${pv}-${num.padStart(8, '0')}`;
+  }
+
   return null;
 }
 
 function extractFechaEmision(lines: string[]): string | null {
+  // Formato largo español: "Fecha: viernes 6 de febrero de 2026"
+  for (const line of lines) {
+    const matchLong = line.match(/(?:Fecha(?:\s+(?:de\s+)?Emisi[oó]n)?|Emisión|Emision)[:.\s]*(?:\w+\s+)?(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i);
+    if (matchLong && matchLong[1] && matchLong[2] && matchLong[3]) {
+      const day = matchLong[1].padStart(2, '0');
+      const mesStr = matchLong[2].toLowerCase();
+      const year = matchLong[3];
+      const month = MESES_ES[mesStr];
+      if (month) {
+        return `${year}-${month}-${day}`;
+      }
+    }
+  }
+
   // Buscar "Fecha: 20/12/2025", "Emisión: 20-12-2025", "Fecha Comprobante: 30/12/2025"
   for (const line of lines) {
     const match = line.match(/(?:Fecha(?:\s+Comprobante)?|Emisión|Emision)[:.\s]*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
