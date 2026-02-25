@@ -50,6 +50,11 @@ const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
     date = new Date(`${dateStr}T12:00:00-03:00`);
   }
 
+  // Validar que la fecha sea válida (ej: "2026-02-00" produce Invalid Date)
+  if (isNaN(date.getTime())) {
+    return null;
+  }
+
   // Validar que no sea fecha futura
   const today = new Date();
   today.setHours(23, 59, 59, 999); // Fin del día actual
