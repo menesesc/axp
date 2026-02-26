@@ -74,29 +74,45 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
       const formData = new FormData()
       files.forEach((file) => formData.append('files', file))
 
-      const res = await fetch('/api/documentos/upload', {
-        method: 'POST',
-        body: formData,
+      const data = await new Promise<{ uploaded?: number; errors?: string[]; error?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100)
+            setProgress(pct)
+          }
+        })
+
+        xhr.addEventListener('load', () => {
+          try {
+            const json = JSON.parse(xhr.responseText)
+            if (xhr.status >= 400) {
+              reject(new Error(json.error || 'Error al subir archivos'))
+            } else {
+              resolve(json)
+            }
+          } catch {
+            reject(new Error('Error al procesar respuesta'))
+          }
+        })
+
+        xhr.addEventListener('error', () => reject(new Error('Error de red')))
+        xhr.open('POST', '/api/documentos/upload')
+        xhr.send(formData)
       })
 
-      const data = await res.json()
-
-      if (!res.ok) {
-        toast.error(data.error || 'Error al subir archivos')
-        return
-      }
-
-      if (data.errors?.length > 0) {
+      if (data.errors?.length) {
         data.errors.forEach((err: string) => toast.error(err))
       }
 
-      if (data.uploaded > 0) {
+      if (data.uploaded && data.uploaded > 0) {
         toast.success(`${data.uploaded} archivo${data.uploaded !== 1 ? 's' : ''} subido${data.uploaded !== 1 ? 's' : ''} correctamente. Se procesarán automáticamente.`)
         setFiles([])
         onUploadComplete()
       }
-    } catch {
-      toast.error('Error al subir archivos')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al subir archivos')
     } finally {
       setIsUploading(false)
       setProgress(0)
@@ -181,12 +197,18 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
       )}
 
       {/* Progress bar */}
-      {isUploading && progress > 0 && (
-        <div className="w-full bg-slate-200 rounded-full h-2">
-          <div
-            className="bg-blue-600 h-2 rounded-full transition-all"
-            style={{ width: `${progress}%` }}
-          />
+      {isUploading && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>Subiendo...</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
       )}
 

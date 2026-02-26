@@ -815,8 +815,8 @@ function extractExpenseLineItems(lineItemGroups: any[]): any[] {
 function detectTipoDocumento(lines: string[]): 'FACTURA' | 'REMITO' | 'NOTA_CREDITO' {
   const text = lines.join(' ').toUpperCase();
 
-  // Cubrir todas las variantes: "NOTA DE CREDITO", "NOTA CREDITO", "NOTA DE CRÉDITO", "NOTA CRÉDITO"
-  if (/NOTA\s+(DE\s+)?CR[ÉE]DITO/.test(text)) {
+  // Cubrir todas las variantes: "NOTA DE CREDITO", "NOTAS DE CRÉDITO", "NOTA CREDITO", etc.
+  if (/NOTAS?\s+(DE\s+)?CR[ÉE]DITO/.test(text)) {
     return 'NOTA_CREDITO';
   }
 
