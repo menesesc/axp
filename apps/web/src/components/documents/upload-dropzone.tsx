@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Upload, X, FileText, ImageIcon, Loader2 } from 'lucide-react'
+import { Upload, X, FileText, ImageIcon, Loader2, Camera } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface UploadDropzoneProps {
@@ -19,6 +19,7 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
   const [isUploading, setIsUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const validateFile = (file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type)) {
@@ -159,6 +160,27 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
           onChange={(e) => e.target.files && addFiles(e.target.files)}
         />
       </div>
+
+      {/* Scan button - opens camera on mobile */}
+      <button
+        type="button"
+        onClick={() => cameraInputRef.current?.click()}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+      >
+        <Camera className="h-4 w-4" />
+        Escanear documento
+      </button>
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
 
       {/* File list */}
       {files.length > 0 && (
