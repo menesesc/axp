@@ -53,6 +53,8 @@ import {
   CheckCircle,
   XCircle,
   Hash,
+  Mail,
+  Phone,
 } from 'lucide-react'
 
 interface Proveedor {
@@ -61,6 +63,8 @@ interface Proveedor {
   cuit: string | null
   alias: string[]
   letra: string | null
+  email: string | null
+  telefono: string | null
   activo: boolean
   documentosCount: number
 }
@@ -121,6 +125,8 @@ export default function ProveedoresPage() {
     cuit: '',
     alias: '',
     letra: '',
+    email: '',
+    telefono: '',
   })
 
   const { data, isLoading } = useQuery<{ proveedores: Proveedor[] }>({
@@ -134,7 +140,7 @@ export default function ProveedoresPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (data: { razonSocial: string; cuit: string; alias: string[]; letra: string | null }) => {
+    mutationFn: async (data: { razonSocial: string; cuit: string; alias: string[]; letra: string | null; email?: string | null; telefono?: string | null }) => {
       const res = await fetch('/api/proveedores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,7 +164,7 @@ export default function ProveedoresPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { razonSocial: string; cuit: string | null; alias: string[]; letra: string | null } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { razonSocial: string; cuit: string | null; alias: string[]; letra: string | null; email?: string | null; telefono?: string | null } }) => {
       const res = await fetch(`/api/proveedores/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -224,7 +230,7 @@ export default function ProveedoresPage() {
   })
 
   const resetForm = () => {
-    setFormData({ razonSocial: '', cuit: '', alias: '', letra: '' })
+    setFormData({ razonSocial: '', cuit: '', alias: '', letra: '', email: '', telefono: '' })
     setEditingProveedor(null)
   }
 
@@ -237,6 +243,8 @@ export default function ProveedoresPage() {
         cuit: proveedor.cuit || '',
         alias: proveedor.alias.join(', '),
         letra: proveedor.letra || '',
+        email: proveedor.email || '',
+        telefono: proveedor.telefono || '',
       })
     } else {
       resetForm()
@@ -256,6 +264,8 @@ export default function ProveedoresPage() {
           cuit: formData.cuit || null,
           alias: aliasArray,
           letra: formData.letra || null,
+          email: formData.email || null,
+          telefono: formData.telefono || null,
         },
       })
     } else {
@@ -264,6 +274,8 @@ export default function ProveedoresPage() {
         cuit: formData.cuit,
         alias: aliasArray,
         letra: formData.letra || null,
+        email: formData.email || null,
+        telefono: formData.telefono || null,
       })
     }
   }
@@ -347,6 +359,7 @@ export default function ProveedoresPage() {
                 <TableHead className="font-medium">Proveedor</TableHead>
                 <TableHead className="font-medium">CUIT</TableHead>
                 <TableHead className="font-medium text-center">Letra</TableHead>
+                <TableHead className="font-medium">Email</TableHead>
                 <TableHead className="font-medium text-center">Documentos</TableHead>
                 <TableHead className="font-medium">Estado</TableHead>
                 {isAdmin && <TableHead className="w-12"></TableHead>}
@@ -359,6 +372,7 @@ export default function ProveedoresPage() {
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-6 w-6 mx-auto" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                     {isAdmin && <TableCell><Skeleton className="h-8 w-8" /></TableCell>}
@@ -366,7 +380,7 @@ export default function ProveedoresPage() {
                 ))
               ) : filteredProveedores.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={isAdmin ? 6 : 5} className="h-32">
+                  <TableCell colSpan={isAdmin ? 7 : 6} className="h-32">
                     <EmptyState
                       icon={Building2}
                       title="Sin proveedores"
@@ -412,6 +426,13 @@ export default function ProveedoresPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       <LetraBadge letra={proveedor.letra} />
+                    </TableCell>
+                    <TableCell>
+                      {proveedor.email ? (
+                        <span className="text-sm text-slate-600">{proveedor.email}</span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="inline-flex items-center gap-1.5 text-slate-600">
@@ -550,6 +571,34 @@ export default function ProveedoresPage() {
                     <SelectItem value="C">Letra C</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="proveedor@email.com"
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Teléfono</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      value={formData.telefono}
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                      placeholder="+54 11 1234-5678"
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">

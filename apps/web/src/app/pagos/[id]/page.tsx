@@ -24,7 +24,8 @@ import { Separator } from '@/components/ui/separator'
 import { useUser } from '@/hooks/use-user'
 import { formatCurrency, formatDate, formatTipoDocumento, formatNumeroOrden } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer } from 'lucide-react'
+import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer, Send } from 'lucide-react'
+import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +75,7 @@ interface Pago {
     id: string
     razonSocial: string
     cuit: string | null
+    email: string | null
   }
   metodos: PaymentMethodItem[]
   documentos: Documento[]
@@ -88,6 +90,7 @@ export default function PagoDetailPage() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null)
   const [isLoadingPdf, setIsLoadingPdf] = useState(false)
+  const [shareEmailOpen, setShareEmailOpen] = useState(false)
 
   const { data, isLoading } = useQuery<{ pago: Pago }>({
     queryKey: ['pago', id],
@@ -195,6 +198,20 @@ export default function PagoDetailPage() {
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank')
     toast.info('Descarga el PDF y adjúntalo al correo')
     handleDownloadPdf()
+  }
+
+  const handleSendEmail = async (to: string, message: string) => {
+    const res = await fetch(`/api/pagos/${id}/share-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, message }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      toast.error(data.error || 'Error al enviar email')
+      throw new Error(data.error)
+    }
+    toast.success('Email enviado correctamente')
   }
 
   const handleViewAttachment = async (key: string, filename: string) => {
@@ -332,13 +349,17 @@ export default function PagoDetailPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShareEmailOpen(true)}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Enviar por email
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleShareWhatsApp}>
                   <MessageCircle className="h-4 w-4 mr-2" />
                   WhatsApp
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleShareEmail}>
                   <Mail className="h-4 w-4 mr-2" />
-                  Email
+                  Abrir en correo
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -524,6 +545,15 @@ export default function PagoDetailPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Share Email Dialog */}
+        <ShareEmailDialog
+          open={shareEmailOpen}
+          onOpenChange={setShareEmailOpen}
+          defaultEmail={pago.proveedor.email || ''}
+          description={`Enviar orden de pago #${formatNumeroOrden(pago.numero)} a ${pago.proveedor.razonSocial} con PDF adjunto.`}
+          onSend={handleSendEmail}
+        />
 
         {/* PDF Preview Dialog */}
         <Dialog open={!!pdfPreview} onOpenChange={(open) => !open && setPdfPreview(null)}>

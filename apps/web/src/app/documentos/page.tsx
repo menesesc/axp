@@ -11,7 +11,15 @@ import { BulkActionsBar } from '@/components/documents/bulk-actions-bar'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
+import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
+import { UploadDropzone } from '@/components/documents/upload-dropzone'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface Documento {
   id: string
@@ -64,6 +72,8 @@ export default function DocumentosPage() {
   // Selection state
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set())
   const [selectedProveedor, setSelectedProveedor] = useState('')
+  const [shareEmailOpen, setShareEmailOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -276,6 +286,25 @@ export default function DocumentosPage() {
     router.push('/pagos/nueva')
   }
 
+  const handleShareEmail = async (to: string, message: string) => {
+    const res = await fetch('/api/documentos/share-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        documentoIds: Array.from(selectedDocs),
+        to,
+        message,
+      }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      toast.error(data.error || 'Error al enviar email')
+      throw new Error(data.error)
+    }
+    toast.success('Email enviado correctamente')
+    setSelectedDocs(new Set())
+  }
+
   const handleAddSingleToPayment = (docId: string) => {
     const doc = documentos.find((d) => d.id === docId)
     if (!doc?.proveedores?.id || doc.estadoRevision !== 'CONFIRMADO') {
@@ -298,10 +327,18 @@ export default function DocumentosPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <Header
-          title="Documentos"
-          description={pagination ? `${pagination.total} documentos en total` : undefined}
-        />
+        <div className="flex items-center justify-between">
+          <Header
+            title="Documentos"
+            description={pagination ? `${pagination.total} documentos en total` : undefined}
+          />
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setUploadOpen(true)}>
+              <Upload className="h-4 w-4 mr-1.5" />
+              Subir documentos
+            </Button>
+          )}
+        </div>
 
         <DocumentFilters
           search={search}
@@ -381,6 +418,7 @@ export default function DocumentosPage() {
             onProveedorChange={setSelectedProveedor}
             onAssign={handleBulkAssign}
             onAddToPayment={handleAddToPayment}
+            onShareEmail={() => setShareEmailOpen(true)}
             onDelete={handleBulkDelete}
             onCancel={() => setSelectedDocs(new Set())}
             isAssigning={bulkAssignMutation.isPending}
@@ -389,6 +427,33 @@ export default function DocumentosPage() {
             {...(paymentValidation.reason ? { paymentDisabledReason: paymentValidation.reason } : {})}
           />
         )}
+
+        {/* Share Email Dialog */}
+        <ShareEmailDialog
+          open={shareEmailOpen}
+          onOpenChange={setShareEmailOpen}
+          description={`Enviar ${selectedDocs.size} documento${selectedDocs.size !== 1 ? 's' : ''} por email como PDF unificado.`}
+          onSend={handleShareEmail}
+        />
+
+        {/* Upload Dialog */}
+        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Subir documentos
+              </DialogTitle>
+            </DialogHeader>
+            <UploadDropzone
+              onUploadComplete={() => {
+                setUploadOpen(false)
+                queryClient.invalidateQueries({ queryKey: ['documentos'] })
+              }}
+              onClose={() => setUploadOpen(false)}
+            />
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

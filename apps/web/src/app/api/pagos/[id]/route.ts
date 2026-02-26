@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser, requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { sendPaymentOrderEmail } from '@/lib/email/send-payment-order'
 
 const paymentAttachmentSchema = z.object({
   key: z.string(),
@@ -50,6 +51,7 @@ export async function GET(
           id: true,
           razonSocial: true,
           cuit: true,
+          email: true,
         },
       },
       pago_metodos: true,
@@ -256,6 +258,13 @@ export async function PATCH(
         `
       }
     })
+
+    // Enviar email automático al proveedor si se emite la orden
+    if (wantEmit) {
+      sendPaymentOrderEmail(id, user.clienteId).catch((err) => {
+        console.error('Failed to send payment order email:', err)
+      })
+    }
 
     // Obtener el pago actualizado
     const pagoActualizado = await prisma.pagos.findUnique({

@@ -8,6 +8,8 @@ const updateProveedorSchema = z.object({
   cuit: z.string().nullable().optional(),
   alias: z.array(z.string()).optional(),
   letra: z.enum(['A', 'B', 'C']).nullable().optional(),
+  email: z.string().email().nullable().optional(),
+  telefono: z.string().nullable().optional(),
   activo: z.boolean().optional(),
 })
 
@@ -121,6 +123,8 @@ export async function PATCH(
         ...(data.cuit !== undefined && { cuit: data.cuit }),
         ...(data.alias !== undefined && { alias: data.alias }),
         ...(data.letra !== undefined && { letra: data.letra }),
+        ...(data.email !== undefined && { email: data.email }),
+        ...(data.telefono !== undefined && { telefono: data.telefono }),
         ...(data.activo !== undefined && { activo: data.activo }),
         updatedAt: new Date(),
       },

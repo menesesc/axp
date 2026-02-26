@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { X, Users, CreditCard, Trash2 } from 'lucide-react'
+import { X, Users, CreditCard, Trash2, Mail } from 'lucide-react'
 
 interface Proveedor {
   id: string
@@ -28,6 +28,7 @@ interface BulkActionsBarProps {
   onProveedorChange: (value: string) => void
   onAssign: () => void
   onAddToPayment: () => void
+  onShareEmail: () => void
   onDelete: () => void
   onCancel: () => void
   isAssigning: boolean
@@ -43,6 +44,7 @@ export function BulkActionsBar({
   onProveedorChange,
   onAssign,
   onAddToPayment,
+  onShareEmail,
   onDelete,
   onCancel,
   isAssigning,
@@ -112,6 +114,16 @@ export function BulkActionsBar({
             )}
           </Tooltip>
         </TooltipProvider>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onShareEmail}
+          className="text-white hover:bg-slate-800"
+        >
+          <Mail className="h-4 w-4 mr-1.5" />
+          Enviar por email
+        </Button>
 
         <div className="h-4 w-px bg-slate-700" />
 

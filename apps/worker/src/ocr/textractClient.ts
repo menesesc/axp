@@ -132,6 +132,7 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
       moneda: 'ARS',
       proveedor: null,
       proveedorCUIT: null,
+      receptorCUIT: null,
       items: [],
       confidenceScore: 0,
       missingFields: ['fechaEmision', 'total', 'proveedor'],
@@ -257,7 +258,7 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
 
   // Fallbacks usando extractores legacy
   const letra = extractLetra(allText);
-  const proveedorCUIT = extractProveedorCUIT(allText);
+  const { proveedorCUIT, receptorCUIT } = extractCUITs(allText);
   const fechaVencimientoFallback = fechaVencimiento || extractFechaVencimiento(allText);
 
   // Detectar tipo de documento (FACTURA, NOTA_CREDITO, REMITO)
@@ -272,7 +273,8 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
   // Debug logging
   logger.info(`🔍 Extracted fields:`);
   logger.info(`   Proveedor: ${proveedor || 'N/A'}`);
-  logger.info(`   CUIT: ${proveedorCUIT || 'N/A'}`);
+  logger.info(`   CUIT Proveedor: ${proveedorCUIT || 'N/A'}`);
+  logger.info(`   CUIT Receptor: ${receptorCUIT || 'N/A'}`);
   logger.info(`   Letra: ${letra || 'N/A'}`);
   logger.info(`   Subtotal (raw): "${getFieldValue('SUBTOTAL')}" → ${subtotalBasic || 'N/A'} → smart: ${subtotal || 'N/A'}`);
   logger.info(`   IVA (raw): "${getFieldValue('TAX')}" → ${ivaBasic || 'N/A'} → smart: ${iva || 'N/A'}`);
@@ -307,6 +309,7 @@ export function parseTextractResult(result: AnalyzeExpenseCommandOutput): any {
     moneda: 'ARS', // Por defecto, se puede mejorar
     proveedor: proveedor,
     proveedorCUIT: proveedorCUIT, // Detectado con extractor legacy
+    receptorCUIT: receptorCUIT, // CUIT del comprador/receptor en la factura
     items: items,
     confidenceScore: confidenceScore,
     missingFields: [] as string[],
@@ -1071,7 +1074,16 @@ function extractProveedor(lines: string[]): string | null {
   return null;
 }
 
+interface ExtractedCUITs {
+  proveedorCUIT: string | null;
+  receptorCUIT: string | null;
+}
+
 function extractProveedorCUIT(lines: string[]): string | null {
+  return extractCUITs(lines).proveedorCUIT;
+}
+
+function extractCUITs(lines: string[]): ExtractedCUITs {
   // Buscar CUIT en formato: XX-XXXXXXXX-X o XXXXXXXXXXXX
   // Ejemplos: 30-53804819-0, 30-71215244-9, 30-71891765-0
 
@@ -1111,49 +1123,81 @@ function extractProveedorCUIT(lines: string[]): string | null {
     }
   }
 
-  // Si no hay CUITs, return null
+  // Si no hay CUITs
   if (allCUITs.length === 0) {
-    return null;
+    return { proveedorCUIT: null, receptorCUIT: null };
   }
 
-  // Si solo hay 1 CUIT, devolverlo (es el del proveedor)
+  // Si solo hay 1 CUIT, es el del proveedor (no podemos determinar receptor)
   if (allCUITs.length === 1) {
-    return allCUITs[0].cuit;
+    return { proveedorCUIT: allCUITs[0].cuit, receptorCUIT: null };
   }
 
-  // Si hay múltiples CUITs:
-  // 1. PRIMERO: Excluir los que están en la sección del cliente
+  // Si hay múltiples CUITs, separar proveedor y receptor
+  let proveedorCUIT: string | null = null;
+  let receptorCUIT: string | null = null;
+
+  // 1. PRIMERO: Separar por sección del cliente
   const notInClientSection = allCUITs.filter(item => !item.isInClientSection);
-  const firstNotInClient = notInClientSection[0];
-  if (notInClientSection.length >= 1 && firstNotInClient) {
-    logger.info(`✅ Selected provider CUIT (outside client section): ${firstNotInClient.cuit}`);
-    return firstNotInClient.cuit;
+  const inClientSection = allCUITs.filter(item => item.isInClientSection);
+
+  if (notInClientSection.length >= 1 && notInClientSection[0]) {
+    proveedorCUIT = notInClientSection[0].cuit;
+    logger.info(`✅ Selected provider CUIT (outside client section): ${proveedorCUIT}`);
+  }
+  if (inClientSection.length >= 1 && inClientSection[0]) {
+    receptorCUIT = inClientSection[0].cuit;
+    logger.info(`✅ Selected receptor CUIT (in client section): ${receptorCUIT}`);
   }
 
-  // 2. Si no pudimos detectar sección del cliente, usar contexto de texto
-  const proveedorCUITs = allCUITs.filter(item =>
-    !item.context.includes('cliente') &&
-    !item.context.includes('comprador') &&
-    !item.context.includes('destinatario') &&
-    !item.context.includes('responsable inscripto') // El cliente suele tener esta etiqueta
-  );
-
-  const firstProveedorCUIT = proveedorCUITs[0];
-  if (firstProveedorCUIT) {
-    logger.info(`✅ Selected provider CUIT (by context filter): ${firstProveedorCUIT.cuit}`);
-    return firstProveedorCUIT.cuit;
+  // 2. Si no detectamos sección del cliente, usar contexto de texto
+  if (!proveedorCUIT) {
+    const proveedorCUITs = allCUITs.filter(item =>
+      !item.context.includes('cliente') &&
+      !item.context.includes('comprador') &&
+      !item.context.includes('destinatario') &&
+      !item.context.includes('responsable inscripto')
+    );
+    const firstProveedorCUIT = proveedorCUITs[0];
+    if (firstProveedorCUIT) {
+      proveedorCUIT = firstProveedorCUIT.cuit;
+      logger.info(`✅ Selected provider CUIT (by context filter): ${proveedorCUIT}`);
+    }
   }
 
-  // 3. Último recurso: devolver el que está más arriba (índice más bajo)
-  // El proveedor suele estar en el encabezado
-  const sorted = [...allCUITs].sort((a, b) => a.index - b.index);
-  const firstSorted = sorted[0];
-  if (firstSorted) {
-    logger.info(`⚠️ Falling back to first CUIT by position: ${firstSorted.cuit}`);
-    return firstSorted.cuit;
+  if (!receptorCUIT) {
+    const receptorCUITs = allCUITs.filter(item =>
+      item.context.includes('cliente') ||
+      item.context.includes('comprador') ||
+      item.context.includes('destinatario')
+    );
+    const firstReceptorCUIT = receptorCUITs[0];
+    if (firstReceptorCUIT) {
+      receptorCUIT = firstReceptorCUIT.cuit;
+      logger.info(`✅ Selected receptor CUIT (by context filter): ${receptorCUIT}`);
+    }
   }
 
-  return null;
+  // 3. Último recurso para proveedor: el más arriba (encabezado)
+  if (!proveedorCUIT) {
+    const sorted = [...allCUITs].sort((a, b) => a.index - b.index);
+    const firstSorted = sorted[0];
+    if (firstSorted) {
+      proveedorCUIT = firstSorted.cuit;
+      logger.info(`⚠️ Falling back to first CUIT by position: ${proveedorCUIT}`);
+    }
+  }
+
+  // Si receptor no se detectó pero hay exactamente 2 CUITs, el otro es el receptor
+  if (!receptorCUIT && allCUITs.length === 2 && proveedorCUIT) {
+    const other = allCUITs.find(item => item.cuit !== proveedorCUIT);
+    if (other) {
+      receptorCUIT = other.cuit;
+      logger.info(`✅ Inferred receptor CUIT (second of two): ${receptorCUIT}`);
+    }
+  }
+
+  return { proveedorCUIT, receptorCUIT };
 }
 
 function calculateConfidence(blocks: Block[]): number {

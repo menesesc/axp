@@ -21,7 +21,8 @@ model clientes {
   pagos           pagos[]
   proveedores     proveedores[]
   usuarios        usuarios[]
-  processing_logs processing_logs[]
+  processing_logs  processing_logs[]
+  email_templates  email_templates[]
 }
 
 model documento_items {
@@ -180,6 +181,8 @@ model proveedores {
   cuit        String?       @db.VarChar(11)
   alias       Json          @default("[]")
   letra       String?       @db.VarChar(1)
+  email       String?       @db.VarChar(255)
+  telefono    String?       @db.VarChar(20)
   activo      Boolean       @default(true)
   createdAt   DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime      @db.Timestamptz(3)
@@ -190,6 +193,7 @@ model proveedores {
   @@unique([clienteId, cuit])
   @@index([clienteId])
   @@index([clienteId, razonSocial])
+  @@index([email])
 }
 
 model usuarios {
@@ -275,6 +279,7 @@ enum SourceDocumento {
 enum SourceIngestQueue {
   SFTP
   DRIVE
+  EMAIL
 }
 
 enum StatusIngestQueue {
@@ -295,4 +300,24 @@ enum TipoPagoMetodo {
   TRANSFERENCIA
   CHEQUE
   ECHEQ
+}
+
+model email_templates {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String            @db.Uuid
+  tipo      TipoEmailTemplate
+  asunto    String            @db.VarChar(500)
+  cuerpo    String            @db.Text
+  activo    Boolean           @default(true)
+  createdAt DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime          @db.Timestamptz(3)
+  clientes  clientes          @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, tipo])
+  @@index([clienteId])
+}
+
+enum TipoEmailTemplate {
+  ORDEN_PAGO
+  COMPARTIR_DOCUMENTOS
 }

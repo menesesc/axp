@@ -31,7 +31,7 @@ export async function GET() {
     const canales = {
       email: {
         habilitado: true,
-        direccion: `facturas@axp.com.ar`,
+        direccion: `inbox@axp.com.ar`,
         alias: [],
       },
       whatsapp: {

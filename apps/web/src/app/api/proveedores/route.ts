@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { razonSocial, cuit, letra, alias } = body
+    const { razonSocial, cuit, letra, alias, email, telefono } = body
 
     // Validaciones
     if (!razonSocial || razonSocial.trim().length === 0) {
@@ -111,6 +111,8 @@ export async function POST(request: Request) {
         cuit: cuit ? cuit.replace(/-/g, '') : null,
         letra: letra || null,
         alias: alias || [],
+        email: email || null,
+        telefono: telefono || null,
         updatedAt: new Date(),
       },
     })

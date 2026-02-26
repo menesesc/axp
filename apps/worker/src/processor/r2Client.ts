@@ -14,6 +14,7 @@ import {
   DeleteObjectCommand,
   CreateBucketCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { createLogger } from '../utils/fileUtils';
 
@@ -292,6 +293,27 @@ export async function deleteR2Object(bucket: string, key: string): Promise<void>
   } catch (error) {
     logger.error(`❌ R2 delete failed for ${bucket}/${key}:`, error);
     throw error;
+  }
+}
+
+/**
+ * Obtiene los metadatos de un objeto en R2
+ */
+export async function getObjectMetadata(
+  bucket: string,
+  key: string
+): Promise<Record<string, string>> {
+  try {
+    const command = new HeadObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    const response = await r2Client.send(command);
+    return response.Metadata || {};
+  } catch (error) {
+    logger.warn(`⚠️  Could not read metadata for ${bucket}/${key}:`, error);
+    return {};
   }
 }
 

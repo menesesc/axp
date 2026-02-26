@@ -66,7 +66,7 @@ const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
 };
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { createDbLogger, flushAllLogs } from '../utils/dbLogger';
-import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object } from '../processor/r2Client';
+import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object, getObjectMetadata } from '../processor/r2Client';
 import { processWithTextract, parseTextractResult } from './textractClient';
 import { isShuttingDown } from '../index';
 
@@ -100,6 +100,7 @@ interface InboxFile {
   key: string;
   clienteId: string;
   filename: string;
+  source?: string;
 }
 
 /**
@@ -150,11 +151,14 @@ async function getInboxFiles(): Promise<InboxFile[]> {
       
       for (const obj of objects) {
         if (obj.Key && obj.Key.endsWith('.pdf')) {
+          // Read metadata to determine source (EMAIL, MANUAL, etc.)
+          const metadata = await getObjectMetadata(config.r2Bucket, obj.Key);
           files.push({
             bucket: config.r2Bucket,
             key: obj.Key,
             clienteId: config.clienteId,
             filename: obj.Key.replace('inbox/', ''),
+            source: metadata.source || undefined,
           });
         }
       }
@@ -314,6 +318,39 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         if (!parsed.missingFields.includes('numeroCompleto')) {
           parsed.missingFields.push('numeroCompleto');
         }
+      }
+    }
+
+    // VALIDACIÓN DE RECEPTOR: Verificar que la factura sea para este cliente
+    // Si el CUIT receptor extraído de la factura no coincide con el CUIT del cliente,
+    // marcar para revisión (ej: proveedor envió factura equivocada)
+    let receptorMismatch = false;
+    if (parsed.receptorCUIT && cliente?.cuit) {
+      const receptorNormalized = parsed.receptorCUIT.replace(/\D/g, '');
+      const clienteCuitNormalized = cliente.cuit.replace(/\D/g, '');
+
+      if (receptorNormalized !== clienteCuitNormalized) {
+        receptorMismatch = true;
+        logger.warn(`⚠️  RECEPTOR MISMATCH: Factura dirigida a CUIT ${parsed.receptorCUIT}, pero el cliente es ${cliente.cuit}`);
+        logger.warn(`   Posible factura enviada por error. Se procesará pero quedará PENDIENTE.`);
+
+        if (!parsed.missingFields.includes('receptorCUIT')) {
+          parsed.missingFields.push('receptorCUIT');
+        }
+
+        const receptorLogger = getDbLogger(file.clienteId);
+        receptorLogger.warning(
+          `Factura con receptor CUIT ${parsed.receptorCUIT} no coincide con cliente ${cliente.cuit} (${cliente.razonSocial})`,
+          {
+            receptorCUIT: parsed.receptorCUIT,
+            clienteCUIT: cliente.cuit,
+            proveedorCUIT: parsed.proveedorCUIT,
+            source: file.source || 'SFTP',
+          },
+          file.filename
+        );
+      } else {
+        logger.info(`✅ Receptor CUIT matches client: ${parsed.receptorCUIT}`);
       }
     }
 
@@ -701,7 +738,13 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     // 9. Crear documento en BD
     logger.info(`💾 Creating Documento record...`);
-    const estadoRevision = determineEstadoRevision(parsed, proveedorId, finalLetra);
+    let estadoRevision = determineEstadoRevision(parsed, proveedorId, finalLetra);
+
+    // Si el CUIT receptor no coincide con el cliente, forzar PENDIENTE
+    if (receptorMismatch) {
+      estadoRevision = 'PENDIENTE';
+      logger.warn(`⚠️  Forcing PENDIENTE due to receptor CUIT mismatch`);
+    }
     logger.info(`📋 Estado de revisión: ${estadoRevision}`);
     
     const documento = await prisma.documentos.create({
@@ -738,7 +781,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           confidence: parsed.confidenceScore,
           itemsCount: parsed.items?.length || 0,
         }, // Solo metadatos, no el JSON completo de Textract (ahorra espacio)
-        source: 'SFTP', // Origen actual: escáner/WebDAV
+        source: file.source || 'SFTP', // From R2 metadata or default to SFTP
         hashSha256: sha256,
         pdfRawKey: file.key,
         pdfFinalKey: null, // Se actualiza después del move
