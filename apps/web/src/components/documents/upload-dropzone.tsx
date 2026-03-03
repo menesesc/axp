@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Upload, X, FileText, ImageIcon, Loader2, Camera } from 'lucide-react'
 import { toast } from 'sonner'
+import { compressImages } from '@/lib/image-utils'
 
 interface UploadDropzoneProps {
   onUploadComplete: () => void
@@ -31,7 +32,7 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
     return null
   }
 
-  const addFiles = useCallback((newFiles: FileList | File[]) => {
+  const addFiles = useCallback(async (newFiles: FileList | File[]) => {
     const valid: File[] = []
     for (const file of Array.from(newFiles)) {
       const error = validateFile(file)
@@ -41,7 +42,11 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
         valid.push(file)
       }
     }
-    setFiles((prev) => [...prev, ...valid])
+    if (valid.length === 0) return
+
+    // Comprimir imágenes (auto-rota y reduce tamaño)
+    const processed = await compressImages(valid)
+    setFiles((prev) => [...prev, ...processed])
   }, [])
 
   const removeFile = (index: number) => {

@@ -11,7 +11,7 @@ import { BulkActionsBar } from '@/components/documents/bulk-actions-bar'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Upload, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload, Sparkles, RefreshCw } from 'lucide-react'
 import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
 import { UploadDropzone } from '@/components/documents/upload-dropzone'
 import { AIReviewDialog } from '@/components/documents/ai-review-dialog'
@@ -140,6 +140,7 @@ export default function DocumentosPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
       setSelectedDocs(new Set())
       setSelectedProveedor('')
       toast.success(`${data.updatedCount} documentos actualizados`)
@@ -164,6 +165,7 @@ export default function DocumentosPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
       setSelectedDocs(new Set())
       toast.success(`${data.deletedCount} documentos eliminados`)
     },
@@ -266,6 +268,45 @@ export default function DocumentosPage() {
     setAiReviewOpen(true)
   }
 
+  const recalculateMutation = useMutation({
+    mutationFn: async (documentIds: string[]) => {
+      const res = await fetch('/api/documentos/bulk-recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentIds }),
+      })
+      if (!res.ok) throw new Error('Error al recalcular')
+      return res.json()
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      setSelectedDocs(new Set())
+      if (data.updated > 0) {
+        toast.success(`${data.updated} documento${data.updated !== 1 ? 's' : ''} actualizado${data.updated !== 1 ? 's' : ''}`)
+      } else {
+        toast.info('No se encontraron estados incorrectos')
+      }
+    },
+    onError: () => {
+      toast.error('Error al recalcular estados')
+    },
+  })
+
+  const handleRecalculate = () => {
+    const selectedDocsList = documentos.filter(d => selectedDocs.has(d.id))
+    const pendingIds = selectedDocsList
+      .filter(d => d.estadoRevision === 'PENDIENTE')
+      .map(d => d.id)
+
+    if (pendingIds.length === 0) {
+      toast.error('No hay documentos pendientes seleccionados')
+      return
+    }
+
+    recalculateMutation.mutate(pendingIds)
+  }
+
   const documentos = data?.documentos || []
   const pagination = data?.pagination
 
@@ -352,6 +393,15 @@ export default function DocumentosPage() {
           />
           {isAdmin && (
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleRecalculate}
+                disabled={selectedDocs.size === 0 || recalculateMutation.isPending}
+                className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              >
+                <RefreshCw className={`h-4 w-4 mr-1.5 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
+                Recalcular
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleAIReview}
@@ -447,6 +497,7 @@ export default function DocumentosPage() {
         {isAdmin && (
           <BulkActionsBar
             selectedCount={selectedDocs.size}
+            selectedDocuments={documentos.filter(d => selectedDocs.has(d.id))}
             proveedores={proveedores}
             selectedProveedor={selectedProveedor}
             onProveedorChange={setSelectedProveedor}
@@ -477,6 +528,7 @@ export default function DocumentosPage() {
           documentIds={aiReviewDocIds}
           onCompleted={() => {
             queryClient.invalidateQueries({ queryKey: ['documentos'] })
+            queryClient.invalidateQueries({ queryKey: ['stats'] })
             setSelectedDocs(new Set())
           }}
         />

@@ -152,6 +152,7 @@ export default function DocumentoPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documento', documentoId] })
       queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
       setIsEditing(false)
       setEditData({})
       toast.success('Documento actualizado')
@@ -168,6 +169,7 @@ export default function DocumentoPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
       toast.success('Documento eliminado')
       router.push('/documentos')
     },
@@ -361,6 +363,7 @@ export default function DocumentoPage() {
                 onApplied={() => {
                   queryClient.invalidateQueries({ queryKey: ['documento', documentoId] })
                   queryClient.invalidateQueries({ queryKey: ['documentos'] })
+                  queryClient.invalidateQueries({ queryKey: ['stats'] })
                 }}
               />
             )}
