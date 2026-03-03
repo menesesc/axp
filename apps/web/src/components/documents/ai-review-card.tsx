@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, Sparkles, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -37,6 +38,7 @@ export function AIReviewCard({ documentId, onApplied }: AIReviewCardProps) {
   const [step, setStep] = useState<CardStep>('idle')
   const [data, setData] = useState<ReviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set())
 
   const handleReview = async () => {
     setStep('loading')
@@ -56,6 +58,9 @@ export function AIReviewCard({ documentId, onApplied }: AIReviewCardProps) {
       }
 
       setData(json)
+      setSelectedFields(new Set(
+        json.changes.filter((c: Change) => c.changed).map((c: Change) => c.field)
+      ))
       setStep('review')
     } catch {
       setError('Error de conexión')
@@ -70,7 +75,7 @@ export function AIReviewCard({ documentId, onApplied }: AIReviewCardProps) {
     try {
       const changes: Record<string, any> = {}
       for (const change of data.changes) {
-        if (change.changed) {
+        if (change.changed && selectedFields.has(change.field)) {
           changes[change.field] = data.suggestions[change.field]
         }
       }
@@ -102,7 +107,20 @@ export function AIReviewCard({ documentId, onApplied }: AIReviewCardProps) {
     }
   }
 
+  const toggleField = (field: string) => {
+    setSelectedFields(prev => {
+      const next = new Set(prev)
+      if (next.has(field)) {
+        next.delete(field)
+      } else {
+        next.add(field)
+      }
+      return next
+    })
+  }
+
   const changedFields = data?.changes.filter(c => c.changed) ?? []
+  const selectedCount = changedFields.filter(c => selectedFields.has(c.field)).length
   const confianza = data?.suggestions?.confianza ?? 0
 
   const confianzaColor =
@@ -196,22 +214,36 @@ export function AIReviewCard({ documentId, onApplied }: AIReviewCardProps) {
 
       {changedFields.length > 0 ? (
         <div className="divide-y divide-violet-100 border border-violet-200 rounded-lg bg-white mb-3">
-          {changedFields.map(change => (
-            <div key={change.field} className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-sm font-medium text-slate-600 w-28 shrink-0">
-                {change.label}
-              </span>
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm text-slate-400 line-through truncate">
-                  {change.before || '-'}
+          {changedFields.map(change => {
+            const isSelected = selectedFields.has(change.field)
+            return (
+              <label
+                key={change.field}
+                className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                  isSelected ? 'bg-white' : 'bg-slate-50 opacity-60'
+                }`}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleField(change.field)}
+                />
+                <span className="text-sm font-medium text-slate-600 w-28 shrink-0">
+                  {change.label}
                 </span>
-                <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
-                <span className="text-sm font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded truncate">
-                  {change.after || '-'}
-                </span>
-              </div>
-            </div>
-          ))}
+                <div className="flex items-center gap-2 min-w-0 ml-auto">
+                  <span className="text-sm text-slate-400 line-through truncate">
+                    {change.before || '-'}
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
+                  <span className={`text-sm font-medium px-2 py-0.5 rounded truncate ${
+                    isSelected ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100'
+                  }`}>
+                    {change.after || '-'}
+                  </span>
+                </div>
+              </label>
+            )
+          })}
         </div>
       ) : (
         <div className="flex items-center gap-2 bg-white border border-violet-200 rounded-lg px-3 py-4 mb-3 justify-center">
@@ -247,9 +279,14 @@ export function AIReviewCard({ documentId, onApplied }: AIReviewCardProps) {
             Descartar
           </Button>
           {changedFields.length > 0 && (
-            <Button size="sm" onClick={handleApply} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button
+              size="sm"
+              onClick={handleApply}
+              disabled={selectedCount === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+            >
               <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-              Aplicar cambios
+              Aplicar {selectedCount}/{changedFields.length}
             </Button>
           )}
         </div>
