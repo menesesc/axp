@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatCurrency, formatDate, formatTipoDocumento } from '@/lib/utils'
-import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard, FileIcon, Loader2, Banknote, Sparkles } from 'lucide-react'
+import { FileText, MoreHorizontal, Eye, CheckCircle, Download, CreditCard, FileIcon, Loader2, Banknote } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -108,7 +108,6 @@ interface DocumentsTableProps {
   isAdmin: boolean
   onConfirm?: (id: string) => void
   onAddToPayment?: (id: string) => void
-  onAIReview?: (id: string) => void
 }
 
 export function DocumentsTable({
@@ -120,7 +119,6 @@ export function DocumentsTable({
   isAdmin,
   onConfirm,
   onAddToPayment,
-  onAIReview,
 }: DocumentsTableProps) {
   const allSelected = documents.length > 0 && selectedIds.size === documents.length
 
@@ -139,7 +137,6 @@ export function DocumentsTable({
               <TableHead>Items</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead>PDF</TableHead>
-              {isAdmin && <TableHead>IA</TableHead>}
               <TableHead>Pago</TableHead>
               <TableHead className="w-10" />
             </TableRow>
@@ -160,7 +157,6 @@ export function DocumentsTable({
                 <TableCell><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>
-                {isAdmin && <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>}
                 <TableCell><Skeleton className="h-4 w-4 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-4" /></TableCell>
               </TableRow>
@@ -204,7 +200,6 @@ export function DocumentsTable({
             <TableHead className="w-16 text-center">Items</TableHead>
             <TableHead className="text-right w-28">Total</TableHead>
             <TableHead className="w-10">PDF</TableHead>
-            {isAdmin && <TableHead className="w-10">IA</TableHead>}
             <TableHead className="w-10">Pago</TableHead>
             <TableHead className="w-10" />
           </TableRow>
@@ -267,31 +262,6 @@ export function DocumentsTable({
               <TableCell onClick={(e) => e.stopPropagation()}>
                 <PdfButton pdfKey={doc.pdfFinalKey} />
               </TableCell>
-              {isAdmin && (
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  {doc.estadoRevision === 'PENDIENTE' ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => onAIReview?.(doc.id)}
-                      title="Revisar con IA"
-                    >
-                      <Sparkles className="h-4 w-4 text-violet-600" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled
-                      title="Solo disponible para pendientes"
-                    >
-                      <Sparkles className="h-4 w-4 text-slate-300" />
-                    </Button>
-                  )}
-                </TableCell>
-              )}
               <TableCell onClick={(e) => e.stopPropagation()}>
                 {doc.pagoId ? (
                   <Link href={`/pagos/${doc.pagoId}`}>
@@ -338,12 +308,6 @@ export function DocumentsTable({
                       <DropdownMenuItem onClick={() => onConfirm?.(doc.id)}>
                         <CheckCircle className="h-4 w-4 mr-2" />
                         Confirmar
-                      </DropdownMenuItem>
-                    )}
-                    {isAdmin && doc.estadoRevision === 'PENDIENTE' && (
-                      <DropdownMenuItem onClick={() => onAIReview?.(doc.id)}>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Revisar con IA
                       </DropdownMenuItem>
                     )}
                     {isAdmin && doc.estadoRevision === 'CONFIRMADO' && (

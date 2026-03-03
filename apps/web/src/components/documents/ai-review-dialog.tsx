@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,141 +9,135 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Loader2, Sparkles, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Loader2, Sparkles, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
 
-interface Change {
-  field: string
-  label: string
-  before: string | null
-  after: string | null
-  changed: boolean
+interface DocResult {
+  id: string
+  status: 'updated' | 'no_changes' | 'error'
+  fieldsChanged: number
+  error?: string
 }
 
-interface ReviewData {
-  suggestions: Record<string, any>
-  current: Record<string, any>
-  changes: Change[]
-  usage: {
-    logId: string
-    inputTokens: number
-    outputTokens: number
-    costoEstimado: number
-    durationMs: number
-  }
-}
-
-type DialogStep = 'loading' | 'review' | 'applying' | 'error'
+type DialogStep = 'processing' | 'done'
 
 interface AIReviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  documentId: string | null
-  onApplied?: () => void
+  documentIds: string[]
+  onCompleted?: () => void
 }
 
 export function AIReviewDialog({
   open,
   onOpenChange,
-  documentId,
-  onApplied,
+  documentIds,
+  onCompleted,
 }: AIReviewDialogProps) {
-  const [step, setStep] = useState<DialogStep>('loading')
-  const [data, setData] = useState<ReviewData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState<DialogStep>('processing')
+  const [current, setCurrent] = useState(0)
+  const [results, setResults] = useState<DocResult[]>([])
+  const [totalCost, setTotalCost] = useState(0)
+  const [totalTokens, setTotalTokens] = useState(0)
+  const abortRef = useRef(false)
 
-  // Fetch AI review when dialog opens
   useEffect(() => {
-    if (!open || !documentId) return
+    if (!open || documentIds.length === 0) return
 
-    setStep('loading')
-    setData(null)
-    setError(null)
+    setStep('processing')
+    setCurrent(0)
+    setResults([])
+    setTotalCost(0)
+    setTotalTokens(0)
+    abortRef.current = false
 
-    const fetchReview = async () => {
-      try {
-        const res = await fetch(`/api/documentos/${documentId}/ai-review`, {
-          method: 'POST',
-        })
-        const json = await res.json()
+    const processDocuments = async () => {
+      const docResults: DocResult[] = []
+      let cost = 0
+      let tokens = 0
 
-        if (!res.ok) {
-          setError(json.error || 'Error al revisar con IA')
-          setStep('error')
-          return
+      for (let i = 0; i < documentIds.length; i++) {
+        if (abortRef.current) break
+        setCurrent(i + 1)
+        const docId = documentIds[i]!
+
+        try {
+          // Step 1: Get AI review
+          const reviewRes = await fetch(`/api/documentos/${docId}/ai-review`, {
+            method: 'POST',
+          })
+          const reviewJson = await reviewRes.json()
+
+          if (!reviewRes.ok) {
+            docResults.push({ id: docId, status: 'error', fieldsChanged: 0, error: reviewJson.error })
+            continue
+          }
+
+          cost += reviewJson.usage.costoEstimado
+          tokens += reviewJson.usage.inputTokens + reviewJson.usage.outputTokens
+
+          // Step 2: Check if there are changes to apply
+          const changedFields = reviewJson.changes.filter((c: { changed: boolean }) => c.changed)
+
+          if (changedFields.length === 0) {
+            docResults.push({ id: docId, status: 'no_changes', fieldsChanged: 0 })
+            continue
+          }
+
+          // Step 3: Auto-apply changes
+          const changes: Record<string, any> = {}
+          for (const change of reviewJson.changes) {
+            if (change.changed) {
+              changes[change.field] = reviewJson.suggestions[change.field]
+            }
+          }
+
+          const applyRes = await fetch(`/api/documentos/${docId}/ai-apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              logId: reviewJson.usage.logId,
+              changes,
+            }),
+          })
+
+          if (!applyRes.ok) {
+            const applyJson = await applyRes.json()
+            docResults.push({ id: docId, status: 'error', fieldsChanged: 0, error: applyJson.error })
+            continue
+          }
+
+          docResults.push({ id: docId, status: 'updated', fieldsChanged: changedFields.length })
+        } catch {
+          docResults.push({ id: docId, status: 'error', fieldsChanged: 0, error: 'Error de conexión' })
         }
-
-        setData(json)
-        setStep('review')
-      } catch {
-        setError('Error de conexión')
-        setStep('error')
       }
+
+      setResults(docResults)
+      setTotalCost(cost)
+      setTotalTokens(tokens)
+      setStep('done')
     }
 
-    fetchReview()
-  }, [open, documentId])
+    processDocuments()
+  }, [open, documentIds])
 
-  const handleApply = async () => {
-    if (!data || !documentId) return
-
-    setStep('applying')
-
-    try {
-      // Build changes object with only the changed fields
-      const changes: Record<string, any> = {}
-      for (const change of data.changes) {
-        if (change.changed) {
-          changes[change.field] = data.suggestions[change.field]
-        }
-      }
-
-      const res = await fetch(`/api/documentos/${documentId}/ai-apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          logId: data.usage.logId,
-          changes,
-        }),
-      })
-
-      const json = await res.json()
-
-      if (!res.ok) {
-        setError(json.error || 'Error al aplicar cambios')
-        setStep('error')
-        return
-      }
-
-      toast.success('Documento actualizado con IA')
-      onOpenChange(false)
-      onApplied?.()
-    } catch {
-      setError('Error de conexión')
-      setStep('error')
-    }
-  }
-
-  const handleRetry = () => {
-    setStep('loading')
-    setError(null)
-    setData(null)
-    // Re-trigger the effect
+  const handleClose = () => {
+    abortRef.current = true
     onOpenChange(false)
-    setTimeout(() => onOpenChange(true), 100)
+    if (results.some(r => r.status === 'updated')) {
+      onCompleted?.()
+    }
   }
 
-  const changedFields = data?.changes.filter(c => c.changed) ?? []
-  const confianza = data?.suggestions?.confianza ?? 0
-
-  const confianzaColor =
-    confianza >= 80 ? 'bg-emerald-100 text-emerald-700' :
-    confianza >= 50 ? 'bg-amber-100 text-amber-700' :
-    'bg-red-100 text-red-700'
+  const updated = results.filter(r => r.status === 'updated')
+  const noChanges = results.filter(r => r.status === 'no_changes')
+  const errors = results.filter(r => r.status === 'error')
+  const progress = documentIds.length > 0 ? (current / documentIds.length) * 100 : 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-violet-600" />
@@ -151,116 +145,77 @@ export function AIReviewDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {/* LOADING */}
-        {step === 'loading' && (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
+        {/* PROCESSING */}
+        {step === 'processing' && (
+          <div className="flex flex-col items-center justify-center py-8 gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
-            <p className="text-sm font-medium text-slate-700">Analizando documento con IA...</p>
-            <p className="text-xs text-slate-400">Esto puede tardar unos segundos</p>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-medium text-slate-700">
+                Procesando documento {current} de {documentIds.length}...
+              </p>
+              <p className="text-xs text-slate-400">
+                Analizando y aplicando correcciones automáticamente
+              </p>
+            </div>
+            <Progress value={progress} className="w-full max-w-xs" />
+            <Button variant="ghost" size="sm" onClick={handleClose}>
+              Cancelar
+            </Button>
           </div>
         )}
 
-        {/* REVIEW */}
-        {step === 'review' && data && (
+        {/* DONE */}
+        {step === 'done' && (
           <>
             <div className="space-y-4 py-2">
-              {/* Confidence badge */}
-              <div className="flex items-center justify-between">
-                <span className={`text-xs font-medium px-2 py-1 rounded-full ${confianzaColor}`}>
-                  Confianza: {confianza}%
-                </span>
-                {changedFields.length === 0 && (
-                  <span className="text-xs text-slate-400">Sin cambios detectados</span>
-                )}
+              {/* Summary counts */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col items-center p-3 bg-emerald-50 rounded-lg">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
+                  <span className="text-lg font-semibold text-emerald-700">{updated.length}</span>
+                  <span className="text-[11px] text-emerald-600">Corregidos</span>
+                </div>
+                <div className="flex flex-col items-center p-3 bg-slate-50 rounded-lg">
+                  <MinusCircle className="h-5 w-5 text-slate-400 mb-1" />
+                  <span className="text-lg font-semibold text-slate-600">{noChanges.length}</span>
+                  <span className="text-[11px] text-slate-500">Sin cambios</span>
+                </div>
+                <div className="flex flex-col items-center p-3 bg-red-50 rounded-lg">
+                  <XCircle className="h-5 w-5 text-red-500 mb-1" />
+                  <span className="text-lg font-semibold text-red-600">{errors.length}</span>
+                  <span className="text-[11px] text-red-500">Errores</span>
+                </div>
               </div>
 
-              {/* Changes list */}
-              {changedFields.length > 0 ? (
-                <div className="divide-y divide-slate-100 border rounded-lg">
-                  {changedFields.map(change => (
-                    <div key={change.field} className="flex items-center justify-between px-3 py-2.5">
-                      <span className="text-sm font-medium text-slate-600 w-28 shrink-0">
-                        {change.label}
-                      </span>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm text-slate-400 line-through truncate">
-                          {change.before || '-'}
-                        </span>
-                        <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
-                        <span className="text-sm font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded truncate">
-                          {change.after || '-'}
-                        </span>
-                      </div>
-                    </div>
+              {/* Error details */}
+              {errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 space-y-1">
+                  {errors.map((e) => (
+                    <p key={e.id} className="text-xs text-red-600">
+                      {e.error || 'Error desconocido'}
+                    </p>
                   ))}
                 </div>
-              ) : (
-                <div className="flex flex-col items-center py-6 text-slate-400">
-                  <CheckCircle2 className="h-8 w-8 mb-2" />
-                  <p className="text-sm">La IA no encontró campos para corregir</p>
-                </div>
               )}
 
-              {/* AI notes */}
-              {data.suggestions.notas && (
-                <p className="text-xs text-slate-500 italic">
-                  {data.suggestions.notas}
+              {/* Updated details */}
+              {updated.length > 0 && (
+                <p className="text-xs text-slate-500">
+                  Se corrigieron un total de {updated.reduce((acc, r) => acc + r.fieldsChanged, 0)} campos
+                  en {updated.length} documento{updated.length !== 1 ? 's' : ''}.
                 </p>
-              )}
-
-              {/* Proveedor not found warning */}
-              {!data.suggestions.proveedorId && data.suggestions.proveedorCuit && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  <p className="text-xs text-amber-700">
-                    Proveedor detectado pero no registrado — CUIT: {data.suggestions.proveedorCuit}
-                    {data.suggestions.proveedorNombre && `, Nombre: ${data.suggestions.proveedorNombre}`}.
-                    Deberás crearlo manualmente.
-                  </p>
-                </div>
               )}
             </div>
 
             <DialogFooter className="flex items-center justify-between sm:justify-between">
               <span className="text-[11px] text-slate-400">
-                {data.usage.inputTokens + data.usage.outputTokens} tokens · ~${data.usage.costoEstimado.toFixed(4)} USD
+                {totalTokens.toLocaleString()} tokens · ~${totalCost.toFixed(4)} USD
               </span>
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                  Cancelar
-                </Button>
-                {changedFields.length > 0 && (
-                  <Button onClick={handleApply} className="bg-emerald-600 hover:bg-emerald-700">
-                    <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                    Aplicar cambios
-                  </Button>
-                )}
-              </div>
-            </DialogFooter>
-          </>
-        )}
-
-        {/* APPLYING */}
-        {step === 'applying' && (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-            <p className="text-sm font-medium text-slate-700">Aplicando cambios...</p>
-          </div>
-        )}
-
-        {/* ERROR */}
-        {step === 'error' && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <p className="text-sm text-red-600 text-center">{error}</p>
-            <div className="flex gap-2 mt-2">
-              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              <Button onClick={handleClose}>
                 Cerrar
               </Button>
-              <Button variant="outline" onClick={handleRetry}>
-                Reintentar
-              </Button>
-            </div>
-          </div>
+            </DialogFooter>
+          </>
         )}
       </DialogContent>
     </Dialog>

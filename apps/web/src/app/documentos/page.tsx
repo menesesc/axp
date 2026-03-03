@@ -11,7 +11,7 @@ import { BulkActionsBar } from '@/components/documents/bulk-actions-bar'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload, Sparkles } from 'lucide-react'
 import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
 import { UploadDropzone } from '@/components/documents/upload-dropzone'
 import { AIReviewDialog } from '@/components/documents/ai-review-dialog'
@@ -76,7 +76,7 @@ export default function DocumentosPage() {
   const [shareEmailOpen, setShareEmailOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
-  const [aiReviewDocId, setAiReviewDocId] = useState<string | null>(null)
+  const [aiReviewDocIds, setAiReviewDocIds] = useState<string[]>([])
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -251,8 +251,18 @@ export default function DocumentosPage() {
     toast.info('Función de confirmación próximamente')
   }
 
-  const handleAIReview = (docId: string) => {
-    setAiReviewDocId(docId)
+  const handleAIReview = () => {
+    const selectedDocsList = documentos.filter(d => selectedDocs.has(d.id))
+    const pendingIds = selectedDocsList
+      .filter(d => d.estadoRevision === 'PENDIENTE')
+      .map(d => d.id)
+
+    if (pendingIds.length === 0) {
+      toast.error('No hay documentos pendientes seleccionados')
+      return
+    }
+
+    setAiReviewDocIds(pendingIds)
     setAiReviewOpen(true)
   }
 
@@ -341,10 +351,26 @@ export default function DocumentosPage() {
             description={pagination ? `${pagination.total} documentos en total` : undefined}
           />
           {isAdmin && (
-            <Button variant="outline" onClick={() => setUploadOpen(true)}>
-              <Upload className="h-4 w-4 mr-1.5" />
-              Subir documentos
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleAIReview}
+                disabled={selectedDocs.size === 0}
+                className="text-violet-700 border-violet-300 hover:bg-violet-50"
+              >
+                <Sparkles className="h-4 w-4 mr-1.5" />
+                Revisar con IA
+                {selectedDocs.size > 0 && (
+                  <span className="ml-1.5 bg-violet-100 text-violet-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
+                    {selectedDocs.size}
+                  </span>
+                )}
+              </Button>
+              <Button variant="outline" onClick={() => setUploadOpen(true)}>
+                <Upload className="h-4 w-4 mr-1.5" />
+                Subir documentos
+              </Button>
+            </div>
           )}
         </div>
 
@@ -381,7 +407,6 @@ export default function DocumentosPage() {
           isAdmin={isAdmin}
           onConfirm={handleConfirmDoc}
           onAddToPayment={handleAddSingleToPayment}
-          onAIReview={handleAIReview}
         />
 
         {/* Pagination */}
@@ -449,9 +474,10 @@ export default function DocumentosPage() {
         <AIReviewDialog
           open={aiReviewOpen}
           onOpenChange={setAiReviewOpen}
-          documentId={aiReviewDocId}
-          onApplied={() => {
+          documentIds={aiReviewDocIds}
+          onCompleted={() => {
             queryClient.invalidateQueries({ queryKey: ['documentos'] })
+            setSelectedDocs(new Set())
           }}
         />
 

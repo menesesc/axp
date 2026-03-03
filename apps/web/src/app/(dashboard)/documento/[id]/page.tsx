@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 import { useUser } from '@/hooks/use-user'
 
 import { DocumentAnnotations } from '@/components/documents/document-annotations'
+import { AIReviewCard } from '@/components/documents/ai-review-card'
 
 const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), {
   ssr: false,
@@ -351,6 +352,17 @@ export default function DocumentoPage() {
                   </p>
                 </div>
               </div>
+            )}
+
+            {/* AI Review Card - Only for PENDIENTE documents */}
+            {isAdmin && documento.estadoRevision === 'PENDIENTE' && (
+              <AIReviewCard
+                documentId={documentoId}
+                onApplied={() => {
+                  queryClient.invalidateQueries({ queryKey: ['documento', documentoId] })
+                  queryClient.invalidateQueries({ queryKey: ['documentos'] })
+                }}
+              />
             )}
 
             {/* Edit Form - Always available for admins */}
