@@ -310,6 +310,12 @@ export default function DocumentosPage() {
   const documentos = data?.documentos || []
   const pagination = data?.pagination
 
+  // Contar pendientes en la selección
+  const pendingInSelection = useMemo(() => {
+    if (selectedDocs.size === 0) return 0
+    return documentos.filter(d => selectedDocs.has(d.id) && d.estadoRevision === 'PENDIENTE').length
+  }, [selectedDocs, documentos])
+
   // Calcular si se puede crear orden de pago
   const paymentValidation = useMemo(() => {
     if (selectedDocs.size === 0) {
@@ -396,7 +402,7 @@ export default function DocumentosPage() {
               <Button
                 variant="outline"
                 onClick={handleRecalculate}
-                disabled={selectedDocs.size === 0 || recalculateMutation.isPending}
+                disabled={pendingInSelection === 0 || recalculateMutation.isPending}
                 className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
               >
                 <RefreshCw className={`h-4 w-4 mr-1.5 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
@@ -405,14 +411,14 @@ export default function DocumentosPage() {
               <Button
                 variant="outline"
                 onClick={handleAIReview}
-                disabled={selectedDocs.size === 0}
+                disabled={pendingInSelection === 0}
                 className="text-violet-700 border-violet-300 hover:bg-violet-50"
               >
                 <Sparkles className="h-4 w-4 mr-1.5" />
                 Revisar con IA
-                {selectedDocs.size > 0 && (
+                {pendingInSelection > 0 && (
                   <span className="ml-1.5 bg-violet-100 text-violet-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
-                    {selectedDocs.size}
+                    {pendingInSelection}
                   </span>
                 )}
               </Button>

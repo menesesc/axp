@@ -15,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { X, Users, CreditCard, Trash2, Mail, FileText, DollarSign } from 'lucide-react'
+import { X, Users, CreditCard, Trash2, Mail, FileText } from 'lucide-react'
 
 interface Proveedor {
   id: string
@@ -69,7 +69,7 @@ export function BulkActionsBar({
 
     for (const doc of selectedDocuments) {
       items += doc._count?.documento_items ?? 0
-      const amount = doc.total ?? 0
+      const amount = Number(doc.total) || 0
       if (doc.pagoId) {
         totalPagado += amount
       } else {
@@ -77,59 +77,60 @@ export function BulkActionsBar({
       }
     }
 
-    return { items, totalImpago, totalPagado, totalGeneral: totalImpago + totalPagado }
+    // Redondear a 2 decimales para evitar errores de punto flotante
+    return {
+      items,
+      totalImpago: Math.round(totalImpago * 100) / 100,
+      totalPagado: Math.round(totalPagado * 100) / 100,
+      totalGeneral: Math.round((totalImpago + totalPagado) * 100) / 100,
+    }
   }, [selectedDocuments])
 
-  const formatCurrency = (n: number) =>
-    n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 })
+  const fmt = (n: number) =>
+    n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   if (selectedCount === 0) return null
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-4xl px-4">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-5xl">
       <div className="bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700/50">
         {/* Top row: summary */}
-        <div className="flex items-center justify-between px-5 pt-3.5 pb-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold">
-              {selectedCount} {selectedCount === 1 ? 'documento' : 'documentos'}
-            </span>
-            {totals.items > 0 && (
-              <span className="text-xs text-slate-400 ml-1">
+        <div className="flex items-center gap-3 px-5 pt-3 pb-2 flex-wrap">
+          <span className="text-sm font-semibold whitespace-nowrap">
+            {selectedCount} doc{selectedCount !== 1 ? 's' : ''}
+          </span>
+
+          {totals.items > 0 && (
+            <>
+              <div className="h-3.5 w-px bg-slate-700" />
+              <span className="text-xs text-slate-400 whitespace-nowrap">
                 <FileText className="h-3 w-3 inline mr-0.5 -mt-px" />
                 {totals.items} items
               </span>
-            )}
-          </div>
+            </>
+          )}
 
-          <div className="flex items-center gap-4">
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             {totals.totalImpago > 0 && (
-              <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-amber-400" />
-                <div className="text-right">
-                  <span className="text-sm font-semibold text-amber-400">
-                    {formatCurrency(totals.totalImpago)}
-                  </span>
-                  <span className="text-[10px] text-slate-400 ml-1">impago</span>
-                </div>
-              </div>
+              <span className="text-sm whitespace-nowrap">
+                <span className="font-semibold text-amber-400">$ {fmt(totals.totalImpago)}</span>
+                <span className="text-[10px] text-slate-500 ml-1">impago</span>
+              </span>
             )}
             {totals.totalPagado > 0 && (
-              <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
-                <div className="text-right">
-                  <span className="text-sm font-semibold text-emerald-400">
-                    {formatCurrency(totals.totalPagado)}
-                  </span>
-                  <span className="text-[10px] text-slate-400 ml-1">pagado</span>
-                </div>
-              </div>
+              <span className="text-sm whitespace-nowrap">
+                <span className="font-semibold text-blue-400">$ {fmt(totals.totalPagado)}</span>
+                <span className="text-[10px] text-slate-500 ml-1">pagado</span>
+              </span>
             )}
-            {totals.totalGeneral > 0 && totals.totalImpago > 0 && totals.totalPagado > 0 && (
+            {totals.totalImpago > 0 && totals.totalPagado > 0 && (
               <>
-                <div className="h-4 w-px bg-slate-700" />
-                <span className="text-sm font-semibold">
-                  {formatCurrency(totals.totalGeneral)}
+                <div className="h-3.5 w-px bg-slate-700" />
+                <span className="text-sm font-semibold whitespace-nowrap">
+                  $ {fmt(totals.totalGeneral)}
+                  <span className="text-[10px] text-slate-500 ml-1">total</span>
                 </span>
               </>
             )}
@@ -137,7 +138,7 @@ export function BulkActionsBar({
 
           <button
             onClick={onCancel}
-            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
@@ -147,7 +148,7 @@ export function BulkActionsBar({
         <div className="mx-4 border-t border-slate-700/70" />
 
         {/* Bottom row: actions */}
-        <div className="flex items-center gap-3 px-5 py-2.5">
+        <div className="flex items-center gap-2 px-5 py-2.5 flex-wrap">
           {/* Assign proveedor */}
           <div className="flex items-center gap-1.5">
             <Select value={selectedProveedor} onValueChange={onProveedorChange}>
@@ -190,7 +191,7 @@ export function BulkActionsBar({
                     className="h-8 text-white hover:bg-slate-800 disabled:text-slate-500 text-xs"
                   >
                     <CreditCard className="h-3.5 w-3.5 mr-1" />
-                    Crear orden de pago
+                    Orden de pago
                   </Button>
                 </span>
               </TooltipTrigger>
