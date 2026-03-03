@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
         numeroCompleto: true,
         subtotal: true,
         iva: true,
+        pdfRawKey: true,
       },
     })
 
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
         numeroCompleto: doc.numeroCompleto,
         subtotal: doc.subtotal ? Number(doc.subtotal) : null,
         iva: doc.iva ? Number(doc.iva) : null,
+        pdfRawKey: doc.pdfRawKey,
       }
 
       // Evaluar estado y calcular campos faltantes

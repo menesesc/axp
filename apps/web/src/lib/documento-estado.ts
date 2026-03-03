@@ -11,6 +11,7 @@ export interface DocumentoParaEvaluar {
   numeroCompleto: string | null;
   subtotal: number | string | { toNumber(): number } | null;
   iva: number | string | { toNumber(): number } | null;
+  pdfRawKey?: string | null;
 }
 
 export type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
@@ -32,13 +33,19 @@ export type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
  *    - iva
  * 
  * Si falta CUALQUIERA de estos campos → PENDIENTE
+ * Si no tiene PDF (pdfRawKey vacío) → PENDIENTE
  */
 export function determineEstadoRevision(doc: DocumentoParaEvaluar): EstadoRevision {
+  // Un documento sin PDF no puede estar confirmado
+  if ('pdfRawKey' in doc && !doc.pdfRawKey) {
+    return 'PENDIENTE';
+  }
+
   // Campos críticos obligatorios
   const hasCriticalFields = !!(
-    doc.clienteId && 
-    doc.proveedorId && 
-    doc.fechaEmision && 
+    doc.clienteId &&
+    doc.proveedorId &&
+    doc.fechaEmision &&
     doc.total
   );
   

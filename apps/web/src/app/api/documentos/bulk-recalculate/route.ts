@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
         numeroCompleto: true,
         subtotal: true,
         iva: true,
+        pdfRawKey: true,
         estadoRevision: true,
       },
     })
