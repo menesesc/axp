@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, Upload } from 'lucide-react'
 import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
 import { UploadDropzone } from '@/components/documents/upload-dropzone'
+import { AIReviewDialog } from '@/components/documents/ai-review-dialog'
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,8 @@ export default function DocumentosPage() {
   const [selectedProveedor, setSelectedProveedor] = useState('')
   const [shareEmailOpen, setShareEmailOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [aiReviewOpen, setAiReviewOpen] = useState(false)
+  const [aiReviewDocId, setAiReviewDocId] = useState<string | null>(null)
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -248,6 +251,11 @@ export default function DocumentosPage() {
     toast.info('Función de confirmación próximamente')
   }
 
+  const handleAIReview = (docId: string) => {
+    setAiReviewDocId(docId)
+    setAiReviewOpen(true)
+  }
+
   const documentos = data?.documentos || []
   const pagination = data?.pagination
 
@@ -373,6 +381,7 @@ export default function DocumentosPage() {
           isAdmin={isAdmin}
           onConfirm={handleConfirmDoc}
           onAddToPayment={handleAddSingleToPayment}
+          onAIReview={handleAIReview}
         />
 
         {/* Pagination */}
@@ -434,6 +443,16 @@ export default function DocumentosPage() {
           onOpenChange={setShareEmailOpen}
           description={`Enviar ${selectedDocs.size} documento${selectedDocs.size !== 1 ? 's' : ''} por email como PDF unificado.`}
           onSend={handleShareEmail}
+        />
+
+        {/* AI Review Dialog */}
+        <AIReviewDialog
+          open={aiReviewOpen}
+          onOpenChange={setAiReviewOpen}
+          documentId={aiReviewDocId}
+          onApplied={() => {
+            queryClient.invalidateQueries({ queryKey: ['documentos'] })
+          }}
         />
 
         {/* Upload Dialog */}
