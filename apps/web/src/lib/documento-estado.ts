@@ -6,11 +6,11 @@ export interface DocumentoParaEvaluar {
   clienteId: string | null;
   proveedorId: string | null;
   fechaEmision: Date | string | null;
-  total: number | string | null;
+  total: number | string | { toNumber(): number } | null; // Prisma Decimal compatible
   letra: string | null;
   numeroCompleto: string | null;
-  subtotal: number | string | null;
-  iva: number | string | null;
+  subtotal: number | string | { toNumber(): number } | null;
+  iva: number | string | { toNumber(): number } | null;
 }
 
 export type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';

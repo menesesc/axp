@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthUser, requireAdmin } from '@/lib/auth'
+import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 // Configurar cliente R2 para eliminar archivos
@@ -80,21 +81,29 @@ export async function GET(
       )
     }
 
-    // Recalcular missingFields basado en datos actuales (mismos 8 campos que el PATCH)
-    const actualMissing: string[] = []
-    if (!documento.clienteId) actualMissing.push('clienteId')
-    if (!documento.proveedorId) actualMissing.push('proveedorId')
-    if (!documento.fechaEmision) actualMissing.push('fechaEmision')
-    if (!documento.total) actualMissing.push('total')
-    if (!documento.letra) actualMissing.push('letra')
-    if (!documento.numeroCompleto) actualMissing.push('numeroCompleto')
-    if (!documento.subtotal) actualMissing.push('subtotal')
-    if (!documento.iva) actualMissing.push('iva')
+    // Recalcular missingFields y estadoRevision basado en datos actuales
+    const actualMissing = calculateMissingFields(documento)
+    const correctEstado = determineEstadoRevision(documento)
+
+    // Auto-healing: si el estado en BD está desactualizado, corregirlo
+    const needsEstadoUpdate =
+      documento.estadoRevision !== 'ERROR' &&
+      documento.estadoRevision !== 'DUPLICADO' &&
+      documento.estadoRevision !== correctEstado
+
+    if (needsEstadoUpdate) {
+      // Actualizar en background sin bloquear la respuesta
+      prisma.documentos.update({
+        where: { id },
+        data: { estadoRevision: correctEstado, missingFields: actualMissing },
+      }).catch(err => console.error('Error auto-healing estadoRevision:', err))
+    }
 
     return NextResponse.json({
       documento: {
         ...documento,
         missingFields: actualMissing,
+        estadoRevision: needsEstadoUpdate ? correctEstado : documento.estadoRevision,
       },
       items: documento.documento_items || [],
     })
@@ -228,29 +237,13 @@ export async function PATCH(
       },
     })
 
-    // Recalcular campos faltantes
-    const missingFields: string[] = []
-    if (!documento.clienteId) missingFields.push('clienteId')
-    if (!documento.proveedorId) missingFields.push('proveedorId')
-    if (!documento.fechaEmision) missingFields.push('fechaEmision')
-    if (!documento.total) missingFields.push('total')
-    if (!documento.letra) missingFields.push('letra')
-    if (!documento.numeroCompleto) missingFields.push('numeroCompleto')
-    if (!documento.subtotal) missingFields.push('subtotal')
-    if (!documento.iva) missingFields.push('iva')
-
-    // Determinar nuevo estado automáticamente basado en los campos
-    let newEstado: 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO' = documento.estadoRevision as any
+    // Recalcular campos faltantes y estado usando lógica centralizada
+    const missingFields = calculateMissingFields(documento)
+    let newEstado = documento.estadoRevision as 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO'
 
     // Solo cambiar estado si no es ERROR o DUPLICADO (estados manuales)
     if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO') {
-      if (missingFields.length === 0) {
-        // Tiene todos los campos requeridos
-        newEstado = 'CONFIRMADO'
-      } else {
-        // Faltan campos
-        newEstado = 'PENDIENTE'
-      }
+      newEstado = determineEstadoRevision(documento)
     }
 
     // Actualizar missingFields y estado si cambió
