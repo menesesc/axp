@@ -80,13 +80,16 @@ export async function GET(
       )
     }
 
-    // Recalcular missingFields basado en datos actuales
+    // Recalcular missingFields basado en datos actuales (mismos 8 campos que el PATCH)
     const actualMissing: string[] = []
-    if (!documento.proveedorId) actualMissing.push('proveedor')
+    if (!documento.clienteId) actualMissing.push('clienteId')
+    if (!documento.proveedorId) actualMissing.push('proveedorId')
     if (!documento.fechaEmision) actualMissing.push('fechaEmision')
     if (!documento.total) actualMissing.push('total')
     if (!documento.letra) actualMissing.push('letra')
     if (!documento.numeroCompleto) actualMissing.push('numeroCompleto')
+    if (!documento.subtotal) actualMissing.push('subtotal')
+    if (!documento.iva) actualMissing.push('iva')
 
     return NextResponse.json({
       documento: {
