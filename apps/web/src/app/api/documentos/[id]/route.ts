@@ -164,6 +164,7 @@ export async function PATCH(
       subtotal,
       iva,
       proveedorId,
+      tipo,
       // estadoRevision se calcula automáticamente, no se acepta del cliente
     } = body
 
@@ -211,6 +212,12 @@ export async function PATCH(
       updateData.subtotal = subtotal ? parseFloat(subtotal) : null
     if (iva !== undefined) updateData.iva = iva ? parseFloat(iva) : null
     if (proveedorId !== undefined) updateData.proveedorId = proveedorId || null
+    if (tipo !== undefined) {
+      const validTipos = ['FACTURA', 'REMITO', 'NOTA_CREDITO']
+      if (validTipos.includes(tipo)) {
+        updateData.tipo = tipo
+      }
+    }
     // estadoRevision se calcula automáticamente abajo
 
     // Actualizar documento

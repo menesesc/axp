@@ -268,6 +268,26 @@ export default function DocumentosPage() {
     setAiReviewOpen(true)
   }
 
+  const changeTipoMutation = useMutation({
+    mutationFn: async ({ documentoIds, tipo }: { documentoIds: string[]; tipo: string }) => {
+      const res = await fetch('/api/documentos/bulk-update-tipo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentoIds, tipo }),
+      })
+      if (!res.ok) throw new Error('Error al cambiar tipo')
+      return res.json()
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['documentos'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      toast.success(data.message)
+    },
+    onError: () => {
+      toast.error('Error al cambiar tipo de documento')
+    },
+  })
+
   const recalculateMutation = useMutation({
     mutationFn: async (documentIds: string[]) => {
       const res = await fetch('/api/documentos/bulk-recalculate', {
@@ -511,9 +531,16 @@ export default function DocumentosPage() {
             onAddToPayment={handleAddToPayment}
             onShareEmail={() => setShareEmailOpen(true)}
             onDelete={handleBulkDelete}
+            onChangeTipo={(tipo) => {
+              changeTipoMutation.mutate({
+                documentoIds: Array.from(selectedDocs),
+                tipo,
+              })
+            }}
             onCancel={() => setSelectedDocs(new Set())}
             isAssigning={bulkAssignMutation.isPending}
             isDeleting={bulkDeleteMutation.isPending}
+            isChangingTipo={changeTipoMutation.isPending}
             canAddToPayment={paymentValidation.canAdd}
             {...(paymentValidation.reason ? { paymentDisabledReason: paymentValidation.reason } : {})}
           />

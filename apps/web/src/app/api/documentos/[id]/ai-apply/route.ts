@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
+import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
 
 /**
  * Parsea fecha con timezone de Argentina (GMT-3).
@@ -102,20 +103,11 @@ export async function POST(
       },
     })
 
-    // Recalculate missingFields (same logic as PATCH)
-    const missingFields: string[] = []
-    if (!documento.proveedorId) missingFields.push('proveedorId')
-    if (!documento.fechaEmision) missingFields.push('fechaEmision')
-    if (!documento.total) missingFields.push('total')
-    if (!documento.letra) missingFields.push('letra')
-    if (!documento.numeroCompleto) missingFields.push('numeroCompleto')
-    if (!documento.subtotal) missingFields.push('subtotal')
-    if (!documento.iva) missingFields.push('iva')
-
-    // Determine new estado
+    // Recalculate missingFields y estado usando lógica centralizada
+    const missingFields = calculateMissingFields(documento)
     let newEstado = documento.estadoRevision
     if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO') {
-      newEstado = missingFields.length === 0 ? 'CONFIRMADO' : 'PENDIENTE'
+      newEstado = determineEstadoRevision(documento)
     }
 
     // Update missingFields and estado if changed

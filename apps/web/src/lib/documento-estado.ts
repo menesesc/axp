@@ -17,21 +17,28 @@ export interface DocumentoParaEvaluar {
 export type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
 
 /**
+ * Helper: verifica si un valor numérico está presente (0 es válido, null/undefined no)
+ */
+function hasNumericValue(val: number | string | { toNumber(): number } | null | undefined): boolean {
+  return val != null && val !== '';
+}
+
+/**
  * Determina el estado de revisión de un documento basándose en todos sus campos
- * 
+ *
  * Un documento está CONFIRMADO solo cuando tiene:
  * 1. Campos críticos:
  *    - clienteId
  *    - proveedorId
  *    - fechaEmision
- *    - total
- * 
+ *    - total (0 es válido)
+ *
  * 2. Campos opcionales importantes:
  *    - letra
  *    - numeroCompleto
- *    - subtotal
- *    - iva
- * 
+ *    - subtotal (0 es válido - ej: facturas exentas)
+ *    - iva (0 es válido - ej: facturas exentas)
+ *
  * Si falta CUALQUIERA de estos campos → PENDIENTE
  * Si no tiene PDF (pdfRawKey vacío) → PENDIENTE
  */
@@ -42,30 +49,30 @@ export function determineEstadoRevision(doc: DocumentoParaEvaluar): EstadoRevisi
   }
 
   // Campos críticos obligatorios
-  const hasCriticalFields = !!(
-    doc.clienteId &&
-    doc.proveedorId &&
-    doc.fechaEmision &&
-    doc.total
-  );
-  
+  // Para total usamos hasNumericValue porque 0 es un valor válido
+  const hasCriticalFields =
+    !!doc.clienteId &&
+    !!doc.proveedorId &&
+    !!doc.fechaEmision &&
+    hasNumericValue(doc.total);
+
   if (!hasCriticalFields) {
-    return 'PENDIENTE'; // Falta información crítica
+    return 'PENDIENTE';
   }
-  
+
   // Campos opcionales pero importantes
-  const hasOptionalFields = !!(
-    doc.letra && 
-    doc.numeroCompleto && 
-    doc.subtotal && 
-    doc.iva
-  );
-  
+  // subtotal e iva pueden ser 0 (facturas exentas, monotributo, etc.)
+  const hasOptionalFields =
+    !!doc.letra &&
+    !!doc.numeroCompleto &&
+    hasNumericValue(doc.subtotal) &&
+    hasNumericValue(doc.iva);
+
   if (!hasOptionalFields) {
-    return 'PENDIENTE'; // Faltan campos opcionales importantes
+    return 'PENDIENTE';
   }
-  
-  return 'CONFIRMADO'; // Tiene todos los campos necesarios
+
+  return 'CONFIRMADO';
 }
 
 /**
@@ -73,19 +80,19 @@ export function determineEstadoRevision(doc: DocumentoParaEvaluar): EstadoRevisi
  */
 export function calculateMissingFields(doc: DocumentoParaEvaluar): string[] {
   const missing: string[] = [];
-  
+
   // Campos críticos
   if (!doc.clienteId) missing.push('clienteId');
   if (!doc.proveedorId) missing.push('proveedorId');
   if (!doc.fechaEmision) missing.push('fechaEmision');
-  if (!doc.total) missing.push('total');
-  
-  // Campos opcionales importantes
+  if (!hasNumericValue(doc.total)) missing.push('total');
+
+  // Campos opcionales importantes (0 es valor válido para numéricos)
   if (!doc.letra) missing.push('letra');
   if (!doc.numeroCompleto) missing.push('numeroCompleto');
-  if (!doc.subtotal) missing.push('subtotal');
-  if (!doc.iva) missing.push('iva');
-  
+  if (!hasNumericValue(doc.subtotal)) missing.push('subtotal');
+  if (!hasNumericValue(doc.iva)) missing.push('iva');
+
   return missing;
 }
 

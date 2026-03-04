@@ -39,9 +39,11 @@ interface BulkActionsBarProps {
   onAddToPayment: () => void
   onShareEmail: () => void
   onDelete: () => void
+  onChangeTipo: (tipo: string) => void
   onCancel: () => void
   isAssigning: boolean
   isDeleting?: boolean
+  isChangingTipo?: boolean
   canAddToPayment?: boolean
   paymentDisabledReason?: string
 }
@@ -56,9 +58,11 @@ export function BulkActionsBar({
   onAddToPayment,
   onShareEmail,
   onDelete,
+  onChangeTipo,
   onCancel,
   isAssigning,
   isDeleting = false,
+  isChangingTipo = false,
   canAddToPayment = true,
   paymentDisabledReason,
 }: BulkActionsBarProps) {
@@ -175,6 +179,23 @@ export function BulkActionsBar({
               Asignar
             </Button>
           </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          {/* Change tipo */}
+          <Select
+            onValueChange={onChangeTipo}
+            disabled={isChangingTipo}
+          >
+            <SelectTrigger className="w-40 h-8 bg-slate-800 border-slate-700 text-white text-xs">
+              <SelectValue placeholder="Cambiar tipo..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="FACTURA">Factura</SelectItem>
+              <SelectItem value="REMITO">Remito</SelectItem>
+              <SelectItem value="NOTA_CREDITO">Nota de Crédito</SelectItem>
+            </SelectContent>
+          </Select>
 
           <div className="h-4 w-px bg-slate-700" />
 

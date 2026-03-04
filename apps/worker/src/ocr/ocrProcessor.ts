@@ -110,23 +110,26 @@ interface InboxFile {
  * @param finalLetra - Letra final (OCR o default del proveedor)
  */
 function determineEstadoRevision(parsed: any, proveedorId: string | null, finalLetra: string | null): EstadoRevision {
+  // Helper: 0 es un valor numérico válido, solo null/undefined/'' es "faltante"
+  const hasNum = (v: any) => v != null && v !== '';
+
   // Campos críticos: fechaEmision, total, y proveedor (o al menos CUIT)
   const hasCriticalFields =
-    parsed.fechaEmision &&
-    parsed.total &&
-    (proveedorId || parsed.proveedorCUIT);
+    !!parsed.fechaEmision &&
+    hasNum(parsed.total) &&
+    !!(proveedorId || parsed.proveedorCUIT);
 
   if (!hasCriticalFields) {
     return 'PENDIENTE'; // Falta información crítica, requiere revisión manual
   }
 
   // Campos opcionales importantes: letra (OCR o proveedor), numeroCompleto, subtotal, iva
-  // NOTA: fechaVencimiento NO es campo crítico
+  // subtotal e iva pueden ser 0 (facturas exentas, monotributo, etc.)
   const hasOptionalFields =
-    finalLetra &&  // Usar finalLetra que incluye default del proveedor
-    parsed.numeroCompleto &&
-    parsed.subtotal &&
-    parsed.iva;
+    !!finalLetra &&
+    !!parsed.numeroCompleto &&
+    hasNum(parsed.subtotal) &&
+    hasNum(parsed.iva);
 
   if (hasOptionalFields) {
     return 'CONFIRMADO'; // Tiene todos los campos importantes
