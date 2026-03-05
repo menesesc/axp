@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { getAnthropicClient, AI_MODEL } from '@/lib/ai/anthropic-client'
@@ -18,6 +19,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const proveedorId = searchParams.get('proveedorId')
 
+    const proveedorFilter = proveedorId
+      ? Prisma.sql`AND "proveedorId" = ${proveedorId}::uuid`
+      : Prisma.empty
+    const proveedorFilterD = proveedorId
+      ? Prisma.sql`AND d."proveedorId" = ${proveedorId}::uuid`
+      : Prisma.empty
+
     // Obtener datos históricos para análisis
     const [gastoMensual, variacionesPrecios, topProveedores, resumenGeneral] = await Promise.all([
       // Gasto mensual últimos 12 meses
@@ -35,7 +43,7 @@ export async function GET(request: NextRequest) {
           AND "fechaEmision" >= NOW() - INTERVAL '12 months'
           AND tipo = 'FACTURA'
           AND "estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND "proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilter}
         GROUP BY TO_CHAR("fechaEmision", 'YYYY-MM')
         ORDER BY mes
       `,
@@ -62,7 +70,7 @@ export async function GET(request: NextRequest) {
             AND di."precioUnitario" IS NOT NULL
             AND di."precioUnitario" > 0
             AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-            ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+            ${proveedorFilterD}
         )
         SELECT
           a.descripcion,
@@ -93,7 +101,7 @@ export async function GET(request: NextRequest) {
           AND d."fechaEmision" >= NOW() - INTERVAL '6 months'
           AND d.tipo = 'FACTURA'
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilterD}
         GROUP BY p."razonSocial"
         ORDER BY total_6m DESC
         LIMIT 5
@@ -118,7 +126,7 @@ export async function GET(request: NextRequest) {
           AND "fechaEmision" >= NOW() - INTERVAL '12 months'
           AND tipo = 'FACTURA'
           AND "estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND "proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilter}
       `,
     ])
 

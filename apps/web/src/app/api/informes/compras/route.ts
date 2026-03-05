@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 
@@ -31,8 +32,12 @@ export async function GET(request: NextRequest) {
     const fechaDesdeAnterior = new Date(fechaDesde.getTime() - duracionMs)
     const fechaHastaAnterior = new Date(fechaDesde.getTime() - 1)
 
+    const proveedorFilter = proveedorId
+      ? Prisma.sql`AND d."proveedorId" = ${proveedorId}::uuid`
+      : Prisma.empty
+
     const [gastoMensual, ranking, rankingAnterior, topItems] = await Promise.all([
-      // Gasto mensual por proveedor (últimos 12 meses)
+      // Gasto mensual por proveedor
       prisma.$queryRaw<Array<{
         mes: string
         proveedor: string
@@ -49,7 +54,7 @@ export async function GET(request: NextRequest) {
           AND d."fechaEmision" <= ${fechaHasta}
           AND d.tipo = 'FACTURA'
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilter}
         GROUP BY mes, p."razonSocial"
         ORDER BY mes, total DESC
       `,
@@ -76,7 +81,7 @@ export async function GET(request: NextRequest) {
           AND d."fechaEmision" <= ${fechaHasta}
           AND d.tipo = 'FACTURA'
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilter}
         GROUP BY d."proveedorId", p."razonSocial"
         ORDER BY total DESC
       `,
@@ -95,7 +100,7 @@ export async function GET(request: NextRequest) {
           AND d."fechaEmision" <= ${fechaHastaAnterior}
           AND d.tipo = 'FACTURA'
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilter}
         GROUP BY d."proveedorId"
       `,
 
@@ -120,7 +125,7 @@ export async function GET(request: NextRequest) {
           AND d."fechaEmision" >= ${fechaDesde}
           AND d."fechaEmision" <= ${fechaHasta}
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
+          ${proveedorFilter}
         GROUP BY di.descripcion, p."razonSocial"
         ORDER BY subtotal_total DESC
         LIMIT 30

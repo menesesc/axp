@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 
@@ -26,6 +27,13 @@ export async function GET(request: NextRequest) {
 
     const fechaDesde = new Date(`${desde}T00:00:00-03:00`)
     const fechaHasta = new Date(`${hasta}T23:59:59-03:00`)
+
+    const proveedorFilter = proveedorId
+      ? Prisma.sql`AND d."proveedorId" = ${proveedorId}::uuid`
+      : Prisma.empty
+    const searchFilter = q
+      ? Prisma.sql`AND di.descripcion ILIKE ${'%' + q + '%'}`
+      : Prisma.empty
 
     // Alertas de variación de precios
     const alertas = await prisma.$queryRaw<Array<{
@@ -55,8 +63,8 @@ export async function GET(request: NextRequest) {
           AND di."precioUnitario" IS NOT NULL
           AND di."precioUnitario" > 0
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
-          ${proveedorId ? prisma.$queryRaw`AND d."proveedorId" = ${proveedorId}::uuid` : prisma.$queryRaw``}
-          ${q ? prisma.$queryRaw`AND di.descripcion ILIKE ${'%' + q + '%'}` : prisma.$queryRaw``}
+          ${proveedorFilter}
+          ${searchFilter}
       ),
       variaciones AS (
         SELECT
@@ -126,7 +134,7 @@ export async function GET(request: NextRequest) {
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
           AND d."fechaEmision" >= ${fechaDesde}
           AND d."fechaEmision" <= ${fechaHasta}
-          ${q ? prisma.$queryRaw`AND di.descripcion ILIKE ${'%' + q + '%'}` : prisma.$queryRaw``}
+          ${searchFilter}
         GROUP BY di.descripcion
         HAVING COUNT(DISTINCT d."proveedorId") > 1
         LIMIT 20

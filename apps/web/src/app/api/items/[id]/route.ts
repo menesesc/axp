@@ -38,11 +38,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Item no encontrado' }, { status: 404 })
     }
 
-    // No permitir editar items de documentos PAGADO
-    if (item.documentos.estadoRevision === 'PAGADO') {
-      return NextResponse.json({ error: 'No se puede editar un documento pagado' }, { status: 400 })
-    }
-
     const body = await request.json()
     const { descripcion, cantidad, precioUnitario, subtotal } = body
 

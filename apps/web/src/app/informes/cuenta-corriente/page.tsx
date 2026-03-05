@@ -12,7 +12,9 @@ import {
   DollarSign,
   ArrowLeft,
   FileText,
+  ExternalLink,
 } from 'lucide-react'
+import Link from 'next/link'
 
 const tipoLabels: Record<string, string> = {
   FACTURA: 'Factura',
@@ -223,7 +225,21 @@ export default function CuentaCorrientePage() {
                         {tipoLabels[m.tipo] || m.tipo}
                       </span>
                     </td>
-                    <td className="px-5 py-2.5 font-medium">{m.referencia}</td>
+                    <td className="px-5 py-2.5 font-medium">
+                      {m.documento_id ? (
+                        <Link href={`/documento/${m.documento_id}`} className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                          {m.referencia}
+                          <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      ) : m.pago_id ? (
+                        <Link href={`/pagos/${m.pago_id}`} className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                          {m.referencia}
+                          <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      ) : (
+                        m.referencia
+                      )}
+                    </td>
                     <td className="px-5 py-2.5 text-right text-red-600">
                       {m.debe > 0 ? formatCurrency(m.debe) : ''}
                     </td>

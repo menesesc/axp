@@ -29,22 +29,26 @@ export async function GET(request: NextRequest) {
     // Si hay proveedor seleccionado, mostrar detalle
     if (proveedorId) {
       const [movimientos, saldoAnterior, proveedor] = await Promise.all([
-        // Movimientos: facturas (debe) + notas de crédito (haber) + pagos (haber)
+        // Movimientos: facturas (debe) + notas de crédito (haber) + pagos agrupados por OP (haber)
         prisma.$queryRaw<Array<{
           fecha: Date
           tipo: string
           referencia: string
           debe: number
           haber: number
+          documento_id: string | null
+          pago_id: string | null
         }>>`
-          SELECT fecha, tipo, referencia, debe, haber FROM (
+          SELECT fecha, tipo, referencia, debe, haber, documento_id, pago_id FROM (
             -- Facturas (debe)
             SELECT
               d."fechaEmision" as fecha,
               'FACTURA' as tipo,
               COALESCE(d.letra || '-', '') || COALESCE(d."numeroCompleto", 'S/N') as referencia,
               d.total::float as debe,
-              0::float as haber
+              0::float as haber,
+              d.id::text as documento_id,
+              NULL::text as pago_id
             FROM documentos d
             WHERE d."clienteId" = ${clienteId}::uuid
               AND d."proveedorId" = ${proveedorId}::uuid
@@ -61,7 +65,9 @@ export async function GET(request: NextRequest) {
               'NOTA_CREDITO' as tipo,
               COALESCE(d.letra || '-', '') || COALESCE(d."numeroCompleto", 'S/N') as referencia,
               0::float as debe,
-              d.total::float as haber
+              d.total::float as haber,
+              d.id::text as documento_id,
+              NULL::text as pago_id
             FROM documentos d
             WHERE d."clienteId" = ${clienteId}::uuid
               AND d."proveedorId" = ${proveedorId}::uuid
@@ -72,13 +78,15 @@ export async function GET(request: NextRequest) {
 
             UNION ALL
 
-            -- Pagos (haber)
+            -- Pagos agrupados por OP (haber)
             SELECT
               p.fecha,
               'PAGO' as tipo,
               'OP #' || LPAD(p.numero::text, 6, '0') as referencia,
               0::float as debe,
-              pd."montoAplicado"::float as haber
+              SUM(pd."montoAplicado")::float as haber,
+              NULL::text as documento_id,
+              p.id::text as pago_id
             FROM pagos p
             JOIN pago_documentos pd ON pd."pagoId" = p.id
             JOIN documentos d ON pd."documentoId" = d.id
@@ -87,6 +95,7 @@ export async function GET(request: NextRequest) {
               AND p.estado IN ('EMITIDA', 'PAGADO')
               AND p.fecha >= ${fechaDesde}
               AND p.fecha <= ${fechaHasta}
+            GROUP BY p.id, p.fecha, p.numero
           ) movimientos
           ORDER BY fecha ASC, tipo ASC
         `,
