@@ -22,6 +22,7 @@ import {
   UserCog,
   Mail,
   Sparkles,
+  PieChart,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -68,6 +69,16 @@ const navigationSections: NavSection[] = [
       { name: 'Pagos', href: '/pagos', icon: CreditCard },
       { name: 'Calendario', href: '/finanzas', icon: CalendarDays },
       { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'Informes',
+    items: [
+      { name: 'Resumen Ejecutivo', href: '/informes', icon: PieChart },
+      { name: 'Cuenta Corriente', href: '/informes/cuenta-corriente', icon: FileText },
+      { name: 'Análisis de Precios', href: '/informes/precios', icon: BarChart3 },
+      { name: 'Compras', href: '/informes/compras', icon: Package },
+      { name: 'Proyecciones IA', href: '/informes/proyecciones', icon: Sparkles },
     ],
   },
   {

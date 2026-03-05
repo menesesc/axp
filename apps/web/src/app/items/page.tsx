@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -538,7 +539,7 @@ export default function ItemsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Fecha</TableHead>
+                      <TableHead>Documento</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead>Proveedor</TableHead>
                       <TableHead className="text-right">Cant.</TableHead>
@@ -550,8 +551,13 @@ export default function ItemsPage() {
                   <TableBody>
                     {data.items.map((item) => (
                       <TableRow key={item.id} className={isFetching ? 'opacity-50' : ''}>
-                        <TableCell className="text-sm text-slate-600 whitespace-nowrap">
-                          {item.documento.fechaEmision ? formatDate(item.documento.fechaEmision) : '-'}
+                        <TableCell className="text-sm whitespace-nowrap">
+                          <Link href={`/documento/${item.documento.id}`} className="text-blue-600 hover:text-blue-800 hover:underline">
+                            {item.documento.fechaEmision ? formatDate(item.documento.fechaEmision) : '-'}
+                          </Link>
+                          {item.documento.numeroCompleto && (
+                            <div className="text-xs text-slate-400">{item.documento.letra ? `${item.documento.letra}-` : ''}{item.documento.numeroCompleto}</div>
+                          )}
                         </TableCell>
                         <TableCell className="max-w-xs">
                           <div className="truncate font-medium" title={item.descripcion}>
