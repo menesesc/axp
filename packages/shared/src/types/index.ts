@@ -30,6 +30,7 @@ export enum EstadoRevision {
   CONFIRMADO = 'CONFIRMADO',
   ERROR = 'ERROR',
   DUPLICADO = 'DUPLICADO',
+  PAGADO = 'PAGADO',
 }
 
 export enum SourceDocumento {

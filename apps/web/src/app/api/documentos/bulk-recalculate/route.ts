@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
     let unchanged = 0
 
     const updatePromises = documentos.map(async (doc) => {
-      // No tocar ERROR o DUPLICADO
-      if (doc.estadoRevision === 'ERROR' || doc.estadoRevision === 'DUPLICADO') {
+      // No tocar ERROR, DUPLICADO o PAGADO
+      if (doc.estadoRevision === 'ERROR' || doc.estadoRevision === 'DUPLICADO' || doc.estadoRevision === 'PAGADO') {
         unchanged++
         return
       }

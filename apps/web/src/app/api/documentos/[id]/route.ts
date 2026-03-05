@@ -140,7 +140,7 @@ export async function PATCH(
     // Verificar que el documento existe y pertenece al cliente
     const existingDoc = await prisma.documentos.findUnique({
       where: { id },
-      select: { clienteId: true },
+      select: { clienteId: true, estadoRevision: true },
     })
 
     if (!existingDoc) {
@@ -167,6 +167,18 @@ export async function PATCH(
       tipo,
       // estadoRevision se calcula automáticamente, no se acepta del cliente
     } = body
+
+    // Documento PAGADO: solo se permiten editar items, no el encabezado
+    if (existingDoc.estadoRevision === 'PAGADO') {
+      const camposProtegidos = { fechaEmision, fechaVencimiento, letra, numeroCompleto, total, subtotal, iva, proveedorId, tipo }
+      const camposModificados = Object.entries(camposProtegidos).filter(([, v]) => v !== undefined)
+      if (camposModificados.length > 0) {
+        return NextResponse.json(
+          { error: 'No se puede modificar el encabezado de un documento pagado. Solo se permite editar items.' },
+          { status: 400 }
+        )
+      }
+    }
 
     /**
      * Parsea fecha con timezone de Argentina (GMT-3).
@@ -248,8 +260,8 @@ export async function PATCH(
     const missingFields = calculateMissingFields(documento)
     let newEstado = documento.estadoRevision as 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO'
 
-    // Solo cambiar estado si no es ERROR o DUPLICADO (estados manuales)
-    if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO') {
+    // Solo cambiar estado si no es ERROR, DUPLICADO o PAGADO (estados manuales/de pago)
+    if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO' && documento.estadoRevision !== 'PAGADO') {
       newEstado = determineEstadoRevision(documento)
     }
 
