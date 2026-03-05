@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       : Prisma.empty
 
     const [gastoMensual, ranking, rankingAnterior, topItems] = await Promise.all([
-      // Gasto mensual por proveedor
+      // Gasto mensual por proveedor (sin join a items, totales correctos)
       prisma.$queryRaw<Array<{
         mes: string
         proveedor: string
@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
       `,
 
       // Ranking de proveedores período actual
+      // Total e items se calculan por separado para evitar producto cartesiano
       prisma.$queryRaw<Array<{
         proveedor_id: string
         razon_social: string
@@ -71,18 +72,30 @@ export async function GET(request: NextRequest) {
           d."proveedorId" as proveedor_id,
           p."razonSocial" as razon_social,
           COALESCE(SUM(d.total), 0)::float as total,
-          COUNT(DISTINCT d.id)::int as cantidad,
-          COUNT(di.id)::int as total_items
+          COUNT(d.id)::int as cantidad,
+          COALESCE(items.total_items, 0)::int as total_items
         FROM documentos d
         JOIN proveedores p ON d."proveedorId" = p.id
-        LEFT JOIN documento_items di ON di."documentoId" = d.id
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int as total_items
+          FROM documento_items di
+          WHERE di."documentoId" IN (
+            SELECT dd.id FROM documentos dd
+            WHERE dd."clienteId" = ${clienteId}::uuid
+              AND dd."proveedorId" = d."proveedorId"
+              AND dd."fechaEmision" >= ${fechaDesde}
+              AND dd."fechaEmision" <= ${fechaHasta}
+              AND dd.tipo = 'FACTURA'
+              AND dd."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
+          )
+        ) items ON true
         WHERE d."clienteId" = ${clienteId}::uuid
           AND d."fechaEmision" >= ${fechaDesde}
           AND d."fechaEmision" <= ${fechaHasta}
           AND d.tipo = 'FACTURA'
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
           ${proveedorFilter}
-        GROUP BY d."proveedorId", p."razonSocial"
+        GROUP BY d."proveedorId", p."razonSocial", items.total_items
         ORDER BY total DESC
       `,
 
@@ -147,21 +160,17 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Preparar datos para gráfico de barras apiladas
-    const mesesSet = [...new Set(gastoMensual.map(g => g.mes))].sort()
-    const proveedoresSet = [...new Set(gastoMensual.map(g => g.proveedor))].slice(0, 6)
-    const gastoMensualChart = mesesSet.map(mes => {
-      const entry: any = { mes }
-      for (const prov of proveedoresSet) {
-        const found = gastoMensual.find(g => g.mes === mes && g.proveedor === prov)
-        entry[prov] = found?.total || 0
-      }
-      return entry
-    })
+    // Preparar datos para gráfico mensual (total por mes, sin desglose por proveedor)
+    const mesesMap = new Map<string, number>()
+    for (const g of gastoMensual) {
+      mesesMap.set(g.mes, (mesesMap.get(g.mes) || 0) + g.total)
+    }
+    const gastoMensualChart = [...mesesMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, total]) => ({ mes, total }))
 
     return NextResponse.json({
       gastoMensualChart,
-      proveedoresChart: proveedoresSet,
       ranking: rankingConVariacion,
       topItems,
       totalGeneral,

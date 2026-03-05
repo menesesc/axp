@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -251,9 +252,11 @@ function getDateRange(filter: QuickDateFilter): { desde: string; hasta: string }
 
 export default function ItemsPage() {
   const { clienteId } = useUser()
+  const urlParams = useSearchParams()
+  const initialQ = urlParams.get('q') || ''
   const [page, setPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(initialQ)
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQ)
   const [proveedorId, setProveedorId] = useState<string>('')
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('all')
   const [fechaDesde, setFechaDesde] = useState('')

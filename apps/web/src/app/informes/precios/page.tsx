@@ -8,12 +8,14 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import type { ReportFilters } from '@/components/informes/report-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
+import Link from 'next/link'
 import {
   AlertTriangle,
   TrendingUp,
   Search,
   ArrowUpRight,
   ArrowDownRight,
+  ExternalLink,
 } from 'lucide-react'
 import {
   LineChart,
@@ -65,7 +67,13 @@ function AlertSection({
             {items.map((item: any, i: number) => (
               <tr key={i} className="border-b border-current/5 last:border-0">
                 <td className="py-2 max-w-[200px] truncate font-medium" title={item.descripcion}>
-                  {item.descripcion}
+                  <Link
+                    href={`/items?q=${encodeURIComponent(item.descripcion)}`}
+                    className="hover:underline inline-flex items-center gap-1"
+                  >
+                    {item.descripcion}
+                    <ExternalLink className="h-3 w-3 opacity-50" />
+                  </Link>
                 </td>
                 <td className="py-2 text-sm opacity-80">{item.proveedor}</td>
                 <td className="py-2 text-right text-sm opacity-80">{formatCurrency(item.precio_anterior)}</td>
@@ -98,6 +106,11 @@ export default function PreciosPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
 
+  // Rangos configurables con sliders
+  const [umbralCritico, setUmbralCritico] = useState(100)
+  const [umbralAlto, setUmbralAlto] = useState(50)
+  const [umbralModerado, setUmbralModerado] = useState(30)
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
     if (filters.desde) params.set('desde', filters.desde)
@@ -129,9 +142,28 @@ export default function PreciosPage() {
     staleTime: 60000,
   })
 
+  // Clasificar alertas con umbrales configurables
+  const alertas = useMemo(() => {
+    if (!data?.alertas) return null
+    // Tomar todas las alertas sin clasificar del API y reclasificar con los umbrales del usuario
+    const todas = [
+      ...(data.alertas.criticas || []),
+      ...(data.alertas.warning || []),
+      ...(data.alertas.info || []),
+    ]
+    return {
+      criticas: todas.filter((a: any) => a.variacion_pct >= umbralCritico),
+      warning: todas.filter((a: any) => a.variacion_pct >= umbralAlto && a.variacion_pct < umbralCritico),
+      info: todas.filter((a: any) => a.variacion_pct >= umbralModerado && a.variacion_pct < umbralAlto),
+      bajas: data.alertas.bajas || [],
+    }
+  }, [data?.alertas, umbralCritico, umbralAlto, umbralModerado])
+
   // Auto-seleccionar el primer item con historial
   const itemsConHistorial = data?.historiales ? Object.keys(data.historiales) : []
   const currentSelected = selectedItem && itemsConHistorial.includes(selectedItem) ? selectedItem : itemsConHistorial[0] || null
+
+  const totalAlertas = alertas ? alertas.criticas.length + alertas.warning.length + alertas.info.length : 0
 
   return (
     <ReportLayout
@@ -157,30 +189,82 @@ export default function PreciosPage() {
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40" />)}
         </div>
-      ) : data ? (
+      ) : data && alertas ? (
         <div className="space-y-6">
+          {/* Sliders de umbrales */}
+          <div className="bg-white border rounded-lg p-5 print:hidden">
+            <h3 className="font-semibold text-slate-900 mb-4">Umbrales de Alerta</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-red-700">Crítica</label>
+                  <span className="text-sm font-bold text-red-700">&ge; {umbralCritico}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={50}
+                  max={300}
+                  step={10}
+                  value={umbralCritico}
+                  onChange={(e) => setUmbralCritico(Number(e.target.value))}
+                  className="w-full accent-red-600"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-amber-700">Alta</label>
+                  <span className="text-sm font-bold text-amber-700">&ge; {umbralAlto}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={20}
+                  max={umbralCritico - 10}
+                  step={5}
+                  value={Math.min(umbralAlto, umbralCritico - 10)}
+                  onChange={(e) => setUmbralAlto(Number(e.target.value))}
+                  className="w-full accent-amber-500"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-blue-700">Moderada</label>
+                  <span className="text-sm font-bold text-blue-700">&ge; {umbralModerado}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={5}
+                  max={umbralAlto - 5}
+                  step={5}
+                  value={Math.min(umbralModerado, umbralAlto - 5)}
+                  onChange={(e) => setUmbralModerado(Number(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Summary */}
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-              <p className="text-3xl font-bold text-red-700">{data.alertas.criticas.length}</p>
-              <p className="text-sm text-red-600">Críticas (&gt;100%)</p>
+              <p className="text-3xl font-bold text-red-700">{alertas.criticas.length}</p>
+              <p className="text-sm text-red-600">Críticas (&ge;{umbralCritico}%)</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-              <p className="text-3xl font-bold text-amber-700">{data.alertas.warning.length}</p>
-              <p className="text-sm text-amber-600">Altas (&gt;50%)</p>
+              <p className="text-3xl font-bold text-amber-700">{alertas.warning.length}</p>
+              <p className="text-sm text-amber-600">Altas (&ge;{umbralAlto}%)</p>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-              <p className="text-3xl font-bold text-blue-700">{data.alertas.info.length}</p>
-              <p className="text-sm text-blue-600">Moderadas (&gt;30%)</p>
+              <p className="text-3xl font-bold text-blue-700">{alertas.info.length}</p>
+              <p className="text-sm text-blue-600">Moderadas (&ge;{umbralModerado}%)</p>
             </div>
           </div>
 
           {/* Alertas */}
-          <AlertSection title="Aumentos críticos (más del 100%)" items={data.alertas.criticas} severity="critical" />
-          <AlertSection title="Aumentos altos (50% - 100%)" items={data.alertas.warning} severity="warning" />
-          <AlertSection title="Aumentos moderados (30% - 50%)" items={data.alertas.info} severity="info" />
-          {data.alertas.bajas.length > 0 && (
-            <AlertSection title="Bajas de precio (más del -30%)" items={data.alertas.bajas} severity="success" />
+          <AlertSection title={`Aumentos críticos (más del ${umbralCritico}%)`} items={alertas.criticas} severity="critical" />
+          <AlertSection title={`Aumentos altos (${umbralAlto}% - ${umbralCritico}%)`} items={alertas.warning} severity="warning" />
+          <AlertSection title={`Aumentos moderados (${umbralModerado}% - ${umbralAlto}%)`} items={alertas.info} severity="info" />
+          {alertas.bajas.length > 0 && (
+            <AlertSection title="Bajas de precio (más del -30%)" items={alertas.bajas} severity="success" />
           )}
 
           {/* Historial de precios */}
@@ -251,7 +335,15 @@ export default function PreciosPage() {
                 <tbody>
                   {data.comparativo.map((row: any, i: number) => (
                     <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
-                      <td className="px-5 py-2.5 font-medium max-w-[200px] truncate">{row.descripcion}</td>
+                      <td className="px-5 py-2.5 font-medium max-w-[200px] truncate">
+                        <Link
+                          href={`/items?q=${encodeURIComponent(row.descripcion)}`}
+                          className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                        >
+                          {row.descripcion}
+                          <ExternalLink className="h-3 w-3 opacity-50" />
+                        </Link>
+                      </td>
                       <td className="px-5 py-2.5 text-slate-600">{row.proveedor}</td>
                       <td className="px-5 py-2.5 text-right">{formatCurrency(row.precio_promedio)}</td>
                       <td className="px-5 py-2.5 text-right font-medium">{formatCurrency(row.ultimo_precio)}</td>
@@ -264,11 +356,11 @@ export default function PreciosPage() {
           )}
 
           {/* Empty state */}
-          {data.totalAlertas === 0 && data.comparativo.length === 0 && (
+          {totalAlertas === 0 && data.comparativo.length === 0 && (
             <div className="text-center py-12 text-slate-500">
               <TrendingUp className="h-12 w-12 mx-auto mb-3 text-slate-300" />
               <p className="font-medium">Sin variaciones significativas</p>
-              <p className="text-sm">No se detectaron cambios de precio mayores al 30%</p>
+              <p className="text-sm">No se detectaron cambios de precio mayores al {umbralModerado}%</p>
             </div>
           )}
         </div>

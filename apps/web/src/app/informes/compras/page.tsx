@@ -19,10 +19,7 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts'
-
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6b7280']
 
 function formatMonth(mes: string) {
   const [year, month] = mes.split('-')
@@ -96,25 +93,20 @@ export default function ComprasPage() {
           {/* Gráfico mensual */}
           {data.gastoMensualChart.length > 0 && (
             <div className="bg-white border rounded-lg p-5">
-              <h3 className="font-semibold text-slate-900 mb-4">Gasto Mensual por Proveedor</h3>
+              <h3 className="font-semibold text-slate-900 mb-4">Gasto Mensual</h3>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={data.gastoMensualChart}>
                   <XAxis dataKey="mes" tickFormatter={formatMonth} tick={{ fontSize: 12 }} />
-                  <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
+                  <YAxis tickFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`} tick={{ fontSize: 12 }} />
                   <Tooltip
-                    formatter={(value: any, name: any) => [formatCurrency(value), name]}
+                    formatter={(value: any) => [formatCurrency(value), 'Total']}
                     labelFormatter={(label: any) => formatMonth(String(label))}
                   />
-                  <Legend />
-                  {data.proveedoresChart.map((prov: string, i: number) => (
-                    <Bar
-                      key={prov}
-                      dataKey={prov}
-                      stackId="a"
-                      fill={COLORS[i % COLORS.length]!}
-                      radius={i === data.proveedoresChart.length - 1 ? [4, 4, 0, 0] as any : undefined}
-                    />
-                  ))}
+                  <Bar
+                    dataKey="total"
+                    fill="#3b82f6"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
