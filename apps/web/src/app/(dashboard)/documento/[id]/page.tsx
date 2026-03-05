@@ -527,7 +527,7 @@ export default function DocumentoPage() {
                         <th className="px-3 py-2 text-right">Cant.</th>
                         <th className="px-3 py-2 text-right">P.Unit.</th>
                         <th className="px-3 py-2 text-right">Subtotal</th>
-                        {isAdmin && documento.estadoRevision !== 'PAGADO' && (
+                        {isAdmin && (
                           <th className="px-3 py-2 text-center w-20"></th>
                         )}
                       </tr>
@@ -592,7 +592,7 @@ export default function DocumentoPage() {
                                 item.subtotal ? formatCurrency(item.subtotal) : '-'
                               )}
                             </td>
-                            {isAdmin && documento.estadoRevision !== 'PAGADO' && (
+                            {isAdmin && (
                               <td className="px-3 py-2 text-center">
                                 {isEditingThis ? (
                                   <div className="flex items-center justify-center gap-1">
