@@ -174,7 +174,7 @@ function SidebarContent({
                 {visibleItems.map((item) => {
                   const isActive =
                     pathname === item.href ||
-                    (item.href !== '/' && pathname.startsWith(item.href))
+                    (item.href !== '/' && pathname.startsWith(item.href + '/'))
                   const Icon = item.icon
                   const showBadge = item.badge && pendingCount > 0
                   const showLogsBadge = item.logsBadge && unreadLogsCount > 0
