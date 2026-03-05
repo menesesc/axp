@@ -142,22 +142,16 @@ export default function PreciosPage() {
     staleTime: 60000,
   })
 
-  // Clasificar alertas con umbrales configurables
+  // Clasificar alertas con umbrales configurables (desde datos crudos del API)
   const alertas = useMemo(() => {
-    if (!data?.alertas) return null
-    // Tomar todas las alertas sin clasificar del API y reclasificar con los umbrales del usuario
-    const todas = [
-      ...(data.alertas.criticas || []),
-      ...(data.alertas.warning || []),
-      ...(data.alertas.info || []),
-    ]
+    if (!data?.aumentos) return null
     return {
-      criticas: todas.filter((a: any) => a.variacion_pct >= umbralCritico),
-      warning: todas.filter((a: any) => a.variacion_pct >= umbralAlto && a.variacion_pct < umbralCritico),
-      info: todas.filter((a: any) => a.variacion_pct >= umbralModerado && a.variacion_pct < umbralAlto),
-      bajas: data.alertas.bajas || [],
+      criticas: data.aumentos.filter((a: any) => a.variacion_pct >= umbralCritico),
+      warning: data.aumentos.filter((a: any) => a.variacion_pct >= umbralAlto && a.variacion_pct < umbralCritico),
+      info: data.aumentos.filter((a: any) => a.variacion_pct >= umbralModerado && a.variacion_pct < umbralAlto),
+      bajas: data.bajas || [],
     }
-  }, [data?.alertas, umbralCritico, umbralAlto, umbralModerado])
+  }, [data?.aumentos, data?.bajas, umbralCritico, umbralAlto, umbralModerado])
 
   // Auto-seleccionar el primer item con historial
   const itemsConHistorial = data?.historiales ? Object.keys(data.historiales) : []

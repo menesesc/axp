@@ -156,17 +156,15 @@ export async function GET(request: NextRequest) {
       ORDER BY di.descripcion, precio_promedio ASC
     `
 
-    // Clasificar alertas
-    const criticas = alertas.filter(a => a.variacion_pct >= 100)
-    const warning = alertas.filter(a => a.variacion_pct >= 50 && a.variacion_pct < 100)
-    const info = alertas.filter(a => a.variacion_pct >= 30 && a.variacion_pct < 50)
+    // Separar bajas de precio
     const bajas = alertas.filter(a => a.variacion_pct <= -30)
+    const aumentos = alertas.filter(a => a.variacion_pct > 0)
 
     return NextResponse.json({
-      alertas: { criticas, warning, info, bajas },
+      aumentos,
+      bajas,
       historiales,
       comparativo,
-      totalAlertas: criticas.length + warning.length + info.length,
     })
   } catch (error) {
     console.error('Error fetching precios:', error)
