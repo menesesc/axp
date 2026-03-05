@@ -86,10 +86,13 @@ export async function GET(
     const correctEstado = determineEstadoRevision(documento)
 
     // Auto-healing: si el estado en BD está desactualizado, corregirlo
+    // No tocar ERROR, DUPLICADO ni PAGADO (estados manuales/de pago)
+    const estadoActual = documento.estadoRevision as string
     const needsEstadoUpdate =
-      documento.estadoRevision !== 'ERROR' &&
-      documento.estadoRevision !== 'DUPLICADO' &&
-      documento.estadoRevision !== correctEstado
+      estadoActual !== 'ERROR' &&
+      estadoActual !== 'DUPLICADO' &&
+      estadoActual !== 'PAGADO' &&
+      estadoActual !== correctEstado
 
     if (needsEstadoUpdate) {
       // Actualizar en background sin bloquear la respuesta
