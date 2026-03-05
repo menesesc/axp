@@ -92,7 +92,7 @@ export default function PagoDetailPage() {
   const [isLoadingPdf, setIsLoadingPdf] = useState(false)
   const [shareEmailOpen, setShareEmailOpen] = useState(false)
 
-  const { data, isLoading } = useQuery<{ pago: Pago }>({
+  const { data, isLoading, isPending, isError } = useQuery<{ pago: Pago }>({
     queryKey: ['pago', id],
     queryFn: async () => {
       const res = await fetch(`/api/pagos/${id}`)
@@ -250,7 +250,7 @@ export default function PagoDetailPage() {
     )
   }
 
-  if (isLoading) {
+  if (isLoading || isPending) {
     return (
       <DashboardLayout>
         <div className="space-y-6">
@@ -268,7 +268,7 @@ export default function PagoDetailPage() {
     )
   }
 
-  if (!pago) {
+  if (isError || !pago) {
     return (
       <DashboardLayout>
         <div className="text-center py-8 text-sm text-slate-500">
