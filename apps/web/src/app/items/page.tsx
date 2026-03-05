@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
@@ -251,6 +251,14 @@ function getDateRange(filter: QuickDateFilter): { desde: string; hasta: string }
 }
 
 export default function ItemsPage() {
+  return (
+    <Suspense>
+      <ItemsPageContent />
+    </Suspense>
+  )
+}
+
+function ItemsPageContent() {
   const { clienteId } = useUser()
   const urlParams = useSearchParams()
   const initialQ = urlParams.get('q') || ''
