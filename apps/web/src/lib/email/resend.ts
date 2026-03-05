@@ -1,6 +1,16 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let _resend: Resend | null = null
+function getResend(): Resend {
+  if (!_resend) {
+    const key = process.env.RESEND_API_KEY
+    if (!key) {
+      throw new Error('RESEND_API_KEY no está configurada')
+    }
+    _resend = new Resend(key)
+  }
+  return _resend
+}
 
 export interface SendEmailOptions {
   to: string | string[]
@@ -18,6 +28,7 @@ const DEFAULT_FROM = 'AXP Pagos <pagos@axp.com.ar>'
 export async function sendEmail(options: SendEmailOptions) {
   const { to, subject, html, attachments, from = DEFAULT_FROM } = options
 
+  const resend = getResend()
   const payload: Parameters<typeof resend.emails.send>[0] = {
     from,
     to: Array.isArray(to) ? to : [to],
