@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     if (proveedorId) {
       const [movimientos, saldoAnterior, proveedor] = await Promise.all([
         // Movimientos: facturas (debe) + notas de crédito (haber) + pagos agrupados por OP (haber)
+        // NC tienen total negativo en BD, usamos ABS() para mostrar como positivo en haber
         prisma.$queryRaw<Array<{
           fecha: Date
           tipo: string
@@ -59,13 +60,13 @@ export async function GET(request: NextRequest) {
 
             UNION ALL
 
-            -- Notas de crédito (haber)
+            -- Notas de crédito (haber) - ABS porque total se guarda negativo
             SELECT
               d."fechaEmision" as fecha,
               'NOTA_CREDITO' as tipo,
               COALESCE(d.letra || '-', '') || COALESCE(d."numeroCompleto", 'S/N') as referencia,
               0::float as debe,
-              d.total::float as haber,
+              ABS(d.total)::float as haber,
               d.id::text as documento_id,
               NULL::text as pago_id
             FROM documentos d
@@ -101,10 +102,11 @@ export async function GET(request: NextRequest) {
         `,
 
         // Saldo anterior al período
+        // NC tienen total negativo, usamos ABS para restar correctamente
         prisma.$queryRaw<[{ saldo: number }]>`
           SELECT COALESCE(
             (SELECT COALESCE(SUM(CASE WHEN tipo = 'FACTURA' THEN total ELSE 0 END), 0)
-              - COALESCE(SUM(CASE WHEN tipo = 'NOTA_CREDITO' THEN total ELSE 0 END), 0)
+              - COALESCE(SUM(CASE WHEN tipo = 'NOTA_CREDITO' THEN ABS(total) ELSE 0 END), 0)
             FROM documentos
             WHERE "clienteId" = ${clienteId}::uuid
               AND "proveedorId" = ${proveedorId}::uuid
@@ -138,6 +140,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Sin proveedor: resumen de saldos de todos los proveedores
+    // NC tienen total negativo en BD, usamos ABS() para calcular correctamente
     const saldos = await prisma.$queryRaw<Array<{
       proveedor_id: string
       razon_social: string
@@ -151,10 +154,10 @@ export async function GET(request: NextRequest) {
         p.id as proveedor_id,
         p."razonSocial" as razon_social,
         COALESCE(SUM(CASE WHEN d.tipo = 'FACTURA' THEN d.total ELSE 0 END), 0)::float as total_facturado,
-        COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN d.total ELSE 0 END), 0)::float as total_nc,
+        COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN ABS(d.total) ELSE 0 END), 0)::float as total_nc,
         COALESCE(pagos.total_pagado, 0)::float as total_pagado,
         (COALESCE(SUM(CASE WHEN d.tipo = 'FACTURA' THEN d.total ELSE 0 END), 0)
-          - COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN d.total ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN ABS(d.total) ELSE 0 END), 0)
           - COALESCE(pagos.total_pagado, 0))::float as saldo,
         MAX(CASE WHEN d.tipo = 'FACTURA' THEN d."fechaEmision" END) as ultima_factura
       FROM proveedores p
@@ -173,9 +176,9 @@ export async function GET(request: NextRequest) {
         AND p.activo = true
       GROUP BY p.id, p."razonSocial", pagos.total_pagado
       HAVING (COALESCE(SUM(CASE WHEN d.tipo = 'FACTURA' THEN d.total ELSE 0 END), 0)
-        - COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN d.total ELSE 0 END), 0)
+        - COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN ABS(d.total) ELSE 0 END), 0)
         - COALESCE(pagos.total_pagado, 0)) <> 0
-        OR SUM(d.total) > 0
+        OR SUM(ABS(d.total)) > 0
       ORDER BY saldo DESC
     `
 

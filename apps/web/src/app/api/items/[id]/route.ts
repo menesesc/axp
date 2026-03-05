@@ -29,7 +29,7 @@ export async function PATCH(
       },
       include: {
         documentos: {
-          select: { id: true, estadoRevision: true },
+          select: { id: true, estadoRevision: true, tipo: true },
         },
       },
     })
@@ -53,7 +53,7 @@ export async function PATCH(
 
     if (cantidad !== undefined) {
       const cantidadNum = parseFloat(cantidad)
-      if (isNaN(cantidadNum) || cantidadNum < 0) {
+      if (isNaN(cantidadNum)) {
         return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 })
       }
       updateData.cantidad = cantidadNum
@@ -61,7 +61,7 @@ export async function PATCH(
 
     if (precioUnitario !== undefined) {
       const precioNum = parseFloat(precioUnitario)
-      if (isNaN(precioNum) || precioNum < 0) {
+      if (isNaN(precioNum)) {
         return NextResponse.json({ error: 'Precio unitario inválido' }, { status: 400 })
       }
       updateData.precioUnitario = precioNum
@@ -69,7 +69,7 @@ export async function PATCH(
 
     if (subtotal !== undefined) {
       const subtotalNum = parseFloat(subtotal)
-      if (isNaN(subtotalNum) || subtotalNum < 0) {
+      if (isNaN(subtotalNum)) {
         return NextResponse.json({ error: 'Subtotal inválido' }, { status: 400 })
       }
       updateData.subtotal = subtotalNum
