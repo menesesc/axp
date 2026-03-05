@@ -697,20 +697,91 @@ function extractSmartTotals(
     }
   }
 
-  // FALLBACK: Solo si Textract no dio total, intentar buscar en texto
+  // FALLBACK: Buscar en texto cuando Textract no detectó campos estructurados
+  const textJoined = allText.join('\n');
+
   if (!isValidAmount(total)) {
     logger.info(`💰 No valid total from Textract, searching in text...`);
 
-    // Buscar líneas que contengan "TOTAL" seguido de un valor
-    const textJoined = allText.join('\n');
-    const totalMatch = textJoined.match(/\bTOTAL\b[:\s$]*([\d.,]+)/i);
+    // Buscar "Importe Total: $ 2531300.58" o "TOTAL: 1493.82"
+    const totalPatterns = [
+      /Importe\s+Total[:\s$]*([\d.,]+)/i,
+      /\bTOTAL\b[:\s$]*([\d.,]+)/i,
+    ];
 
-    if (totalMatch && totalMatch[1]) {
-      const parsedTotal = parseAmount(totalMatch[1]);
-      if (isValidAmount(parsedTotal)) {
-        total = parsedTotal;
-        logger.info(`💰 Found total in text: ${total}`);
+    for (const pattern of totalPatterns) {
+      const match = textJoined.match(pattern);
+      if (match && match[1]) {
+        const parsedTotal = parseAmount(match[1]);
+        if (isValidAmount(parsedTotal)) {
+          total = parsedTotal;
+          logger.info(`💰 Found total in text: ${total}`);
+          break;
+        }
       }
+    }
+  }
+
+  if (!isValidAmount(subtotal)) {
+    logger.info(`💰 No valid subtotal from Textract, searching in text...`);
+
+    // Buscar "Importe Neto Gravado: $ 2091983.95" o "Subtotal: 1234.56" o "Neto: 1234.56"
+    const subtotalPatterns = [
+      /(?:Importe\s+)?Neto\s+Gravado[:\s$]*([\d.,]+)/i,
+      /Sub\s*total[:\s$]*([\d.,]+)/i,
+      /\bNeto\b[:\s$]*([\d.,]+)/i,
+    ];
+
+    for (const pattern of subtotalPatterns) {
+      const match = textJoined.match(pattern);
+      if (match && match[1]) {
+        const parsedSubtotal = parseAmount(match[1]);
+        if (isValidAmount(parsedSubtotal)) {
+          subtotal = parsedSubtotal;
+          logger.info(`💰 Found subtotal in text: ${subtotal}`);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!isValidAmount(iva)) {
+    logger.info(`💰 No valid IVA from Textract, searching in text...`);
+
+    // Buscar "Iva 21%: $ 439316.63" o "IVA: 259.26" o "I.V.A. 21%: 259.26"
+    // Sumar todas las alícuotas de IVA encontradas (27%, 21%, 10.5%, 5%, 2.5%)
+    const ivaPattern = /Iva\s+(\d+[.,]?\d*)%?[:\s$]*([\d.,]+)/gi;
+    let ivaTotal = 0;
+    let ivaMatchFound = false;
+    let match;
+
+    while ((match = ivaPattern.exec(textJoined)) !== null) {
+      if (match[2]) {
+        const parsedIva = parseAmount(match[2]);
+        if (parsedIva && parsedIva > 0 && parsedIva <= MAX_AMOUNT) {
+          ivaTotal += parsedIva;
+          ivaMatchFound = true;
+          logger.info(`💰 Found IVA ${match[1]}%: ${parsedIva}`);
+        }
+      }
+    }
+
+    // Fallback: buscar "I.V.A.: 259.26" genérico
+    if (!ivaMatchFound) {
+      const ivaGeneric = textJoined.match(/I\.?V\.?A\.?\s*(?:\d+[.,]?\d*%)?[:\s$]*([\d.,]+)/i);
+      if (ivaGeneric && ivaGeneric[1]) {
+        const parsedIva = parseAmount(ivaGeneric[1]);
+        if (isValidAmount(parsedIva)) {
+          ivaTotal = parsedIva;
+          ivaMatchFound = true;
+          logger.info(`💰 Found IVA (generic): ${ivaTotal}`);
+        }
+      }
+    }
+
+    if (ivaMatchFound && ivaTotal > 0 && ivaTotal <= MAX_AMOUNT) {
+      iva = ivaTotal;
+      logger.info(`💰 Total IVA from text: ${iva}`);
     }
   }
 
@@ -966,85 +1037,8 @@ function extractFechaVencimiento(lines: string[]): string | null {
   return null;
 }
 
-function extractSubtotal(lines: string[]): number | null {
-  // Estrategia 1: Buscar "Subtotal: $ 1.234,56" o "Neto: 1234.56" en la misma línea
-  for (const line of lines) {
-    const match = line.match(/^(?:Subtotal|Neto|Sub\s*Total)[:.\s]*\$?\s*([\d.,]+)/i);
-    if (match) {
-      return parseAmount(match[1]);
-    }
-  }
-
-  // Estrategia 2: Buscar palabra clave y número en línea siguiente
-  for (let i = 0; i < lines.length - 1; i++) {
-    if (/^(?:Subtotal|Neto):?\s*$/i.test(lines[i]?.trim() || '')) {
-      const nextLine = lines[i + 1]?.trim() || '';
-      const match = nextLine.match(/^([\d.,]+)$/);
-      if (match && match[1]) {
-        const amount = parseAmount(match[1]);
-        if (amount && amount > 0 && amount < 1000000000) {
-          return amount;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function extractIVA(lines: string[]): number | null {
-  // Estrategia 1: Buscar "IVA 21%: $ 259,26" o "IVA: 259.26" en la misma línea
-  for (const line of lines) {
-    const match = line.match(/^IVA(?:\s*\d+[.,]?\d*%)?[:.\s]*\$?\s*([\d.,]+)/i);
-    if (match) {
-      return parseAmount(match[1]);
-    }
-  }
-
-  // Estrategia 2: Buscar "IVA 21,0%:" y número en línea siguiente
-  for (let i = 0; i < lines.length - 1; i++) {
-    if (/^IVA.*:?\s*$/i.test(lines[i]?.trim() || '')) {
-      const nextLine = lines[i + 1]?.trim() || '';
-      const match = nextLine.match(/^([\d.,]+)$/);
-      if (match && match[1]) {
-        const amount = parseAmount(match[1]);
-        if (amount && amount > 0 && amount < 1000000000) {
-          return amount;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function extractTotal(lines: string[]): number | null {
-  // Estrategia 1: Buscar "Total: $ 1.493,82" o "TOTAL: 1493.82" en la misma línea
-  for (const line of lines) {
-    const match = line.match(/^Total[:.\s]*\$?\s*([\d.,]+)/i);
-    if (match) {
-      return parseAmount(match[1]);
-    }
-  }
-
-  // Estrategia 2: Buscar "Total:" en una línea y el número en la siguiente
-  for (let i = 0; i < lines.length - 1; i++) {
-    if (/^Total:?\s*$/i.test(lines[i].trim())) {
-      const nextLine = lines[i + 1].trim();
-      // Verificar que la siguiente línea sea un número con formato argentino
-      const match = nextLine.match(/^([\d.,]+)$/);
-      if (match) {
-        const amount = parseAmount(match[1]);
-        // Validar que sea un monto razonable (> 0 y < 1 billón)
-        if (amount && amount > 0 && amount < 1000000000) {
-          return amount;
-        }
-      }
-    }
-  }
-
-  return null;
-}
+// Funciones extractSubtotal, extractIVA, extractTotal eliminadas
+// Su lógica fue integrada directamente en extractSmartTotals()
 
 function extractMoneda(lines: string[]): string | null {
   const text = lines.join(' ').toUpperCase();
