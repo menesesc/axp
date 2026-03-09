@@ -110,6 +110,7 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*)::bigint as count
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id
       WHERE d."clienteId" = $1::uuid ${filters}
     `, ...params)
 
@@ -127,6 +128,7 @@ export async function GET(request: NextRequest) {
         COUNT(*)::bigint as total_count
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id
       WHERE d."clienteId" = $1::uuid ${filters}
     `, ...params)
 

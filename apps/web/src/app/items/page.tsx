@@ -295,7 +295,6 @@ function ItemsPageContent() {
   const initialQ = urlParams.get('q') || ''
   const [page, setPage] = useState(1)
   const [searchTags, setSearchTags] = useState<string[]>(initialQ ? [initialQ] : [])
-  const [debouncedTags, setDebouncedTags] = useState<string[]>(initialQ ? [initialQ] : [])
   const [inputValue, setInputValue] = useState('')
   const [proveedorId, setProveedorId] = useState<string>('')
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('all')
@@ -304,14 +303,15 @@ function ItemsPageContent() {
   const [showFilters, setShowFilters] = useState(false)
   const pageSize = 50
 
-  // Debounce tags
+  // Debounce input value (searches while typing, like before)
+  const [debouncedInput, setDebouncedInput] = useState('')
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedTags(searchTags)
+      setDebouncedInput(inputValue)
       setPage(1)
     }, 400)
     return () => clearTimeout(timer)
-  }, [searchTags])
+  }, [inputValue])
 
   const addTag = (value: string) => {
     const trimmed = value.trim()
@@ -319,6 +319,7 @@ function ItemsPageContent() {
       setSearchTags(prev => [...prev, trimmed])
     }
     setInputValue('')
+    setDebouncedInput('')
   }
 
   const removeTag = (index: number) => {
@@ -356,7 +357,12 @@ function ItemsPageContent() {
   })
 
   // Build query params - memoized
-  const debouncedQ = debouncedTags.join(',')
+  // Combine committed tags + current typing for live search
+  const debouncedQ = useMemo(() => {
+    const terms = [...searchTags]
+    if (debouncedInput.trim()) terms.push(debouncedInput.trim())
+    return terms.join(',')
+  }, [searchTags, debouncedInput])
   const queryString = useMemo(() => {
     const params = new URLSearchParams({
       page: page.toString(),
@@ -406,8 +412,8 @@ function ItemsPageContent() {
 
   const clearFilters = () => {
     setSearchTags([])
-    setDebouncedTags([])
     setInputValue('')
+    setDebouncedInput('')
     setProveedorId('')
     setQuickDateFilter('all')
     setFechaDesde('')
@@ -415,7 +421,7 @@ function ItemsPageContent() {
     setPage(1)
   }
 
-  const hasFilters = debouncedTags.length > 0 || proveedorId || fechaDesde || fechaHasta
+  const hasFilters = searchTags.length > 0 || debouncedInput || proveedorId || fechaDesde || fechaHasta
   const proveedores = proveedoresData?.proveedores?.filter((p: Proveedor) => p) || []
 
   if (!clienteId) {
@@ -535,7 +541,7 @@ function ItemsPageContent() {
               Más filtros
               {hasFilters && (
                 <Badge variant="outline" className="ml-1">
-                  {[debouncedTags.length > 0 ? 'q' : '', proveedorId, fechaDesde, fechaHasta].filter(Boolean).length}
+                  {[searchTags.length > 0 || debouncedInput ? 'q' : '', proveedorId, fechaDesde, fechaHasta].filter(Boolean).length}
                 </Badge>
               )}
             </Button>
