@@ -197,6 +197,37 @@ function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: 
   )
 }
 
+function PriceVariationCard({ stats }: { stats: ItemStats | undefined }) {
+  const variation = useMemo(() => {
+    if (!stats?.priceVariation?.length) return null
+    const items = stats.priceVariation
+    const avg = items.reduce((sum, i) => sum + i.variacionPct, 0) / items.length
+    return { avg: Math.round(avg * 10) / 10, count: items.length }
+  }, [stats?.priceVariation])
+
+  const isUp = variation && variation.avg > 0
+  const color = !variation ? 'text-slate-400' : isUp ? 'text-red-600' : 'text-emerald-600'
+
+  return (
+    <div className="bg-white border rounded-lg p-4">
+      <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+        {isUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+        Variación de precio
+      </div>
+      {!variation ? (
+        <p className="text-sm text-slate-400">Sin datos</p>
+      ) : (
+        <>
+          <p className={`text-2xl font-semibold ${color}`}>
+            {isUp ? '+' : ''}{variation.avg}%
+          </p>
+          <p className="text-xs text-slate-400">{variation.count} items con variación</p>
+        </>
+      )}
+    </div>
+  )
+}
+
 interface Proveedor {
   id: string
   razonSocial: string
@@ -263,8 +294,9 @@ function ItemsPageContent() {
   const urlParams = useSearchParams()
   const initialQ = urlParams.get('q') || ''
   const [page, setPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState(initialQ)
-  const [debouncedQuery, setDebouncedQuery] = useState(initialQ)
+  const [searchTags, setSearchTags] = useState<string[]>(initialQ ? [initialQ] : [])
+  const [debouncedTags, setDebouncedTags] = useState<string[]>(initialQ ? [initialQ] : [])
+  const [inputValue, setInputValue] = useState('')
   const [proveedorId, setProveedorId] = useState<string>('')
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('all')
   const [fechaDesde, setFechaDesde] = useState('')
@@ -272,14 +304,35 @@ function ItemsPageContent() {
   const [showFilters, setShowFilters] = useState(false)
   const pageSize = 50
 
-  // Proper debounce with useEffect
+  // Debounce tags
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery)
+      setDebouncedTags(searchTags)
       setPage(1)
     }, 400)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchTags])
+
+  const addTag = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed && !searchTags.includes(trimmed)) {
+      setSearchTags(prev => [...prev, trimmed])
+    }
+    setInputValue('')
+  }
+
+  const removeTag = (index: number) => {
+    setSearchTags(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.key === 'Enter' || e.key === 'Tab' || e.key === ',') && inputValue.trim()) {
+      e.preventDefault()
+      addTag(inputValue)
+    } else if (e.key === 'Backspace' && !inputValue && searchTags.length > 0) {
+      removeTag(searchTags.length - 1)
+    }
+  }
 
   // Apply quick date filter
   const applyQuickDateFilter = (filter: QuickDateFilter) => {
@@ -303,17 +356,18 @@ function ItemsPageContent() {
   })
 
   // Build query params - memoized
+  const debouncedQ = debouncedTags.join(',')
   const queryString = useMemo(() => {
     const params = new URLSearchParams({
       page: page.toString(),
       limit: pageSize.toString(),
     })
-    if (debouncedQuery) params.set('q', debouncedQuery)
+    if (debouncedQ) params.set('q', debouncedQ)
     if (proveedorId) params.set('proveedorId', proveedorId)
     if (fechaDesde) params.set('fechaDesde', fechaDesde)
     if (fechaHasta) params.set('fechaHasta', fechaHasta)
     return params.toString()
-  }, [page, pageSize, debouncedQuery, proveedorId, fechaDesde, fechaHasta])
+  }, [page, pageSize, debouncedQ, proveedorId, fechaDesde, fechaHasta])
 
   // Fetch items
   const { data, isLoading, isFetching } = useQuery<ItemsResponse>({
@@ -331,12 +385,12 @@ function ItemsPageContent() {
   // Stats params - memoized
   const statsString = useMemo(() => {
     const params = new URLSearchParams()
-    if (debouncedQuery) params.set('q', debouncedQuery)
+    if (debouncedQ) params.set('q', debouncedQ)
     if (proveedorId) params.set('proveedorId', proveedorId)
     if (fechaDesde) params.set('fechaDesde', fechaDesde)
     if (fechaHasta) params.set('fechaHasta', fechaHasta)
     return params.toString()
-  }, [debouncedQuery, proveedorId, fechaDesde, fechaHasta])
+  }, [debouncedQ, proveedorId, fechaDesde, fechaHasta])
 
   // Fetch stats
   const { data: stats } = useQuery<ItemStats>({
@@ -351,8 +405,9 @@ function ItemsPageContent() {
   })
 
   const clearFilters = () => {
-    setSearchQuery('')
-    setDebouncedQuery('')
+    setSearchTags([])
+    setDebouncedTags([])
+    setInputValue('')
     setProveedorId('')
     setQuickDateFilter('all')
     setFechaDesde('')
@@ -360,7 +415,7 @@ function ItemsPageContent() {
     setPage(1)
   }
 
-  const hasFilters = debouncedQuery || proveedorId || fechaDesde || fechaHasta
+  const hasFilters = debouncedTags.length > 0 || proveedorId || fechaDesde || fechaHasta
   const proveedores = proveedoresData?.proveedores?.filter((p: Proveedor) => p) || []
 
   if (!clienteId) {
@@ -399,7 +454,7 @@ function ItemsPageContent() {
               {isLoading ? <Skeleton className="h-7 w-20" /> : (data?.totals.cantidad || 0).toLocaleString()}
             </p>
           </div>
-          <div className="bg-white border rounded-lg p-4 col-span-2">
+          <div className="bg-white border rounded-lg p-4">
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
               <BarChart3 className="h-4 w-4" />
               Subtotal
@@ -408,6 +463,7 @@ function ItemsPageContent() {
               {isLoading ? <Skeleton className="h-7 w-32" /> : formatCurrency(data?.totals.subtotal || 0)}
             </p>
           </div>
+          <PriceVariationCard stats={stats} />
         </div>
 
         {/* Search and Quick Filters */}
@@ -439,18 +495,35 @@ function ItemsPageContent() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                placeholder="Buscar por descripción..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+            <div
+              className="flex-1 min-w-[200px] flex flex-wrap items-center gap-1.5 border rounded-md px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 cursor-text"
+              onClick={() => document.getElementById('items-search-input')?.focus()}
+            >
+              <Search className="h-4 w-4 text-slate-400 shrink-0" />
+              {searchTags.map((tag, i) => (
+                <Badge key={i} variant="outline" className="gap-1 shrink-0 py-0.5">
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); removeTag(i) }}
+                    className="ml-0.5 hover:text-red-500"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              <input
+                id="items-search-input"
+                type="text"
+                placeholder={searchTags.length === 0 ? 'Buscar por descripción o proveedor... (Enter para agregar)' : 'Agregar filtro...'}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => { if (inputValue.trim()) addTag(inputValue) }}
+                className="flex-1 min-w-[120px] outline-none text-sm bg-transparent py-1"
               />
-              {isFetching && searchQuery && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                </div>
+              {isFetching && searchTags.length > 0 && (
+                <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
               )}
             </div>
             <Button
@@ -462,7 +535,7 @@ function ItemsPageContent() {
               Más filtros
               {hasFilters && (
                 <Badge variant="outline" className="ml-1">
-                  {[debouncedQuery, proveedorId, fechaDesde, fechaHasta].filter(Boolean).length}
+                  {[debouncedTags.length > 0 ? 'q' : '', proveedorId, fechaDesde, fechaHasta].filter(Boolean).length}
                 </Badge>
               )}
             </Button>

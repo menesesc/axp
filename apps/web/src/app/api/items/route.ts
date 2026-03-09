@@ -32,9 +32,13 @@ export async function GET(request: NextRequest) {
     let paramIndex = 2
 
     if (q) {
-      filters += ` AND di.descripcion ILIKE $${paramIndex}`
-      params.push(`%${q}%`)
-      paramIndex++
+      // Support multiple comma-separated terms: each searches descripcion OR proveedor, combined with AND
+      const terms = q.split(',').map(t => t.trim()).filter(Boolean)
+      for (const term of terms) {
+        filters += ` AND (di.descripcion ILIKE $${paramIndex} OR p."razonSocial" ILIKE $${paramIndex})`
+        params.push(`%${term}%`)
+        paramIndex++
+      }
     }
 
     if (proveedorId) {

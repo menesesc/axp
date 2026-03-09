@@ -44,9 +44,12 @@ export async function GET(request: NextRequest) {
       paramIndex++
     }
     if (q) {
-      dateFilter += ` AND di.descripcion ILIKE $${paramIndex}`
-      params.push(`%${q}%`)
-      paramIndex++
+      const terms = q.split(',').map(t => t.trim()).filter(Boolean)
+      for (const term of terms) {
+        dateFilter += ` AND (di.descripcion ILIKE $${paramIndex} OR p."razonSocial" ILIKE $${paramIndex})`
+        params.push(`%${term}%`)
+        paramIndex++
+      }
     }
 
     // Aggregations by provider
@@ -86,6 +89,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT d."proveedorId")::int as proveedores
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id
       WHERE d."clienteId" = $1::uuid ${dateFilter}
       GROUP BY di.descripcion
       ORDER BY total_subtotal DESC NULLS LAST
@@ -137,6 +141,7 @@ export async function GET(request: NextRequest) {
         SUM(di.subtotal::numeric) as total_subtotal
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id
       WHERE d."clienteId" = $1::uuid
         AND d."fechaEmision" >= NOW() - INTERVAL '12 months'
         ${dateFilter}
