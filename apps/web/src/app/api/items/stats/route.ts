@@ -150,6 +150,7 @@ export async function GET(request: NextRequest) {
     `, ...params)
 
     // Items with biggest price variation (comparing first and last price)
+    // Uses dateFilter to respect search/provider/date filters
     const priceVariationRaw = await prisma.$queryRawUnsafe<Array<{
       descripcion: string
       precio_inicial: number
@@ -169,9 +170,11 @@ export async function GET(request: NextRequest) {
           COUNT(*) OVER (PARTITION BY di.descripcion) as total_compras
         FROM documento_items di
         JOIN documentos d ON di."documentoId" = d.id
+        LEFT JOIN proveedores p ON d."proveedorId" = p.id
         WHERE d."clienteId" = $1::uuid
           AND di."precioUnitario" IS NOT NULL
           AND di."precioUnitario" > 0
+          ${dateFilter}
       ),
       first_last AS (
         SELECT
@@ -198,7 +201,7 @@ export async function GET(request: NextRequest) {
         AND precio_final != precio_inicial
       ORDER BY ABS((precio_final - precio_inicial) / precio_inicial) DESC
       LIMIT 10
-    `, clienteId)
+    `, ...params)
 
     // Group price history by item
     const priceHistoryByItem: Record<string, Array<{ fecha: string; precio: number }>> = {}
