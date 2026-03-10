@@ -216,6 +216,117 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Price overview: avg precioUnitario current period vs previous equivalent period
+    // If dates set: compare same-duration previous period
+    // If no dates: split all data by median date
+    const poParams: any[] = [clienteId]
+    let poFilter = ''
+    let poi = 2
+
+    if (proveedorId) {
+      poFilter += ` AND d."proveedorId" = $${poi}::uuid`
+      poParams.push(proveedorId)
+      poi++
+    }
+    if (q) {
+      for (const term of q.split(',').map((t: string) => t.trim()).filter(Boolean)) {
+        poFilter += ` AND (di.descripcion ILIKE $${poi} OR p."razonSocial" ILIKE $${poi})`
+        poParams.push(`%${term}%`)
+        poi++
+      }
+    }
+
+    let priceOverview: { precioActual: number; precioAnterior: number; variacionPct: number; itemsActual: number; itemsAnterior: number } | null = null
+
+    if (fechaDesde && fechaHasta) {
+      const dDesde = new Date(`${fechaDesde}T00:00:00`)
+      const dHasta = new Date(`${fechaHasta}T23:59:59`)
+      const durationDays = Math.max(1, Math.round((dHasta.getTime() - dDesde.getTime()) / 86400000))
+      const prevHasta = new Date(dDesde)
+      prevHasta.setDate(prevHasta.getDate() - 1)
+      const prevDesde = new Date(prevHasta)
+      prevDesde.setDate(prevDesde.getDate() - durationDays + 1)
+
+      const currDesdeIdx = poi++
+      poParams.push(fechaDesde)
+      const currHastaIdx = poi++
+      poParams.push(fechaHasta)
+      const prevDesdeIdx = poi++
+      poParams.push(prevDesde.toISOString().split('T')[0])
+      const prevHastaIdx = poi++
+      poParams.push(prevHasta.toISOString().split('T')[0])
+
+      const poResult = await prisma.$queryRawUnsafe<[{
+        precio_actual: number | null
+        precio_anterior: number | null
+        items_actual: bigint
+        items_anterior: bigint
+      }]>(`
+        SELECT
+          AVG(CASE WHEN d."fechaEmision" >= $${currDesdeIdx}::date AND d."fechaEmision" <= $${currHastaIdx}::date THEN di."precioUnitario"::numeric END) as precio_actual,
+          AVG(CASE WHEN d."fechaEmision" >= $${prevDesdeIdx}::date AND d."fechaEmision" <= $${prevHastaIdx}::date THEN di."precioUnitario"::numeric END) as precio_anterior,
+          COUNT(CASE WHEN d."fechaEmision" >= $${currDesdeIdx}::date AND d."fechaEmision" <= $${currHastaIdx}::date THEN 1 END)::bigint as items_actual,
+          COUNT(CASE WHEN d."fechaEmision" >= $${prevDesdeIdx}::date AND d."fechaEmision" <= $${prevHastaIdx}::date THEN 1 END)::bigint as items_anterior
+        FROM documento_items di
+        JOIN documentos d ON di."documentoId" = d.id
+        LEFT JOIN proveedores p ON d."proveedorId" = p.id
+        WHERE d."clienteId" = $1::uuid
+          AND di."precioUnitario" IS NOT NULL
+          AND di."precioUnitario" > 0
+          ${poFilter}
+      `, ...poParams)
+
+      const r = poResult[0]
+      if (r?.precio_actual && r?.precio_anterior && Number(r.precio_anterior) > 0) {
+        priceOverview = {
+          precioActual: Math.round(Number(r.precio_actual) * 100) / 100,
+          precioAnterior: Math.round(Number(r.precio_anterior) * 100) / 100,
+          variacionPct: Math.round(((Number(r.precio_actual) - Number(r.precio_anterior)) / Number(r.precio_anterior) * 100) * 10) / 10,
+          itemsActual: Number(r.items_actual),
+          itemsAnterior: Number(r.items_anterior),
+        }
+      }
+    } else {
+      // No dates: split by median date (older half vs newer half)
+      const poResult = await prisma.$queryRawUnsafe<[{
+        precio_actual: number | null
+        precio_anterior: number | null
+        items_actual: bigint
+        items_anterior: bigint
+      }]>(`
+        WITH filtered AS (
+          SELECT di."precioUnitario"::numeric as precio, d."fechaEmision" as fecha
+          FROM documento_items di
+          JOIN documentos d ON di."documentoId" = d.id
+          LEFT JOIN proveedores p ON d."proveedorId" = p.id
+          WHERE d."clienteId" = $1::uuid
+            AND di."precioUnitario" IS NOT NULL
+            AND di."precioUnitario" > 0
+            ${poFilter}
+        ),
+        mid AS (
+          SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY fecha) as median_date FROM filtered
+        )
+        SELECT
+          AVG(CASE WHEN f.fecha >= m.median_date THEN f.precio END) as precio_actual,
+          AVG(CASE WHEN f.fecha < m.median_date THEN f.precio END) as precio_anterior,
+          COUNT(CASE WHEN f.fecha >= m.median_date THEN 1 END)::bigint as items_actual,
+          COUNT(CASE WHEN f.fecha < m.median_date THEN 1 END)::bigint as items_anterior
+        FROM filtered f, mid m
+      `, ...poParams)
+
+      const r = poResult[0]
+      if (r?.precio_actual && r?.precio_anterior && Number(r.precio_anterior) > 0) {
+        priceOverview = {
+          precioActual: Math.round(Number(r.precio_actual) * 100) / 100,
+          precioAnterior: Math.round(Number(r.precio_anterior) * 100) / 100,
+          variacionPct: Math.round(((Number(r.precio_actual) - Number(r.precio_anterior)) / Number(r.precio_anterior) * 100) * 10) / 10,
+          itemsActual: Number(r.items_actual),
+          itemsAnterior: Number(r.items_anterior),
+        }
+      }
+    }
+
     return NextResponse.json({
       byProvider: byProviderRaw.map(row => ({
         proveedorId: row.proveedor_id,
@@ -243,6 +354,7 @@ export async function GET(request: NextRequest) {
         variacionPct: Number(row.variacion_pct),
         compras: row.compras,
       })),
+      priceOverview,
     })
   } catch (error) {
     console.error('Error fetching item stats:', error)

@@ -155,6 +155,13 @@ interface ItemStats {
     variacionPct: number
     compras: number
   }>
+  priceOverview: {
+    precioActual: number
+    precioAnterior: number
+    variacionPct: number
+    itemsActual: number
+    itemsAnterior: number
+  } | null
 }
 
 // Sparkline component - minimalist line chart
@@ -198,40 +205,25 @@ function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: 
 }
 
 function PriceVariationCard({ stats }: { stats: ItemStats | undefined }) {
-  const variation = useMemo(() => {
-    if (!stats?.priceVariation?.length) return null
-    const items = stats.priceVariation
-    const sorted = [...items].sort((a, b) => a.variacionPct - b.variacionPct)
-    // Median is more representative than average for price variations
-    const mid = Math.floor(sorted.length / 2)
-    const median = sorted.length % 2 === 0
-      ? ((sorted[mid - 1]!.variacionPct + sorted[mid]!.variacionPct) / 2)
-      : sorted[mid]!.variacionPct
-    const aumentos = items.filter(i => i.variacionPct > 0).length
-    const bajas = items.filter(i => i.variacionPct < 0).length
-    return { median: Math.round(median * 10) / 10, count: items.length, aumentos, bajas }
-  }, [stats?.priceVariation])
-
-  const isUp = variation && variation.median > 0
-  const color = !variation ? 'text-slate-400' : isUp ? 'text-red-600' : 'text-emerald-600'
+  const po = stats?.priceOverview
+  const isUp = po && po.variacionPct > 0
+  const color = !po ? 'text-slate-400' : isUp ? 'text-red-600' : 'text-emerald-600'
 
   return (
     <div className="bg-white border rounded-lg p-4">
       <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
         {isUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-        Variación de precio
+        Variación P. Unit.
       </div>
-      {!variation ? (
-        <p className="text-sm text-slate-400">Sin datos</p>
+      {!po ? (
+        <p className="text-sm text-slate-400">Sin datos previos</p>
       ) : (
         <>
           <p className={`text-2xl font-semibold ${color}`}>
-            {isUp ? '+' : ''}{variation.median}%
+            {isUp ? '+' : ''}{po.variacionPct}%
           </p>
           <p className="text-xs text-slate-400">
-            {variation.aumentos > 0 && <span className="text-red-500">{variation.aumentos} subas</span>}
-            {variation.aumentos > 0 && variation.bajas > 0 && ' · '}
-            {variation.bajas > 0 && <span className="text-emerald-500">{variation.bajas} bajas</span>}
+            {formatCurrency(po.precioAnterior)} → {formatCurrency(po.precioActual)}
           </p>
         </>
       )}
