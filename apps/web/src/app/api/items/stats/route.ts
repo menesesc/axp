@@ -53,48 +53,58 @@ export async function GET(request: NextRequest) {
     }
 
     // Aggregations by provider
-    const byProviderRaw = await prisma.$queryRawUnsafe<Array<{
+    let byProviderRaw: Array<{
       proveedor_id: string | null
       proveedor: string
       total_items: bigint
       total_cantidad: number | null
       total_subtotal: number | null
-    }>>(`
-      SELECT
-        p.id as proveedor_id,
-        COALESCE(p."razonSocial", 'Sin proveedor') as proveedor,
-        COUNT(di.id)::bigint as total_items,
-        SUM(di.cantidad::numeric) as total_cantidad,
-        SUM(di.subtotal::numeric) as total_subtotal
-      FROM documento_items di
-      JOIN documentos d ON di."documentoId" = d.id
-      LEFT JOIN proveedores p ON d."proveedorId" = p.id
-      WHERE d."clienteId" = $1::uuid ${dateFilter}
-      GROUP BY p.id, p."razonSocial"
-      ORDER BY total_subtotal DESC NULLS LAST
-      LIMIT 20
-    `, ...params)
+    }> = []
+    try {
+      byProviderRaw = await prisma.$queryRawUnsafe<typeof byProviderRaw>(`
+        SELECT
+          p.id as proveedor_id,
+          COALESCE(p."razonSocial", 'Sin proveedor') as proveedor,
+          COUNT(di.id)::bigint as total_items,
+          SUM(di.cantidad::numeric) as total_cantidad,
+          SUM(di.subtotal::numeric) as total_subtotal
+        FROM documento_items di
+        JOIN documentos d ON di."documentoId" = d.id
+        LEFT JOIN proveedores p ON d."proveedorId" = p.id
+        WHERE d."clienteId" = $1::uuid ${dateFilter}
+        GROUP BY p.id, p."razonSocial"
+        ORDER BY total_subtotal DESC NULLS LAST
+        LIMIT 20
+      `, ...params)
+    } catch (e) {
+      console.error('[stats] byProvider error:', e)
+    }
 
     // Top items by total value
-    const topItemsRaw = await prisma.$queryRawUnsafe<Array<{
+    let topItemsRaw: Array<{
       descripcion: string
       total_cantidad: number | null
       total_subtotal: number | null
       proveedores: number
-    }>>(`
-      SELECT
-        di.descripcion,
-        SUM(di.cantidad::numeric) as total_cantidad,
-        SUM(di.subtotal::numeric) as total_subtotal,
-        COUNT(DISTINCT d."proveedorId")::int as proveedores
-      FROM documento_items di
-      JOIN documentos d ON di."documentoId" = d.id
-      LEFT JOIN proveedores p ON d."proveedorId" = p.id
-      WHERE d."clienteId" = $1::uuid ${dateFilter}
-      GROUP BY di.descripcion
-      ORDER BY total_subtotal DESC NULLS LAST
-      LIMIT 15
-    `, ...params)
+    }> = []
+    try {
+      topItemsRaw = await prisma.$queryRawUnsafe<typeof topItemsRaw>(`
+        SELECT
+          di.descripcion,
+          SUM(di.cantidad::numeric) as total_cantidad,
+          SUM(di.subtotal::numeric) as total_subtotal,
+          COUNT(DISTINCT d."proveedorId")::int as proveedores
+        FROM documento_items di
+        JOIN documentos d ON di."documentoId" = d.id
+        LEFT JOIN proveedores p ON d."proveedorId" = p.id
+        WHERE d."clienteId" = $1::uuid ${dateFilter}
+        GROUP BY di.descripcion
+        ORDER BY total_subtotal DESC NULLS LAST
+        LIMIT 15
+      `, ...params)
+    } catch (e) {
+      console.error('[stats] topItems error:', e)
+    }
 
     // Price history for top items (last 10 purchases per item)
     const topDescriptions = topItemsRaw.slice(0, 5).map(i => i.descripcion)
@@ -135,28 +145,32 @@ export async function GET(request: NextRequest) {
     }
 
     // Monthly trend
-    const monthlyTrendRaw = await prisma.$queryRawUnsafe<Array<{
+    let monthlyTrendRaw: Array<{
       mes: string
       total_items: bigint
       total_subtotal: number | null
-    }>>(`
-      SELECT
-        TO_CHAR(d."fechaEmision", 'YYYY-MM') as mes,
-        COUNT(di.id)::bigint as total_items,
-        SUM(di.subtotal::numeric) as total_subtotal
-      FROM documento_items di
-      JOIN documentos d ON di."documentoId" = d.id
-      LEFT JOIN proveedores p ON d."proveedorId" = p.id
-      WHERE d."clienteId" = $1::uuid
-        AND d."fechaEmision" >= NOW() - INTERVAL '12 months'
-        ${dateFilter}
-      GROUP BY TO_CHAR(d."fechaEmision", 'YYYY-MM')
-      ORDER BY mes ASC
-    `, ...params)
+    }> = []
+    try {
+      monthlyTrendRaw = await prisma.$queryRawUnsafe<typeof monthlyTrendRaw>(`
+        SELECT
+          TO_CHAR(d."fechaEmision", 'YYYY-MM') as mes,
+          COUNT(di.id)::bigint as total_items,
+          SUM(di.subtotal::numeric) as total_subtotal
+        FROM documento_items di
+        JOIN documentos d ON di."documentoId" = d.id
+        LEFT JOIN proveedores p ON d."proveedorId" = p.id
+        WHERE d."clienteId" = $1::uuid
+          AND d."fechaEmision" >= NOW() - INTERVAL '12 months'
+          ${dateFilter}
+        GROUP BY TO_CHAR(d."fechaEmision", 'YYYY-MM')
+        ORDER BY mes ASC
+      `, ...params)
+    } catch (e) {
+      console.error('[stats] monthlyTrend error:', e)
+    }
 
     // Items with biggest price variation (comparing first and last price)
-    // Uses dateFilter to respect search/provider/date filters
-    const priceVariationRaw = await prisma.$queryRawUnsafe<Array<{
+    let priceVariationRaw: Array<{
       descripcion: string
       precio_inicial: number
       precio_final: number
@@ -164,49 +178,54 @@ export async function GET(request: NextRequest) {
       fecha_final: Date
       variacion_pct: number
       compras: number
-    }>>(`
-      WITH item_prices AS (
-        SELECT
-          di.descripcion,
-          di."precioUnitario"::numeric as precio,
-          d."fechaEmision" as fecha,
-          ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" ASC) as rn_asc,
-          ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn_desc,
-          COUNT(*) OVER (PARTITION BY di.descripcion) as total_compras
-        FROM documento_items di
-        JOIN documentos d ON di."documentoId" = d.id
-        LEFT JOIN proveedores p ON d."proveedorId" = p.id
-        WHERE d."clienteId" = $1::uuid
-          AND di."precioUnitario" IS NOT NULL
-          AND di."precioUnitario" > 0
-          ${dateFilter}
-      ),
-      first_last AS (
+    }> = []
+    try {
+      priceVariationRaw = await prisma.$queryRawUnsafe<typeof priceVariationRaw>(`
+        WITH item_prices AS (
+          SELECT
+            di.descripcion,
+            di."precioUnitario"::numeric as precio,
+            d."fechaEmision" as fecha,
+            ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" ASC) as rn_asc,
+            ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn_desc,
+            COUNT(*) OVER (PARTITION BY di.descripcion) as total_compras
+          FROM documento_items di
+          JOIN documentos d ON di."documentoId" = d.id
+          LEFT JOIN proveedores p ON d."proveedorId" = p.id
+          WHERE d."clienteId" = $1::uuid
+            AND di."precioUnitario" IS NOT NULL
+            AND di."precioUnitario" > 0
+            ${dateFilter}
+        ),
+        first_last AS (
+          SELECT
+            descripcion,
+            MAX(CASE WHEN rn_asc = 1 THEN precio END) as precio_inicial,
+            MAX(CASE WHEN rn_desc = 1 THEN precio END) as precio_final,
+            MAX(CASE WHEN rn_asc = 1 THEN fecha END) as fecha_inicial,
+            MAX(CASE WHEN rn_desc = 1 THEN fecha END) as fecha_final,
+            MAX(total_compras) as compras
+          FROM item_prices
+          GROUP BY descripcion
+          HAVING MAX(total_compras) >= 2
+        )
         SELECT
           descripcion,
-          MAX(CASE WHEN rn_asc = 1 THEN precio END) as precio_inicial,
-          MAX(CASE WHEN rn_desc = 1 THEN precio END) as precio_final,
-          MAX(CASE WHEN rn_asc = 1 THEN fecha END) as fecha_inicial,
-          MAX(CASE WHEN rn_desc = 1 THEN fecha END) as fecha_final,
-          MAX(total_compras) as compras
-        FROM item_prices
-        GROUP BY descripcion
-        HAVING MAX(total_compras) >= 2
-      )
-      SELECT
-        descripcion,
-        precio_inicial,
-        precio_final,
-        fecha_inicial,
-        fecha_final,
-        ROUND(((precio_final - precio_inicial) / precio_inicial * 100)::numeric, 1) as variacion_pct,
-        compras::int
-      FROM first_last
-      WHERE precio_inicial > 0
-        AND precio_final != precio_inicial
-      ORDER BY ABS((precio_final - precio_inicial) / precio_inicial) DESC
-      LIMIT 10
-    `, ...params)
+          precio_inicial,
+          precio_final,
+          fecha_inicial,
+          fecha_final,
+          ROUND(((precio_final - precio_inicial) / precio_inicial * 100)::numeric, 1) as variacion_pct,
+          compras::int
+        FROM first_last
+        WHERE precio_inicial > 0
+          AND precio_final != precio_inicial
+        ORDER BY ABS((precio_final - precio_inicial) / precio_inicial) DESC
+        LIMIT 10
+      `, ...params)
+    } catch (e) {
+      console.error('[stats] priceVariation error:', e)
+    }
 
     // Group price history by item
     const priceHistoryByItem: Record<string, Array<{ fecha: string; precio: number }>> = {}
@@ -243,6 +262,7 @@ export async function GET(request: NextRequest) {
 
     let priceOverview: { precioActual: number; precioAnterior: number; variacionPct: number; itemsActual: number; itemsAnterior: number } | null = null
 
+    try {
     if (fechaDesde && fechaHasta) {
       const dDesde = new Date(`${fechaDesde}T00:00:00`)
       const dHasta = new Date(`${fechaHasta}T23:59:59`)
@@ -330,6 +350,9 @@ export async function GET(request: NextRequest) {
           itemsAnterior: Number(r.items_anterior),
         }
       }
+    }
+    } catch (e) {
+      console.error('[stats] priceOverview error:', e)
     }
 
     return NextResponse.json({
