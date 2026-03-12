@@ -105,28 +105,33 @@ export async function GET(request: NextRequest) {
     }> = []
 
     if (topDescriptions.length > 0) {
-      priceHistoryRaw = await prisma.$queryRawUnsafe<Array<{
-        descripcion: string
-        fecha: Date
-        precio_unitario: number | null
-      }>>(`
-        WITH ranked_prices AS (
-          SELECT
-            di.descripcion,
-            d."fechaEmision" as fecha,
-            di."precioUnitario"::numeric as precio_unitario,
-            ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn
-          FROM documento_items di
-          JOIN documentos d ON di."documentoId" = d.id
-          WHERE d."clienteId" = $1::uuid
-            AND di.descripcion = ANY($2::text[])
-            AND di."precioUnitario" IS NOT NULL
-        )
-        SELECT descripcion, fecha, precio_unitario
-        FROM ranked_prices
-        WHERE rn <= 10
-        ORDER BY descripcion, fecha ASC
-      `, clienteId, topDescriptions)
+      try {
+        const descPlaceholders = topDescriptions.map((_, i) => `$${i + 2}`).join(', ')
+        priceHistoryRaw = await prisma.$queryRawUnsafe<Array<{
+          descripcion: string
+          fecha: Date
+          precio_unitario: number | null
+        }>>(`
+          WITH ranked_prices AS (
+            SELECT
+              di.descripcion,
+              d."fechaEmision" as fecha,
+              di."precioUnitario"::numeric as precio_unitario,
+              ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn
+            FROM documento_items di
+            JOIN documentos d ON di."documentoId" = d.id
+            WHERE d."clienteId" = $1::uuid
+              AND di.descripcion IN (${descPlaceholders})
+              AND di."precioUnitario" IS NOT NULL
+          )
+          SELECT descripcion, fecha, precio_unitario
+          FROM ranked_prices
+          WHERE rn <= 10
+          ORDER BY descripcion, fecha ASC
+        `, clienteId, ...topDescriptions)
+      } catch (e) {
+        console.error('Error fetching price history:', e)
+      }
     }
 
     // Monthly trend
@@ -351,6 +356,8 @@ export async function GET(request: NextRequest) {
         descripcion: row.descripcion,
         precioInicial: Number(row.precio_inicial),
         precioFinal: Number(row.precio_final),
+        fechaInicial: row.fecha_inicial ? new Date(row.fecha_inicial).toISOString().split('T')[0] : null,
+        fechaFinal: row.fecha_final ? new Date(row.fecha_final).toISOString().split('T')[0] : null,
         variacionPct: Number(row.variacion_pct),
         compras: row.compras,
       })),

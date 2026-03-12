@@ -152,6 +152,8 @@ interface ItemStats {
     descripcion: string
     precioInicial: number
     precioFinal: number
+    fechaInicial: string | null
+    fechaFinal: string | null
     variacionPct: number
     compras: number
   }>
@@ -722,20 +724,28 @@ function ItemsPageContent() {
                 <TrendingUp className="h-4 w-4" />
                 Top Proveedores
               </h3>
-              {stats?.byProvider.slice(0, 5).map((prov, i) => (
-                <div
-                  key={prov.proveedorId || i}
-                  className="flex items-center justify-between py-2 border-b last:border-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{prov.proveedor}</p>
-                    <p className="text-xs text-slate-400">{prov.totalItems} items</p>
+              {stats?.byProvider.slice(0, 5).map((prov, i) => {
+                const totalSubtotal = stats.byProvider.reduce((sum, p) => sum + p.totalSubtotal, 0)
+                const pct = totalSubtotal > 0 ? (prov.totalSubtotal / totalSubtotal) * 100 : 0
+                return (
+                  <div key={prov.proveedorId || i} className="py-2 border-b last:border-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-sm font-medium truncate flex-1">{prov.proveedor}</p>
+                      <p className="text-sm font-medium text-emerald-600 shrink-0">
+                        {formatCurrency(prov.totalSubtotal)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-400 shrink-0 w-12 text-right">
+                        {pct.toFixed(0)}% · {prov.totalItems}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-sm font-medium text-emerald-600 ml-2">
-                    {formatCurrency(prov.totalSubtotal)}
-                  </p>
-                </div>
-              ))}
+                )
+              })}
               {!stats?.byProvider.length && (
                 <p className="text-sm text-slate-400">Sin datos</p>
               )}
@@ -747,31 +757,37 @@ function ItemsPageContent() {
                 <Package className="h-4 w-4" />
                 Items más comprados
               </h3>
-              {stats?.topItems.slice(0, 5).map((item, i) => (
-                <div
-                  key={i}
-                  className="py-2 border-b last:border-0"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium truncate flex-1" title={item.descripcion}>
-                      {item.descripcion}
-                    </p>
-                    {item.priceHistory?.length >= 2 && (
-                      <Sparkline
-                        data={item.priceHistory.map(p => p.precio)}
-                        width={60}
-                        height={20}
-                      />
-                    )}
+              {stats?.topItems.slice(0, 5).map((item, i) => {
+                const prices = item.priceHistory?.map(p => p.precio).filter(p => p > 0) ?? []
+                const priceTrend = prices.length >= 2
+                  ? Math.round(((prices[prices.length - 1]! - prices[0]!) / prices[0]!) * 1000) / 10
+                  : null
+                return (
+                  <div key={i} className="py-2 border-b last:border-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate flex-1" title={item.descripcion}>
+                        {item.descripcion}
+                      </p>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {priceTrend !== null && (
+                          <span className={`text-xs font-semibold ${priceTrend > 0 ? 'text-red-500' : priceTrend < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            {priceTrend > 0 ? '+' : ''}{priceTrend}%
+                          </span>
+                        )}
+                        {prices.length >= 2 && (
+                          <Sparkline data={prices} width={60} height={20} />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-500 mt-1">
+                      <span>{item.totalCantidad.toLocaleString()} unid.</span>
+                      <span className="text-emerald-600 font-medium">
+                        {formatCurrency(item.totalSubtotal)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500 mt-1">
-                    <span>{item.totalCantidad.toLocaleString()} unid.</span>
-                    <span className="text-emerald-600 font-medium">
-                      {formatCurrency(item.totalSubtotal)}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
               {!stats?.topItems.length && (
                 <p className="text-sm text-slate-400">Sin datos</p>
               )}
@@ -785,27 +801,24 @@ function ItemsPageContent() {
               </h3>
               {stats?.priceVariation?.slice(0, 5).map((item, i) => {
                 const isUp = item.variacionPct > 0
+                const fechaIni = item.fechaInicial ? formatDate(item.fechaInicial) : null
+                const fechaFin = item.fechaFinal ? formatDate(item.fechaFinal) : null
                 return (
-                  <div
-                    key={i}
-                    className="py-2 border-b last:border-0"
-                  >
+                  <div key={i} className="py-2 border-b last:border-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium truncate flex-1" title={item.descripcion}>
                         {item.descripcion}
                       </p>
-                      <div className={`flex items-center gap-0.5 text-sm font-semibold ${isUp ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {isUp ? (
-                          <ArrowUpRight className="h-4 w-4" />
-                        ) : (
-                          <ArrowDownRight className="h-4 w-4" />
-                        )}
+                      <div className={`flex items-center gap-0.5 text-sm font-semibold shrink-0 ${isUp ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {isUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
                         {isUp ? '+' : ''}{item.variacionPct}%
                       </div>
                     </div>
                     <div className="flex justify-between text-xs text-slate-500 mt-1">
                       <span>{formatCurrency(item.precioInicial)} → {formatCurrency(item.precioFinal)}</span>
-                      <span>{item.compras} compras</span>
+                      <span className="text-slate-400">
+                        {fechaIni && fechaFin ? `${fechaIni} · ${fechaFin}` : `${item.compras} compras`}
+                      </span>
                     </div>
                   </div>
                 )
