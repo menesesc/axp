@@ -206,10 +206,19 @@ function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: 
   )
 }
 
-function PriceVariationCard({ stats }: { stats: ItemStats | undefined }) {
+function PriceVariationCard({ stats, fechaDesde, fechaHasta }: { stats: ItemStats | undefined; fechaDesde: string; fechaHasta: string }) {
   const po = stats?.priceOverview
   const isUp = po && po.variacionPct > 0
   const color = !po ? 'text-slate-400' : isUp ? 'text-red-600' : 'text-emerald-600'
+
+  let subtitle = ''
+  if (po) {
+    if (fechaDesde && fechaHasta) {
+      subtitle = `${formatDate(fechaDesde)} – ${formatDate(fechaHasta)} vs anterior`
+    } else {
+      subtitle = `mitad reciente vs mitad anterior`
+    }
+  }
 
   return (
     <div className="bg-white border rounded-lg p-4">
@@ -218,7 +227,7 @@ function PriceVariationCard({ stats }: { stats: ItemStats | undefined }) {
         Variación P. Unit.
       </div>
       {!po ? (
-        <p className="text-sm text-slate-400">Sin datos previos</p>
+        <p className="text-sm text-slate-400">Necesita al menos 2 períodos</p>
       ) : (
         <>
           <p className={`text-2xl font-semibold ${color}`}>
@@ -227,6 +236,7 @@ function PriceVariationCard({ stats }: { stats: ItemStats | undefined }) {
           <p className="text-xs text-slate-400">
             {formatCurrency(po.precioAnterior)} → {formatCurrency(po.precioActual)}
           </p>
+          <p className="text-xs text-slate-300 mt-0.5">{subtitle}</p>
         </>
       )}
     </div>
@@ -474,7 +484,7 @@ function ItemsPageContent() {
               {isLoading ? <Skeleton className="h-7 w-32" /> : formatCurrency(data?.totals.subtotal || 0)}
             </p>
           </div>
-          <PriceVariationCard stats={stats} />
+          <PriceVariationCard stats={stats} fechaDesde={fechaDesde} fechaHasta={fechaHasta} />
         </div>
 
         {/* Search and Quick Filters */}

@@ -330,7 +330,7 @@ export async function GET(request: NextRequest) {
             ${poFilter}
         ),
         mid AS (
-          SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY fecha) as median_date FROM filtered
+          SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY fecha) as median_date FROM filtered
         )
         SELECT
           AVG(CASE WHEN f.fecha >= m.median_date THEN f.precio END) as precio_actual,
