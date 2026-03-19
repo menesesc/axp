@@ -23,6 +23,7 @@ import {
   Mail,
   Sparkles,
   PieChart,
+  ShoppingCart,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -61,6 +62,12 @@ const navigationSections: NavSection[] = [
       { name: 'Items', href: '/items', icon: Package },
       { name: 'Proveedores', href: '/proveedores', icon: Users },
       { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true },
+    ],
+  },
+  {
+    title: 'Ventas',
+    items: [
+      { name: 'Ventas', href: '/ventas', icon: ShoppingCart },
     ],
   },
   {

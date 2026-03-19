@@ -138,7 +138,7 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
       {/* Drop zone */}
       <div
         className={`
-          border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+          border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
           ${isDragging
             ? 'border-blue-500 bg-blue-50'
             : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'
@@ -204,7 +204,7 @@ export function UploadDropzone({ onUploadComplete, onClose }: UploadDropzoneProp
                 ) : (
                   <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
                 )}
-                <span className="truncate flex-1">{file.name}</span>
+                <span className="truncate flex-1 min-w-0">{file.name}</span>
                 <span className="text-xs text-slate-500 flex-shrink-0">
                   {formatSize(file.size)}
                 </span>

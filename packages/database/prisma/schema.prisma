@@ -23,6 +23,7 @@ model clientes {
   usuarios        usuarios[]
   processing_logs  processing_logs[]
   email_templates  email_templates[]
+  ventas           ventas[]
 }
 
 model documento_items {
@@ -300,6 +301,38 @@ enum TipoPagoMetodo {
   EFECTIVO
   TRANSFERENCIA
   CHEQUE
+}
+
+model ventas {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId     String        @db.Uuid
+  fecha         DateTime      @db.Date
+  nroDocumento  String?       @db.VarChar(100)
+  tipoDoc       String?       @db.VarChar(50)
+  clienteNombre String?       @db.VarChar(255)
+  formaPago     String?       @db.VarChar(100)
+  subtotal      Decimal?      @db.Decimal(14, 2)
+  total         Decimal?      @db.Decimal(14, 2)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  clientes      clientes      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  venta_items   venta_items[]
+
+  @@index([clienteId, fecha])
+  @@index([clienteId, nroDocumento])
+}
+
+model venta_items {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ventaId        String   @db.Uuid
+  linea          Int
+  descripcion    String   @db.Text
+  cantidad       Decimal? @db.Decimal(14, 3)
+  precioUnitario Decimal? @db.Decimal(14, 2)
+  subtotal       Decimal? @db.Decimal(14, 2)
+  ventas         ventas   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+
+  @@index([ventaId])
 }
 
 model email_templates {
