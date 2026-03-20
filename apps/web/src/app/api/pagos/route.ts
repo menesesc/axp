@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
   const pageSize = parseInt(searchParams.get('pageSize') || '25')
   const estado = searchParams.get('estado')
   const proveedorId = searchParams.get('proveedorId')
+  const q = searchParams.get('q')?.trim()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
@@ -50,6 +51,12 @@ export async function GET(request: NextRequest) {
 
   if (proveedorId) {
     where.proveedorId = proveedorId
+  }
+
+  if (q) {
+    where.proveedores = {
+      razonSocial: { contains: q, mode: 'insensitive' },
+    }
   }
 
   const [pagos, total] = await Promise.all([
@@ -69,7 +76,7 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { fecha: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),

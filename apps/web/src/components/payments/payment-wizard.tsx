@@ -47,6 +47,7 @@ import {
   AlertTriangle,
   MessageSquareWarning,
   Save,
+  Plus,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -422,7 +423,14 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
                 </Button>
               </div>
 
-              <div className="pt-4">
+              <div className="pt-4 flex flex-col items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push('/pagos/nueva')}
+                >
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Nueva orden de pago
+                </Button>
                 <Button
                   variant="ghost"
                   onClick={() => router.push('/pagos')}

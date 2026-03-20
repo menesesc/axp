@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -57,6 +57,8 @@ export default function DocumentosPage() {
   const queryClient = useQueryClient()
   const { clienteId, isAdmin } = useUser()
 
+  const initialFilterSet = useRef(false)
+
   // Filters state
   const [search, setSearch] = useState('')
   const [estado, setEstado] = useState('')
@@ -109,6 +111,27 @@ export default function DocumentosPage() {
     staleTime: 1000 * 30,
     enabled: !!clienteId,
   })
+
+  // Check if there are pending docs to set default filter
+  const { data: pendingCheck } = useQuery({
+    queryKey: ['documentos-pending-check', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/documentos?estado=PENDIENTE&pageSize=1')
+      if (!res.ok) return null
+      return res.json() as Promise<DocumentosResponse>
+    },
+    staleTime: 1000 * 60,
+    enabled: !!clienteId,
+  })
+
+  useEffect(() => {
+    if (!initialFilterSet.current && pendingCheck !== undefined) {
+      initialFilterSet.current = true
+      if (pendingCheck && pendingCheck.pagination.total > 0) {
+        setEstado('PENDIENTE')
+      }
+    }
+  }, [pendingCheck])
 
   const { data: proveedoresData } = useQuery({
     queryKey: ['proveedores', clienteId],

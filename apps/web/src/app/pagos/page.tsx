@@ -1,24 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { PaymentOrdersTable } from '@/components/payments/payment-orders-table'
 import { UpcomingPayments } from '@/components/payments/upcoming-payments'
+import { ReconciliationDialog } from '@/components/payments/reconciliation-dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Search, Sparkles } from 'lucide-react'
 
 interface PaymentOrder {
   id: string
@@ -53,19 +48,32 @@ export default function PagosPage() {
   const { clienteId, isAdmin } = useUser()
 
   const [estado, setEstado] = useState('')
-  const [proveedorId, setProveedorId] = useState('')
+  const [proveedorSearch, setProveedorSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [reconciliationOpen, setReconciliationOpen] = useState(false)
   const pageSize = 25
 
+  // Debounce proveedor search
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(proveedorSearch)
+      setPage(1)
+    }, 350)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [proveedorSearch])
+
   const { data, isLoading } = useQuery<PagosResponse>({
-    queryKey: ['pagos', clienteId, page, estado, proveedorId],
+    queryKey: ['pagos', clienteId, page, estado, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: page.toString(),
         pageSize: pageSize.toString(),
       })
       if (estado) params.append('estado', estado)
-      if (proveedorId) params.append('proveedorId', proveedorId)
+      if (debouncedSearch) params.append('q', debouncedSearch)
 
       const res = await fetch(`/api/pagos?${params}`)
       if (!res.ok) throw new Error('Failed to fetch')
@@ -73,20 +81,6 @@ export default function PagosPage() {
     },
     enabled: !!clienteId,
   })
-
-  const { data: proveedoresData } = useQuery({
-    queryKey: ['proveedores', clienteId],
-    queryFn: async () => {
-      const res = await fetch('/api/proveedores')
-      if (!res.ok) throw new Error('Failed to fetch')
-      return res.json()
-    },
-    enabled: !!clienteId,
-  })
-
-  const proveedores = proveedoresData?.proveedores?.filter(
-    (p: { activo: boolean }) => p.activo
-  ) || []
 
   const markPaidMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -149,18 +143,27 @@ export default function PagosPage() {
           description={pagination ? `${pagination.total} órdenes de pago` : undefined}
           actions={
             isAdmin && (
-              <Button variant="primary" asChild>
-                <Link href="/pagos/nueva">
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Nueva orden
-                </Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setReconciliationOpen(true)}
+                >
+                  <Sparkles className="h-4 w-4 mr-1.5" />
+                  Conciliación IA
+                </Button>
+                <Button variant="primary" asChild>
+                  <Link href="/pagos/nueva">
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Nueva orden
+                  </Link>
+                </Button>
+              </div>
             )
           }
         />
 
         {/* Filters */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Tabs
             value={estado || 'all'}
             onValueChange={(v) => {
@@ -176,25 +179,15 @@ export default function PagosPage() {
             </TabsList>
           </Tabs>
 
-          <Select
-            value={proveedorId || 'all'}
-            onValueChange={(v) => {
-              setProveedorId(v === 'all' ? '' : v)
-              setPage(1)
-            }}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Todos los proveedores" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los proveedores</SelectItem>
-              {proveedores.map((p: { id: string; razonSocial: string }) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.razonSocial}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Input
+              placeholder="Buscar proveedor..."
+              value={proveedorSearch}
+              onChange={(e) => setProveedorSearch(e.target.value)}
+              className="pl-8 w-52 h-9 text-sm"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -247,6 +240,11 @@ export default function PagosPage() {
           </div>
         </div>
       </div>
+
+      <ReconciliationDialog
+        open={reconciliationOpen}
+        onOpenChange={setReconciliationOpen}
+      />
     </DashboardLayout>
   )
 }
