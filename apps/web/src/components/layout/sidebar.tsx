@@ -159,7 +159,7 @@ function SidebarContent({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-3 overflow-y-auto">
+      <nav className="flex-1 px-2 py-3 overflow-y-auto scrollbar-hide min-h-0">
         {navigationSections.map((section, sectionIndex) => {
           // Filter items based on role access
           const visibleItems = section.items.filter(
