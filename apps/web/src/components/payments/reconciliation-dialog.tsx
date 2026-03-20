@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/hooks/use-user'
@@ -11,13 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -32,6 +26,7 @@ import {
   ArrowRight,
   Plus,
   X,
+  ImageIcon,
 } from 'lucide-react'
 
 interface Proveedor {
@@ -85,6 +80,8 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
 
   const [step, setStep] = useState<Step>('select')
   const [selectedProveedor, setSelectedProveedor] = useState('')
+  const [proveedorInput, setProveedorInput] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [result, setResult] = useState<ConciliacionResponse | null>(null)
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set())
@@ -158,6 +155,8 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
   const handleClose = () => {
     setStep('select')
     setSelectedProveedor('')
+    setProveedorInput('')
+    setShowDropdown(false)
     setSelectedFile(null)
     setResult(null)
     setSelectedDocs(new Set())
@@ -172,6 +171,13 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
       return next
     })
   }
+
+  const filteredProveedores = useMemo(() =>
+    proveedorInput
+      ? proveedores.filter((p) => p.razonSocial.toLowerCase().includes(proveedorInput.toLowerCase()))
+      : proveedores,
+    [proveedores, proveedorInput]
+  )
 
   const proveedorNombre = result?.proveedor.razonSocial ||
     proveedores.find((p) => p.id === selectedProveedor)?.razonSocial || ''
@@ -192,20 +198,38 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
             <p className="text-sm text-slate-500">
               Subí el resumen de cuenta del proveedor y la IA lo compara con los documentos pendientes en el sistema para preparar la orden de pago.
             </p>
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <label className="text-sm font-medium text-slate-700">Proveedor</label>
-              <Select value={selectedProveedor} onValueChange={setSelectedProveedor}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar proveedor..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {proveedores.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
+              <Input
+                placeholder="Buscar proveedor..."
+                value={proveedorInput}
+                onChange={(e) => {
+                  setProveedorInput(e.target.value)
+                  setSelectedProveedor('')
+                  setShowDropdown(true)
+                }}
+                onFocus={() => setShowDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              />
+              {showDropdown && filteredProveedores.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-md">
+                  {filteredProveedores.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 transition-colors"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSelectedProveedor(p.id)
+                        setProveedorInput(p.razonSocial)
+                        setShowDropdown(false)
+                      }}
+                    >
                       {p.razonSocial}
-                    </SelectItem>
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
             </div>
             <div className="flex justify-end">
               <Button
@@ -227,7 +251,8 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
               <Badge variant="outline" className="text-xs">{proveedorNombre}</Badge>
             </div>
             <div
-              className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center cursor-pointer hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
+              className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center cursor-pointer hover:border-violet-300 hover:bg-violet-50/30 transition-colors focus:outline-none"
+              tabIndex={0}
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -235,21 +260,35 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
                 const file = e.dataTransfer.files?.[0]
                 if (file) setSelectedFile(file)
               }}
+              onPaste={(e) => {
+                const items = e.clipboardData?.items
+                if (!items) return
+                for (const item of Array.from(items)) {
+                  if (item.kind === 'file') {
+                    const file = item.getAsFile()
+                    if (file) { setSelectedFile(file); break }
+                  }
+                }
+              }}
             >
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.txt,.csv"
+                accept=".pdf,.txt,.csv,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={handleFileChange}
               />
               {selectedFile ? (
                 <div className="flex items-center justify-center gap-3">
-                  <FileText className="h-8 w-8 text-violet-500" />
+                  {selectedFile.type.startsWith('image/') ? (
+                    <ImageIcon className="h-8 w-8 text-violet-500" />
+                  ) : (
+                    <FileText className="h-8 w-8 text-violet-500" />
+                  )}
                   <div className="text-left">
-                    <p className="text-sm font-medium text-slate-700">{selectedFile.name}</p>
+                    <p className="text-sm font-medium text-slate-700">{selectedFile.name || 'Imagen del portapapeles'}</p>
                     <p className="text-xs text-slate-400">
-                      {(selectedFile.size / 1024).toFixed(0)} KB
+                      {(selectedFile.size / 1024).toFixed(0)} KB · {selectedFile.type || 'imagen'}
                     </p>
                   </div>
                   <button
@@ -263,10 +302,10 @@ export function ReconciliationDialog({ open, onOpenChange }: ReconciliationDialo
                 <>
                   <Upload className="h-8 w-8 text-slate-300 mx-auto mb-3" />
                   <p className="text-sm font-medium text-slate-600">
-                    Arrastrá o hacé clic para subir
+                    Arrastrá, hacé clic o pegá con Ctrl+V
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    PDF, TXT o CSV del resumen de cuenta del proveedor
+                    PDF, imagen (JPG, PNG), TXT o CSV del resumen de cuenta
                   </p>
                 </>
               )}

@@ -12,9 +12,18 @@ import { PaymentsSummary } from '@/components/dashboard/payments-summary'
 import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { toast } from 'sonner'
+import { useState } from 'react'
+import { UploadDropzone } from '@/components/documents/upload-dropzone'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 export default function Home() {
   const { clienteId, user, clienteNombre } = useUser()
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats', clienteId],
@@ -77,7 +86,7 @@ export default function Home() {
   const documentosMesLimite = stats?.documentosMesLimite ?? null
 
   const handleUpload = () => {
-    toast.info('Función de subida próximamente')
+    setUploadOpen(true)
   }
 
   const handleEmail = () => {
@@ -149,6 +158,18 @@ export default function Home() {
           />
         </div>
       </div>
+
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Subir documentos</DialogTitle>
+          </DialogHeader>
+          <UploadDropzone
+            onUploadComplete={() => setUploadOpen(false)}
+            onClose={() => setUploadOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

@@ -1,17 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
@@ -103,6 +96,9 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
   const [createdPagoId, setCreatedPagoId] = useState<string | null>(null)
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [proveedorInput, setProveedorInput] = useState('')
+  const [showProveedorDropdown, setShowProveedorDropdown] = useState(false)
+  const proveedorInputRef = useRef<HTMLDivElement>(null)
 
   // Cargar documentos preseleccionados y proveedor desde sessionStorage
   useEffect(() => {
@@ -135,6 +131,20 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
   const proveedores: Proveedor[] = proveedoresData?.proveedores?.filter(
     (p: { activo: boolean }) => p.activo
   ) || []
+
+  // Sync proveedor input text when selection is set externally (editMode / sessionStorage)
+  useEffect(() => {
+    if (selectedProveedor && proveedores.length > 0 && !proveedorInput) {
+      const found = proveedores.find((p) => p.id === selectedProveedor)
+      if (found) setProveedorInput(found.razonSocial)
+    }
+  }, [selectedProveedor, proveedores]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredProveedores = proveedorInput
+    ? proveedores.filter((p) =>
+        p.razonSocial.toLowerCase().includes(proveedorInput.toLowerCase())
+      )
+    : proveedores
 
   // Fetch documentos pendientes del proveedor seleccionado
   const { data: docsData, isLoading: loadingDocs } = useQuery({
@@ -494,20 +504,38 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
           {step === 1 && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
+                <div ref={proveedorInputRef} className="relative">
                   <Label>Proveedor</Label>
-                  <Select value={selectedProveedor} onValueChange={setSelectedProveedor}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar proveedor..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {proveedores.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
+                  <Input
+                    placeholder="Buscar proveedor..."
+                    value={proveedorInput}
+                    onChange={(e) => {
+                      setProveedorInput(e.target.value)
+                      setSelectedProveedor('')
+                      setShowProveedorDropdown(true)
+                    }}
+                    onFocus={() => setShowProveedorDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowProveedorDropdown(false), 150)}
+                  />
+                  {showProveedorDropdown && filteredProveedores.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-md">
+                      {filteredProveedores.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 transition-colors"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setSelectedProveedor(p.id)
+                            setProveedorInput(p.razonSocial)
+                            setShowProveedorDropdown(false)
+                          }}
+                        >
                           {p.razonSocial}
-                        </SelectItem>
+                        </button>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label>Fecha de la orden</Label>

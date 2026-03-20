@@ -150,14 +150,18 @@ Si los importes difieren en más de $0.01, márcalo como coincide=false e indica
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const contentBlocks: any[] = []
 
+    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
     if (mimeType === 'application/pdf') {
       contentBlocks.push({
         type: 'document',
-        source: {
-          type: 'base64',
-          media_type: 'application/pdf',
-          data: base64,
-        },
+        source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+      })
+    } else if (imageTypes.includes(mimeType)) {
+      const imgMime = mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: imgMime, data: base64 },
       })
     } else {
       // For text/csv files, decode as text
