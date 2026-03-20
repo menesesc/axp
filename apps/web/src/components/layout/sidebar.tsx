@@ -41,6 +41,7 @@ interface NavItem {
   logsBadge?: boolean
   annotationsBadge?: boolean
   adminOnly?: boolean
+  viewerHidden?: boolean
 }
 
 interface NavSection {
@@ -73,8 +74,8 @@ const navigationSections: NavSection[] = [
   {
     title: 'Finanzas',
     items: [
-      { name: 'Pagos', href: '/pagos', icon: CreditCard },
-      { name: 'Calendario', href: '/finanzas', icon: CalendarDays },
+      { name: 'Pagos', href: '/pagos', icon: CreditCard, viewerHidden: true },
+      { name: 'Calendario', href: '/finanzas', icon: CalendarDays, viewerHidden: true },
       { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
     ],
   },
@@ -91,7 +92,7 @@ const navigationSections: NavSection[] = [
   {
     title: 'Sistema',
     items: [
-      { name: 'Procesamiento', href: '/procesamiento', icon: Activity, logsBadge: true },
+      { name: 'Procesamiento', href: '/procesamiento', icon: Activity, logsBadge: true, viewerHidden: true },
     ],
   },
   {
@@ -160,9 +161,9 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto">
         {navigationSections.map((section, sectionIndex) => {
-          // Filter items based on admin access
+          // Filter items based on role access
           const visibleItems = section.items.filter(
-            (item) => !item.adminOnly || isAdmin
+            (item) => (!item.adminOnly || isAdmin) && (!item.viewerHidden || isAdmin)
           )
 
           if (visibleItems.length === 0) return null

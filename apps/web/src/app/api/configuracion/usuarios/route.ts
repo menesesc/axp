@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,8 +68,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ya existe un usuario con ese email' }, { status: 400 })
     }
 
-    // For now, we'll just create the user record
-    // In production, you would send an invitation email via Supabase Auth
     // Check user limit according to plan
     const suscripcion = await prisma.$queryRaw<
       { usuarios_limite: number | null }[]
@@ -92,23 +91,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const newUser = await prisma.usuarios.create({
-      data: {
-        id: crypto.randomUUID(),
-        email,
-        nombre,
-        rol: tipo_acceso === 'ADMIN' ? 'ADMIN' : 'USER',
-        tipo_acceso: tipo_acceso || 'VIEWER',
-        clienteId,
-        activo: true,
-        updatedAt: new Date(),
-      },
+    // Invite user via Supabase Auth — creates auth.users record and sends invitation email
+    const adminClient = createAdminClient()
+    const { data: authData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+      data: { nombre, full_name: nombre },
     })
+
+    if (inviteError) {
+      console.error('Error inviting user:', inviteError)
+      return NextResponse.json({ error: inviteError.message }, { status: 400 })
+    }
+
+    const authUserId = authData.user.id
+    const rol = tipo_acceso === 'ADMIN' ? 'ADMIN' : 'USER'
+    const tipoAcceso = tipo_acceso || 'VIEWER'
+
+    // Upsert into public.usuarios using the Supabase Auth UUID
+    await prisma.$executeRaw`
+      INSERT INTO usuarios (id, email, nombre, rol, tipo_acceso, "clienteId", activo, "updatedAt")
+      VALUES (${authUserId}::uuid, ${email}, ${nombre}, ${rol}::"Rol", ${tipoAcceso}::"TipoAcceso", ${clienteId}::uuid, true, NOW())
+      ON CONFLICT (email) DO UPDATE
+        SET id = ${authUserId}::uuid,
+            nombre = ${nombre},
+            rol = ${rol}::"Rol",
+            tipo_acceso = ${tipoAcceso}::"TipoAcceso",
+            "clienteId" = ${clienteId}::uuid,
+            activo = true,
+            "updatedAt" = NOW()
+    `
 
     return NextResponse.json({
       usuario: {
-        ...newUser,
-        tipo_acceso,
+        id: authUserId,
+        email,
+        nombre,
+        rol,
+        tipo_acceso: tipoAcceso,
+        activo: true,
         telefono: null,
         canSendDocs: true,
       },
