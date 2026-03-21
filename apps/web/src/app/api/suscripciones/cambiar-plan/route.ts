@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     // Actualizar la suscripción del cliente
     await prisma.$executeRaw`
-      UPDATE suscripciones SET plan_id = ${planId}::uuid, "updatedAt" = NOW()
+      UPDATE suscripciones SET plan_id = ${planId}::uuid
       WHERE "clienteId" = ${clienteId}::uuid
     `
 
