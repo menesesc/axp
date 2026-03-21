@@ -84,6 +84,7 @@ const fieldNames: Record<string, string> = {
   numeroCompleto: 'Número',
   subtotal: 'Subtotal',
   iva: 'IVA',
+  receptorCUIT: 'CUIT receptor no coincide con la empresa',
 }
 
 export default function DocumentoPage() {
@@ -397,14 +398,28 @@ export default function DocumentoPage() {
 
             {/* Missing Fields Warning */}
             {documento.missingFields && documento.missingFields.length > 0 && !isEditing && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                   <p className="text-sm text-amber-900">
                     <span className="font-medium">Campos faltantes:</span>{' '}
-                    {documento.missingFields.map(f => fieldNames[f] || f).join(', ')}
+                    {documento.missingFields.map((f: string) => fieldNames[f] || f).join(', ')}
                   </p>
                 </div>
+                {isAdmin && documento.missingFields.includes('receptorCUIT') && (
+                  <div className="flex items-center justify-between pl-6">
+                    <p className="text-xs text-amber-700">
+                      El CUIT receptor de la factura no coincide con el de tu empresa. Si la factura es correcta, podés descartar esta alerta.
+                    </p>
+                    <button
+                      className="ml-3 shrink-0 text-xs font-medium text-amber-700 hover:text-amber-900 underline"
+                      onClick={() => updateMutation.mutate({ clearReceptorMismatch: true })}
+                      disabled={updateMutation.isPending}
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

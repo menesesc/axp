@@ -168,6 +168,7 @@ export async function PATCH(
       iva,
       proveedorId,
       tipo,
+      clearReceptorMismatch,
       // estadoRevision se calcula automáticamente, no se acepta del cliente
     } = body
 
@@ -258,6 +259,12 @@ export async function PATCH(
         },
       },
     })
+
+    // Si el usuario descartó el mismatch de receptor, limpiar el flag
+    if (clearReceptorMismatch) {
+      const currentMF = (documento.missingFields as string[]) || []
+      documento.missingFields = currentMF.filter((f: string) => f !== 'receptorCUIT')
+    }
 
     // Recalcular campos faltantes y estado usando lógica centralizada
     const missingFields = calculateMissingFields(documento)
