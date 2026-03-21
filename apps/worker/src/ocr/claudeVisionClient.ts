@@ -146,30 +146,48 @@ async function prepareForVision(fileBuffer: Buffer, filename: string): Promise<P
 }
 
 /**
- * Convierte la primera página de un PDF a imagen PNG usando pdf-lib + sharp.
- * pdf-lib no renderiza directamente, pero podemos extraer imágenes embebidas
- * o usar el PDF como input para sharp (que soporta PDF vía libvips).
+ * Convierte la primera página de un PDF a imagen PNG.
+ * Usa pdftoppm (poppler-utils) que es más confiable que sharp/libvips para PDFs.
  */
 async function pdfToImage(pdfBuffer: Buffer): Promise<Buffer> {
-  // Extraer solo la primera página para reducir tamaño
-  const srcDoc = await PDFDocument.load(pdfBuffer)
-  let firstPageBuffer: Buffer
+  const { writeFileSync, unlinkSync, readFileSync, existsSync } = await import('fs')
+  const tmpPdf = `/tmp/ocr_${Date.now()}.pdf`
+  const tmpOut = `/tmp/ocr_${Date.now()}`
 
-  if (srcDoc.getPageCount() > 1) {
-    const newDoc = await PDFDocument.create()
-    const [page] = await newDoc.copyPages(srcDoc, [0])
-    newDoc.addPage(page)
-    const bytes = await newDoc.save()
-    firstPageBuffer = Buffer.from(bytes)
-  } else {
-    firstPageBuffer = pdfBuffer
+  try {
+    // Extraer solo primera página con pdf-lib
+    const srcDoc = await PDFDocument.load(pdfBuffer)
+    if (srcDoc.getPageCount() > 1) {
+      const newDoc = await PDFDocument.create()
+      const [page] = await newDoc.copyPages(srcDoc, [0])
+      newDoc.addPage(page)
+      const bytes = await newDoc.save()
+      writeFileSync(tmpPdf, Buffer.from(bytes))
+    } else {
+      writeFileSync(tmpPdf, pdfBuffer)
+    }
+
+    // Convertir con pdftoppm (poppler-utils) a PNG, 200 DPI
+    const proc = Bun.spawnSync(['pdftoppm', '-png', '-r', '200', '-singlefile', tmpPdf, tmpOut])
+    const pngPath = `${tmpOut}.png`
+
+    if (proc.exitCode !== 0 || !existsSync(pngPath)) {
+      throw new Error(`pdftoppm failed: ${proc.stderr?.toString() || 'unknown error'}`)
+    }
+
+    const pngBuffer = readFileSync(pngPath)
+
+    // Limpiar archivos temporales
+    try { unlinkSync(tmpPdf) } catch {}
+    try { unlinkSync(pngPath) } catch {}
+
+    return pngBuffer
+  } catch (error) {
+    // Limpiar en caso de error
+    try { unlinkSync(tmpPdf) } catch {}
+    try { unlinkSync(`${tmpOut}.png`) } catch {}
+    throw error
   }
-
-  // sharp soporta PDF como input (requiere libvips con poppler)
-  // Si no puede, devuelve el buffer PDF para usar como fallback
-  return sharp(firstPageBuffer, { density: 200 }) // 200 DPI
-    .png()
-    .toBuffer()
 }
 
 // ---------- Validation ----------
