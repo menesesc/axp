@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 export function useRealtimeDocumentos(clienteId: string) {
@@ -37,10 +38,16 @@ export function useRealtimeDocumentos(clienteId: string) {
 
           if (payload.eventType === 'INSERT' && payload.new?.id) {
             setNewDocumentIds((prev) => new Set(prev).add(payload.new.id))
+            toast.info('Nuevo documento procesado', {
+              description: payload.new.numeroCompleto || 'Documento recibido',
+              duration: 5000,
+            })
           }
 
-          queryClient.invalidateQueries({ queryKey: ['documentos', clienteId] })
-          queryClient.invalidateQueries({ queryKey: ['stats', clienteId] })
+          // Invalidar todas las queries que empiecen con estos prefijos
+          queryClient.invalidateQueries({ queryKey: ['documentos'] })
+          queryClient.invalidateQueries({ queryKey: ['stats'] })
+          queryClient.invalidateQueries({ queryKey: ['recent-docs'] })
         }
       )
       .subscribe((status, err) => {
