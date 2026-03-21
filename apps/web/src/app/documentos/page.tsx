@@ -10,6 +10,7 @@ import { DocumentsTable } from '@/components/documents/documents-table'
 import { BulkActionsBar } from '@/components/documents/bulk-actions-bar'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/hooks/use-user'
+import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, Upload, Sparkles, RefreshCw } from 'lucide-react'
 import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
@@ -56,6 +57,9 @@ export default function DocumentosPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { clienteId, isAdmin } = useUser()
+
+  // Realtime: actualizar lista cuando el worker procesa documentos nuevos
+  useRealtimeDocumentos(clienteId || '')
 
   const initialFilterSet = useRef(false)
 

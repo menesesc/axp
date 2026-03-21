@@ -13,6 +13,7 @@ import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { toast } from 'sonner'
 import { useState } from 'react'
+import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
 import { UploadDropzone } from '@/components/documents/upload-dropzone'
 import {
   Dialog,
@@ -24,6 +25,9 @@ import {
 export default function Home() {
   const { clienteId, user, clienteNombre } = useUser()
   const [uploadOpen, setUploadOpen] = useState(false)
+
+  // Realtime: actualizar stats cuando el worker procesa documentos nuevos
+  useRealtimeDocumentos(clienteId || '')
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats', clienteId],
