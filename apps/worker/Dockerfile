@@ -3,6 +3,11 @@
 
 FROM oven/bun:latest
 
+# Dependencias del sistema para sharp (conversión PDF → imagen)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvips-dev poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copiar archivos de configuración del monorepo

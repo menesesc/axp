@@ -279,7 +279,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     let parsed: ClaudeVisionResult;
 
     try {
-      parsed = await processWithClaudeVision(pdfBuffer, allProveedores, corrections, file.clienteId);
+      parsed = await processWithClaudeVision(pdfBuffer, allProveedores, corrections, file.clienteId, file.filename);
     } catch (ocrError: any) {
       // Manejar errores de la API de Claude
       if (ocrError?.status === 400 && ocrError?.message?.includes('document')) {

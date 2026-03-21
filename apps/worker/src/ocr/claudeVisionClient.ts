@@ -4,13 +4,14 @@
  * Reemplaza textractClient.ts (~1400 líneas) con una integración
  * directa con Claude Vision que entiende nativamente documentos argentinos.
  *
- * Envía el PDF directamente como type:'document' (sin conversión a imagen).
+ * Convierte el PDF a imagen JPEG optimizada (max 1500px) para reducir tokens.
  */
 
 import { getAnthropicClient, OCR_MODEL, parseAIResponse, type TokenUsage } from './anthropicClient'
 import { buildOCRSystemPrompt, buildOCRUserMessage, type ProveedorForMatching } from './ocrPrompt'
 import type { CorrectionExample } from './correctionExamples'
 import { PDFDocument } from 'pdf-lib'
+import sharp from 'sharp'
 
 // ---------- Types ----------
 
@@ -81,25 +82,94 @@ interface RawAIResponse {
   notas: string
 }
 
-// ---------- PDF helpers ----------
+// ---------- PDF/Image helpers ----------
+
+const MAX_DIMENSION = 1500 // px — suficiente para facturas, ~1600 tokens
+const JPEG_QUALITY = 80
+
+interface PreparedImage {
+  base64: string
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf'
+  originalSizeKB: number
+  finalSizeKB: number
+}
 
 /**
- * Extrae solo la primera página del PDF para reducir tokens.
- * Si falla, devuelve el PDF original.
+ * Prepara un archivo (PDF o imagen) para enviar a Claude.
+ * - PDF: extrae primera página y convierte a JPEG optimizado
+ * - Imagen (JPG/PNG): redimensiona a max 1500px
+ * Esto reduce drásticamente los tokens de input (~70-80% menos).
  */
-async function extractFirstPage(pdfBuffer: Buffer): Promise<Buffer> {
-  try {
-    const srcDoc = await PDFDocument.load(pdfBuffer)
-    if (srcDoc.getPageCount() <= 1) return pdfBuffer
+async function prepareForVision(fileBuffer: Buffer, filename: string): Promise<PreparedImage> {
+  const originalSizeKB = Math.round(fileBuffer.length / 1024)
+  const ext = filename.toLowerCase().split('.').pop() || ''
 
+  try {
+    let imageBuffer: Buffer
+
+    if (ext === 'pdf') {
+      // PDF → extraer primera página → convertir a imagen
+      imageBuffer = await pdfToImage(fileBuffer)
+    } else {
+      // Ya es imagen (jpg, png, etc.)
+      imageBuffer = fileBuffer
+    }
+
+    // Redimensionar y comprimir con sharp
+    const resized = await sharp(imageBuffer)
+      .resize(MAX_DIMENSION, MAX_DIMENSION, {
+        fit: 'inside',       // Mantener aspect ratio
+        withoutEnlargement: true, // No agrandar si es más chico
+      })
+      .jpeg({ quality: JPEG_QUALITY })
+      .toBuffer()
+
+    const finalSizeKB = Math.round(resized.length / 1024)
+    console.log(`[Claude Vision] Image: ${originalSizeKB}KB → ${finalSizeKB}KB (${MAX_DIMENSION}px max, JPEG Q${JPEG_QUALITY})`)
+
+    return {
+      base64: resized.toString('base64'),
+      mediaType: 'image/jpeg',
+      originalSizeKB,
+      finalSizeKB,
+    }
+  } catch (error) {
+    // Fallback: enviar PDF original si la conversión falla
+    console.warn(`[Claude Vision] Image optimization failed, sending original PDF:`, error)
+    return {
+      base64: fileBuffer.toString('base64'),
+      mediaType: 'application/pdf',
+      originalSizeKB,
+      finalSizeKB: originalSizeKB,
+    }
+  }
+}
+
+/**
+ * Convierte la primera página de un PDF a imagen PNG usando pdf-lib + sharp.
+ * pdf-lib no renderiza directamente, pero podemos extraer imágenes embebidas
+ * o usar el PDF como input para sharp (que soporta PDF vía libvips).
+ */
+async function pdfToImage(pdfBuffer: Buffer): Promise<Buffer> {
+  // Extraer solo la primera página para reducir tamaño
+  const srcDoc = await PDFDocument.load(pdfBuffer)
+  let firstPageBuffer: Buffer
+
+  if (srcDoc.getPageCount() > 1) {
     const newDoc = await PDFDocument.create()
     const [page] = await newDoc.copyPages(srcDoc, [0])
     newDoc.addPage(page)
     const bytes = await newDoc.save()
-    return Buffer.from(bytes)
-  } catch {
-    return pdfBuffer
+    firstPageBuffer = Buffer.from(bytes)
+  } else {
+    firstPageBuffer = pdfBuffer
   }
+
+  // sharp soporta PDF como input (requiere libvips con poppler)
+  // Si no puede, devuelve el buffer PDF para usar como fallback
+  return sharp(firstPageBuffer, { density: 200 }) // 200 DPI
+    .png()
+    .toBuffer()
 }
 
 // ---------- Validation ----------
@@ -175,16 +245,27 @@ export async function processWithClaudeVision(
   proveedores: ProveedorForMatching[],
   corrections: CorrectionExample[],
   clienteId: string,
+  filename: string = 'document.pdf',
 ): Promise<ClaudeVisionResult> {
   const client = getAnthropicClient()
 
-  // Extraer solo primera página para reducir tokens
-  const firstPagePdf = await extractFirstPage(pdfBuffer)
-  const base64Pdf = firstPagePdf.toString('base64')
+  // Preparar imagen optimizada (PDF → JPEG 1500px, o imagen → resize)
+  const prepared = await prepareForVision(pdfBuffer, filename)
 
   // Construir mensajes
   const systemPrompt = buildOCRSystemPrompt(corrections)
   const userText = buildOCRUserMessage(proveedores)
+
+  // Construir content block según el tipo de resultado
+  const imageContent: any = prepared.mediaType === 'application/pdf'
+    ? {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: prepared.base64 },
+      }
+    : {
+        type: 'image',
+        source: { type: 'base64', media_type: prepared.mediaType, data: prepared.base64 },
+      }
 
   let lastError: Error | null = null
 
@@ -209,14 +290,7 @@ export async function processWithClaudeVision(
                 text: userText,
                 cache_control: { type: 'ephemeral' },
               } as any,
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: base64Pdf,
-                },
-              },
+              imageContent,
             ],
           },
         ],
