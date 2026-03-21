@@ -1,38 +1,54 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 export function useRealtimeDocumentos(clienteId: string) {
   const queryClient = useQueryClient()
+  const [newDocumentIds, setNewDocumentIds] = useState<Set<string>>(new Set())
+
+  const clearAll = useCallback(() => {
+    setNewDocumentIds(new Set())
+  }, [])
+
+  const isNew = useCallback(
+    (documentoId: string) => newDocumentIds.has(documentoId),
+    [newDocumentIds]
+  )
 
   useEffect(() => {
-    // Crear canal de Supabase Realtime
+    if (!clienteId) return
+
     const channel = supabase
       .channel('documentos-changes')
       .on(
         'postgres_changes',
         {
-          event: '*', // INSERT, UPDATE, DELETE
+          event: '*',
           schema: 'public',
           table: 'documentos',
           filter: `clienteId=eq.${clienteId}`,
         },
         (payload: RealtimePostgresChangesPayload<any>) => {
           console.log('📡 Realtime update:', payload)
-          
-          // Invalidar queries para refrescar datos
+
+          // Marcar INSERTs como nuevos para highlight visual
+          if (payload.eventType === 'INSERT' && payload.new?.id) {
+            setNewDocumentIds((prev) => new Set(prev).add(payload.new.id))
+          }
+
           queryClient.invalidateQueries({ queryKey: ['documentos', clienteId] })
           queryClient.invalidateQueries({ queryKey: ['stats', clienteId] })
         }
       )
       .subscribe()
 
-    // Cleanup al desmontar
     return () => {
       supabase.removeChannel(channel)
     }
   }, [clienteId, queryClient])
+
+  return { isNew, clearAll, newDocumentIds }
 }

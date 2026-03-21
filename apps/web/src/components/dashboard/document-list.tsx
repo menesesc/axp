@@ -26,7 +26,6 @@ import {
   Lock,
 } from 'lucide-react'
 import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
-import { useDocumentNotifications } from '@/hooks/use-document-notifications'
 import { useUser } from '@/hooks/use-user'
 
 interface Documento {
@@ -72,11 +71,8 @@ export function DocumentList({ clienteId }: { clienteId: string }) {
 
   const queryClient = useQueryClient()
 
-  // Activar actualizaciones en tiempo real
-  useRealtimeDocumentos(clienteId)
-
-  // Sistema de notificaciones para documentos nuevos
-  const { isNew, clearAll } = useDocumentNotifications(clienteId)
+  // Activar actualizaciones en tiempo real + tracking de nuevos docs
+  const { isNew, clearAll } = useRealtimeDocumentos(clienteId)
 
   // Limpiar notificaciones cuando se recarga la página
   useEffect(() => {

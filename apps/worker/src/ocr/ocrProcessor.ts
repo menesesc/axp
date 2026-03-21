@@ -645,24 +645,6 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       logger.warn(`⚠️  Failed to log AI usage:`, logError);
     }
 
-    // Enviar notificación al frontend
-    try {
-      const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
-      await fetch(`${webAppUrl}/api/notifications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clienteId: file.clienteId,
-          documentoId: documento.id,
-          tipo: 'new_document',
-        }),
-      });
-      logger.info(`📬 Notification sent for documento: ${documento.id}`);
-    } catch (notifError) {
-      logger.warn(`⚠️  Failed to send notification:`, notifError);
-      // No es crítico, continuar con el proceso
-    }
-    
     // 10. Crear items de productos si existen
     if (parsed.items && parsed.items.length > 0) {
       logger.info(`📦 Creating ${parsed.items.length} documento items...`);
