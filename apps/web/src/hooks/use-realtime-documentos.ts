@@ -38,9 +38,16 @@ export function useRealtimeDocumentos(clienteId: string) {
 
           if (payload.eventType === 'INSERT' && payload.new?.id) {
             setNewDocumentIds((prev) => new Set(prev).add(payload.new.id))
-            toast.info('Nuevo documento procesado', {
-              description: payload.new.numeroCompleto || 'Documento recibido',
-              duration: 5000,
+            const doc = payload.new
+            const tipo = doc.tipo ? `${doc.tipo}${doc.letra ? ` ${doc.letra}` : ''}` : 'Documento'
+            const numero = doc.numeroCompleto || ''
+            const total = doc.total
+              ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(doc.total)
+              : ''
+            const parts = [numero, total].filter(Boolean).join(' · ')
+            toast.info(`${tipo} recibida`, {
+              description: parts || 'Procesado correctamente',
+              duration: 6000,
             })
           }
 
