@@ -94,38 +94,53 @@ interface PreparedImage {
   finalSizeKB: number
 }
 
+const SIZE_THRESHOLD_KB = 200 // Solo optimizar archivos > 200KB (fotos celular, PDFs pesados)
+
 /**
  * Prepara un archivo (PDF o imagen) para enviar a Claude.
- * - PDF: extrae primera página y convierte a JPEG optimizado
- * - Imagen (JPG/PNG): redimensiona a max 1500px
- * Esto reduce drásticamente los tokens de input (~70-80% menos).
+ * - PDFs chicos del escáner (< 200KB): enviar como PDF directo (primera página)
+ * - PDFs grandes o imágenes pesadas (> 200KB): convertir a JPEG 1500px
+ * - Imágenes (JPG/PNG): siempre redimensionar si > 200KB
  */
 async function prepareForVision(fileBuffer: Buffer, filename: string): Promise<PreparedImage> {
   const originalSizeKB = Math.round(fileBuffer.length / 1024)
   const ext = filename.toLowerCase().split('.').pop() || ''
+  const isPdf = ext === 'pdf'
 
+  // PDFs chicos del escáner: enviar como PDF directo (extraer primera página)
+  if (isPdf && originalSizeKB <= SIZE_THRESHOLD_KB) {
+    const firstPage = await extractFirstPagePdf(fileBuffer)
+    const finalSizeKB = Math.round(firstPage.length / 1024)
+    console.log(`[Claude Vision] Small PDF: ${originalSizeKB}KB → ${finalSizeKB}KB (first page only, sent as PDF)`)
+    return {
+      base64: firstPage.toString('base64'),
+      mediaType: 'application/pdf',
+      originalSizeKB,
+      finalSizeKB,
+    }
+  }
+
+  // Archivos grandes: convertir a JPEG optimizado
   try {
     let imageBuffer: Buffer
 
-    if (ext === 'pdf') {
-      // PDF → extraer primera página → convertir a imagen
+    if (isPdf) {
       imageBuffer = await pdfToImage(fileBuffer)
     } else {
-      // Ya es imagen (jpg, png, etc.)
       imageBuffer = fileBuffer
     }
 
     // Redimensionar y comprimir con sharp
     const resized = await sharp(imageBuffer)
       .resize(MAX_DIMENSION, MAX_DIMENSION, {
-        fit: 'inside',       // Mantener aspect ratio
-        withoutEnlargement: true, // No agrandar si es más chico
+        fit: 'inside',
+        withoutEnlargement: true,
       })
       .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
 
     const finalSizeKB = Math.round(resized.length / 1024)
-    console.log(`[Claude Vision] Image: ${originalSizeKB}KB → ${finalSizeKB}KB (${MAX_DIMENSION}px max, JPEG Q${JPEG_QUALITY})`)
+    console.log(`[Claude Vision] Optimized: ${originalSizeKB}KB → ${finalSizeKB}KB (${MAX_DIMENSION}px max, JPEG Q${JPEG_QUALITY})`)
 
     return {
       base64: resized.toString('base64'),
@@ -134,14 +149,31 @@ async function prepareForVision(fileBuffer: Buffer, filename: string): Promise<P
       finalSizeKB,
     }
   } catch (error) {
-    // Fallback: enviar PDF original si la conversión falla
-    console.warn(`[Claude Vision] Image optimization failed, sending original PDF:`, error)
+    // Fallback: enviar original
+    console.warn(`[Claude Vision] Image optimization failed, sending original:`, error)
+    const fallback = isPdf ? await extractFirstPagePdf(fileBuffer) : fileBuffer
     return {
-      base64: fileBuffer.toString('base64'),
-      mediaType: 'application/pdf',
+      base64: fallback.toString('base64'),
+      mediaType: isPdf ? 'application/pdf' : 'image/jpeg',
       originalSizeKB,
-      finalSizeKB: originalSizeKB,
+      finalSizeKB: Math.round(fallback.length / 1024),
     }
+  }
+}
+
+/**
+ * Extrae solo la primera página del PDF (sin convertir a imagen).
+ */
+async function extractFirstPagePdf(pdfBuffer: Buffer): Promise<Buffer> {
+  try {
+    const srcDoc = await PDFDocument.load(pdfBuffer)
+    if (srcDoc.getPageCount() <= 1) return pdfBuffer
+    const newDoc = await PDFDocument.create()
+    const [page] = await newDoc.copyPages(srcDoc, [0])
+    newDoc.addPage(page)
+    return Buffer.from(await newDoc.save())
+  } catch {
+    return pdfBuffer
   }
 }
 
