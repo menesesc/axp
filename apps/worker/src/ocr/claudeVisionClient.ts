@@ -203,6 +203,11 @@ export async function processWithClaudeVision(
             role: 'user',
             content: [
               {
+                type: 'text',
+                text: userText,
+                cache_control: { type: 'ephemeral' },
+              } as any,
+              {
                 type: 'document',
                 source: {
                   type: 'base64',
@@ -210,7 +215,6 @@ export async function processWithClaudeVision(
                   data: base64Pdf,
                 },
               },
-              { type: 'text', text: userText },
             ],
           },
         ],
@@ -220,13 +224,17 @@ export async function processWithClaudeVision(
       const firstBlock = response.content[0]
       const responseText = firstBlock?.type === 'text' ? firstBlock.text : ''
 
-      // Extraer usage
+      // Extraer usage (incluyendo cache tokens)
+      const rawUsage = response.usage as any
       const usage: TokenUsage = {
-        inputTokens: response.usage?.input_tokens || 0,
-        outputTokens: response.usage?.output_tokens || 0,
-        cacheReadTokens: (response.usage as any)?.cache_read_input_tokens || 0,
-        cacheWriteTokens: (response.usage as any)?.cache_creation_input_tokens || 0,
+        inputTokens: rawUsage?.input_tokens || 0,
+        outputTokens: rawUsage?.output_tokens || 0,
+        cacheReadTokens: rawUsage?.cache_read_input_tokens || 0,
+        cacheWriteTokens: rawUsage?.cache_creation_input_tokens || 0,
       }
+
+      // Log detallado de cache para diagnóstico
+      console.log(`[Claude Vision] Usage: input=${usage.inputTokens} output=${usage.outputTokens} cache_read=${usage.cacheReadTokens} cache_write=${usage.cacheWriteTokens}`)
 
       // Parsear JSON
       const raw = parseAIResponse<RawAIResponse>(responseText)

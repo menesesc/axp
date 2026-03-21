@@ -42,9 +42,14 @@ function hasNumericValue(val: number | string | { toNumber(): number } | null | 
  * Si falta CUALQUIERA de estos campos → PENDIENTE
  * Si no tiene PDF (pdfRawKey vacío) → PENDIENTE
  */
-export function determineEstadoRevision(doc: DocumentoParaEvaluar): EstadoRevision {
+export function determineEstadoRevision(doc: DocumentoParaEvaluar & { missingFields?: unknown }): EstadoRevision {
   // Un documento sin PDF no puede estar confirmado
   if ('pdfRawKey' in doc && !doc.pdfRawKey) {
+    return 'PENDIENTE';
+  }
+
+  // Si tiene receptorCUIT en missingFields, mantener PENDIENTE (CUIT receptor no coincide con cliente)
+  if (Array.isArray(doc.missingFields) && doc.missingFields.includes('receptorCUIT')) {
     return 'PENDIENTE';
   }
 
@@ -78,8 +83,13 @@ export function determineEstadoRevision(doc: DocumentoParaEvaluar): EstadoRevisi
 /**
  * Calcula qué campos faltan en un documento
  */
-export function calculateMissingFields(doc: DocumentoParaEvaluar): string[] {
+export function calculateMissingFields(doc: DocumentoParaEvaluar & { missingFields?: unknown }): string[] {
   const missing: string[] = [];
+
+  // Preservar flags especiales del OCR que no se pueden recalcular
+  if (Array.isArray(doc.missingFields) && doc.missingFields.includes('receptorCUIT')) {
+    missing.push('receptorCUIT');
+  }
 
   // Campos críticos
   if (!doc.clienteId) missing.push('clienteId');

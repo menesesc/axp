@@ -302,7 +302,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       confidence: parsed.confidenceScore,
       proveedorIdSugerido: parsed.proveedorIdSugerido,
       proveedorNuevoSugerido: parsed.proveedorNuevoSugerido,
-      tokens: `${parsed.usage.inputTokens}in/${parsed.usage.outputTokens}out`,
+      tokens: `${parsed.usage.inputTokens}in/${parsed.usage.outputTokens}out (cache: ${parsed.usage.cacheReadTokens}r/${parsed.usage.cacheWriteTokens}w)`,
     });
 
     // VALIDACIÓN ADICIONAL: Verificar que el número de factura no sea el CUIT del cliente
