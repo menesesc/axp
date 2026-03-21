@@ -258,7 +258,7 @@ export default function PlanPage() {
                         {plan.ocr_incluido && (
                           <li className="flex items-center gap-2 text-sm">
                             <Zap className="h-4 w-4 text-amber-500" />
-                            OCR automático
+                            {plan.orden > 1 ? 'OCR de alta precisión' : 'OCR automático'}
                           </li>
                         )}
                         {plan.soporte_prioritario && (
