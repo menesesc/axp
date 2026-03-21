@@ -24,6 +24,7 @@ model clientes {
   processing_logs  processing_logs[]
   email_templates  email_templates[]
   ventas           ventas[]
+  ai_usage_logs    ai_usage_logs[]
 }
 
 model documento_items {
@@ -104,6 +105,7 @@ model documentos {
   proveedores           proveedores?           @relation(fields: [proveedorId], references: [id])
   pago_documentos       pago_documentos[]
   processing_logs       processing_logs[]
+  ai_usage_logs         ai_usage_logs[]
 
   @@unique([clienteId, hashSha256])
   @@index([clienteId, estadoRevision])
@@ -211,6 +213,7 @@ model usuarios {
   updatedAt             DateTime                @db.Timestamptz(3)
   documento_anotaciones documento_anotaciones[]
   documento_revisiones  documento_revisiones[]
+  ai_usage_logs         ai_usage_logs[]
   clientes              clientes?               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@index([clienteId])
@@ -236,6 +239,31 @@ model processing_logs {
   @@index([level])
   @@index([created_at(sort: Desc)])
   @@index([cliente_id, read])
+}
+
+model ai_usage_logs {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentoId      String      @db.Uuid
+  clienteId        String      @db.Uuid
+  usuarioId        String?     @db.Uuid
+  modelo           String      @db.VarChar(100)
+  inputTokens      Int
+  outputTokens     Int
+  costoEstimado    Decimal     @db.Decimal(10, 6)
+  camposCorregidos Json        @default("[]")
+  camposSugeridos  Json        @default("{}")
+  aceptado         Boolean     @default(false)
+  durationMs       Int?
+  errorMessage     String?     @db.Text
+  source           String      @default("MANUAL") @db.VarChar(20)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+
+  documentos documentos  @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  clientes   clientes    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuarios   usuarios?   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, createdAt(sort: Desc)])
+  @@index([documentoId])
 }
 
 enum AccionRevision {

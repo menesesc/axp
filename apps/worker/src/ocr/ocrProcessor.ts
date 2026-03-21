@@ -1,12 +1,12 @@
 /**
  * OCR Processor
- * 
- * Procesa archivos de inbox/ con AWS Textract y los organiza por fecha real.
- * 
+ *
+ * Procesa archivos de inbox/ con Claude Vision y los organiza por fecha real.
+ *
  * Flujo:
  * 1. Lista archivos en inbox/
  * 2. Descarga PDF de R2
- * 3. Envía a AWS Textract
+ * 3. Envía a Claude Vision (Anthropic API)
  * 4. Parsea resultados (fecha, proveedor, total, etc)
  * 5. Crea registro en tabla Documento
  * 6. Mueve archivo a carpeta por fecha real
@@ -67,7 +67,9 @@ const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
 import { createLogger, generateR2Key, sleep, extractDateFromFilename } from '../utils/fileUtils';
 import { createDbLogger, flushAllLogs } from '../utils/dbLogger';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object, getObjectMetadata } from '../processor/r2Client';
-import { processWithTextract, parseTextractResult } from './textractClient';
+import { processWithClaudeVision, type ClaudeVisionResult } from './claudeVisionClient';
+import { fetchCorrectionExamples } from './correctionExamples';
+import { OCR_MODEL, calculateCost } from './anthropicClient';
 import { isShuttingDown } from '../index';
 
 const logger = createLogger('OCR');
@@ -86,7 +88,6 @@ const POLLING_INTERVAL_MS = parseInt(process.env.OCR_POLL_INTERVAL || '30000'); 
 // IMPORTANTE: Usar MAX_CONCURRENT_JOBS=1 con Session Pooler de Supabase
 // Para mayor concurrencia, usar Transaction Pooler (puerto 6543)
 const MAX_CONCURRENT_JOBS = parseInt(process.env.OCR_MAX_CONCURRENT_JOBS || '1');
-const TEXTRACT_REGION = process.env.TEXTRACT_REGION || 'us-east-1';
 
 // Tracking de archivos en proceso para evitar re-escaneo en caso de error de BD
 // Esto previene facturación excesiva de Textract cuando falla el guardado en DB
@@ -245,53 +246,51 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       return;
     }
     
-    // 4. Procesar con AWS Textract
-    logger.info(`🤖 Processing with AWS Textract...`);
-    let textractResult;
-    
-    try {
-      textractResult = await processWithTextract(pdfBuffer, TEXTRACT_REGION);
-    } catch (textractError: any) {
-      // Manejar errores específicos de Textract
-      if (textractError.name === 'UnsupportedDocumentException') {
-        logger.error(`❌ Unsupported document format: ${file.filename}`);
-        logger.error(`   Possible causes:`);
-        logger.error(`   - Multiple invoices in one PDF (not supported by AnalyzeExpense)`);
-        logger.error(`   - Corrupted or protected PDF`);
-        logger.error(`   - Scanned document with poor quality`);
+    // 4. Obtener proveedores y correcciones para Claude Vision
+    logger.info(`🤖 Processing with Claude Vision...`);
+    const ocrStartTime = Date.now();
 
-        // Log error a la base de datos
+    const allProveedores = await prisma.proveedores.findMany({
+      where: { clienteId: file.clienteId, activo: true },
+      select: { id: true, razonSocial: true, cuit: true, letra: true, alias: true },
+    });
+
+    const corrections = await fetchCorrectionExamples(file.clienteId);
+    if (corrections.length > 0) {
+      logger.info(`📚 Loaded ${corrections.length} correction examples for learning`);
+    }
+
+    let parsed: ClaudeVisionResult;
+
+    try {
+      parsed = await processWithClaudeVision(pdfBuffer, allProveedores, corrections, file.clienteId);
+    } catch (ocrError: any) {
+      // Manejar errores de la API de Claude
+      if (ocrError?.status === 400 && ocrError?.message?.includes('document')) {
+        logger.error(`❌ Document format not supported: ${file.filename}`);
+
         const dbLogger = getDbLogger(file.clienteId);
         dbLogger.error(`Formato de documento no soportado - requiere revisión manual`, {
           filename: file.filename,
           details: {
-            reason: 'UnsupportedDocumentException',
-            possibleCauses: [
-              'Múltiples facturas en un PDF',
-              'PDF corrupto o protegido',
-              'Documento escaneado con mala calidad',
-            ],
+            reason: 'UnsupportedDocument',
+            error: ocrError.message?.substring(0, 200),
           },
         });
 
-        // Mover a carpeta error/ para revisión manual
         const errorKey = file.key.replace('inbox/', 'error/unsupported_');
         logger.info(`📦 Moving to error folder: ${errorKey}`);
         await moveR2Object(file.bucket, file.key, errorKey);
-
-        logger.warn(`⚠️  File moved to error/ for manual review`);
         return;
       }
-      
-      // Re-throw otros errores para que se manejen abajo
-      throw textractError;
+
+      throw ocrError;
     }
-    
-    // 5. Parsear resultados
-    logger.info(`📊 Parsing OCR results...`);
-    const parsed = parseTextractResult(textractResult);
-    
-    logger.info(`✅ Parsed data:`, {
+
+    const ocrDurationMs = Date.now() - ocrStartTime;
+
+    // 5. Log resultados
+    logger.info(`✅ Parsed data (${ocrDurationMs}ms):`, {
       fechaEmision: parsed.fechaEmision,
       fechaVencimiento: parsed.fechaVencimiento,
       proveedor: parsed.proveedor,
@@ -301,6 +300,9 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       iva: parsed.iva,
       items: parsed.items?.length || 0,
       confidence: parsed.confidenceScore,
+      proveedorIdSugerido: parsed.proveedorIdSugerido,
+      proveedorNuevoSugerido: parsed.proveedorNuevoSugerido,
+      tokens: `${parsed.usage.inputTokens}in/${parsed.usage.outputTokens}out`,
     });
 
     // VALIDACIÓN ADICIONAL: Verificar que el número de factura no sea el CUIT del cliente
@@ -382,83 +384,67 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     logger.info(`🔑 Final key: ${finalKey}`);
     
-    // 8. Buscar o crear proveedor con matching inteligente
+    // 8. Matching de proveedor: Claude sugiere + validación con BD
     let proveedorId: string | null = null;
-    let proveedorLetra: string | null = null; // Letra por defecto del proveedor
-    
+    let proveedorLetra: string | null = null;
+
     if (parsed.proveedorCUIT || parsed.proveedor) {
       const cuit = parsed.proveedorCUIT;
       const razonSocial = parsed.proveedor || 'Proveedor sin nombre';
-      
-      logger.info(`🏢 Looking up/creating proveedor...`);
+
+      logger.info(`🏢 Matching proveedor...`);
       logger.info(`   CUIT: ${cuit || 'No detectado'}`);
       logger.info(`   Razón Social: ${razonSocial}`);
-      
-      // VALIDACIÓN CRÍTICA: El CUIT del proveedor NO puede ser igual al del cliente
-      // (reutilizando el cliente que ya obtuvimos antes)
+
+      // VALIDACIÓN: El CUIT del proveedor NO puede ser igual al del cliente
       if (cuit && cliente?.cuit) {
         const cuitNormalized = cuit.replace(/\D/g, '');
         const clienteCuitNormalized = cliente.cuit.replace(/\D/g, '');
-
         if (cuitNormalized === clienteCuitNormalized) {
-          logger.warn(`⚠️  WARNING: CUIT ${cuit} matches cliente CUIT!`);
-          logger.warn(`   This is likely the client's CUIT, not the supplier's.`);
-          logger.warn(`   Ignoring this CUIT and searching only by razón social.`);
-
-          // Limpiar el CUIT para no usarlo (es del cliente, no del proveedor)
+          logger.warn(`⚠️  CUIT ${cuit} matches cliente CUIT - ignoring`);
           parsed.proveedorCUIT = null;
         }
       }
-      
+
       let proveedor = null;
 
-      // ESTRATEGIA 1: Buscar por CUIT (identificador único legal)
-      if (parsed.proveedorCUIT) {
-        proveedor = await prisma.proveedores.findFirst({
-          where: {
-            clienteId: file.clienteId,
-            cuit: parsed.proveedorCUIT,
-          },
-          select: {
-            id: true,
-            razonSocial: true,
-            letra: true,
-            alias: true,
-            cuit: true,
-          },
-        });
-
-        if (proveedor) {
-          logger.info(`✅ Proveedor found by CUIT: ${proveedor.id} (${proveedor.razonSocial})`);
-          proveedorLetra = proveedor.letra; // Guardar letra por defecto
-          // NOTA: No actualizamos alias automáticamente - OCR puede detectar mal el nombre
+      // PRIMERO: Usar la sugerencia de Claude (matching semántico)
+      if (parsed.proveedorIdSugerido) {
+        const suggested = allProveedores.find(p => p.id === parsed.proveedorIdSugerido);
+        if (suggested) {
+          proveedor = suggested;
+          logger.info(`✅ Proveedor matched by Claude AI: ${proveedor.id} (${proveedor.razonSocial})`);
+          proveedorLetra = proveedor.letra;
+        } else {
+          logger.warn(`⚠️  Claude suggested proveedorId not found in BD, falling back`);
         }
       }
 
-      // ESTRATEGIA 2: Buscar por razón social exacta (case-insensitive)
+      // FALLBACK 1: Buscar por CUIT (identificador único legal)
+      if (!proveedor && parsed.proveedorCUIT) {
+        proveedor = await prisma.proveedores.findFirst({
+          where: { clienteId: file.clienteId, cuit: parsed.proveedorCUIT },
+          select: { id: true, razonSocial: true, letra: true, alias: true, cuit: true },
+        });
+        if (proveedor) {
+          logger.info(`✅ Proveedor found by CUIT: ${proveedor.id} (${proveedor.razonSocial})`);
+          proveedorLetra = proveedor.letra;
+        }
+      }
+
+      // FALLBACK 2: Buscar por razón social exacta (case-insensitive)
       if (!proveedor && parsed.proveedor) {
         proveedor = await prisma.proveedores.findFirst({
           where: {
             clienteId: file.clienteId,
-            razonSocial: {
-              equals: parsed.proveedor,
-              mode: 'insensitive',
-            },
+            razonSocial: { equals: parsed.proveedor, mode: 'insensitive' },
           },
-          select: {
-            id: true,
-            razonSocial: true,
-            letra: true,
-            alias: true,
-            cuit: true,
-          },
+          select: { id: true, razonSocial: true, letra: true, alias: true, cuit: true },
         });
-
         if (proveedor) {
-          logger.info(`✅ Proveedor found by razón social (exact): ${proveedor.id}`);
-          proveedorLetra = proveedor.letra; // Guardar letra por defecto
-          
-          // Si ahora tenemos CUIT y el proveedor no lo tenía, actualizarlo
+          logger.info(`✅ Proveedor found by razón social: ${proveedor.id}`);
+          proveedorLetra = proveedor.letra;
+          // Actualizar CUIT si el proveedor no lo tenía
           if (parsed.proveedorCUIT && !proveedor.cuit) {
             await prisma.proveedores.update({
               where: { id: proveedor.id },
@@ -469,221 +455,30 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         }
       }
 
-      // ESTRATEGIA 3: Buscar en alias
+      // FALLBACK 3: Buscar en alias
       if (!proveedor && parsed.proveedor) {
-        const allProveedores = await prisma.proveedores.findMany({
-          where: {
-            clienteId: file.clienteId,
-            activo: true,
-          },
-          select: {
-            id: true,
-            razonSocial: true,
-            letra: true,
-            alias: true,
-            cuit: true,
-          },
-        });
-
         for (const p of allProveedores) {
           const aliasArray = Array.isArray(p.alias) ? p.alias : [];
-          const foundInAlias = aliasArray.some((alias: string) => 
-            alias.toLowerCase() === parsed.proveedor.toLowerCase()
+          const foundInAlias = (aliasArray as string[]).some((alias: string) =>
+            alias.toLowerCase() === parsed.proveedor!.toLowerCase()
           );
-
           if (foundInAlias) {
             proveedor = p;
             logger.info(`✅ Proveedor found by alias: ${p.id} (${p.razonSocial})`);
-            proveedorLetra = p.letra; // Guardar letra por defecto
+            proveedorLetra = p.letra;
             break;
           }
         }
       }
 
-      // ESTRATEGIA 4: Similitud de texto (fuzzy matching)
-      // Evita crear duplicados cuando OCR detecta mal el nombre
-      // IMPORTANTE: Umbral alto (80%) para evitar falsos positivos
-      if (!proveedor && parsed.proveedor) {
-        logger.info(`🔍 Attempting fuzzy match for: "${parsed.proveedor}"`);
-
-        const allProveedores = await prisma.proveedores.findMany({
-          where: {
-            clienteId: file.clienteId,
-            activo: true,
-          },
-          select: {
-            id: true,
-            razonSocial: true,
-            letra: true,
-            alias: true,
-            cuit: true,
-          },
-        });
-
-        const normalizedSearch = parsed.proveedor.toLowerCase()
-          .replace(/\s+/g, ' ')
-          .replace(/[^a-z0-9\s]/gi, '')
-          .trim();
-
-        // Filtrar palabras muy cortas (< 3 caracteres) que causan falsos positivos
-        const searchWords = normalizedSearch.split(' ').filter((w: string) => w.length >= 3);
-
-        // Si no hay palabras significativas, no hacer fuzzy match
-        if (searchWords.length === 0) {
-          logger.warn(`⚠️  No significant words in OCR name, skipping fuzzy match`);
-        } else {
-          let bestMatch = null;
-          let bestScore = 0;
-          let bestMatchWords = 0;
-
-          for (const p of allProveedores) {
-            const normalizedName = p.razonSocial.toLowerCase()
-              .replace(/\s+/g, ' ')
-              .replace(/[^a-z0-9\s]/gi, '')
-              .trim();
-
-            const nameWords = normalizedName.split(' ').filter((w: string) => w.length >= 3);
-
-            // Contar palabras exactas en común (más estricto)
-            const exactCommon = searchWords.filter((word: string) =>
-              nameWords.includes(word)
-            );
-
-            // Contar palabras parciales (al menos 4 caracteres coinciden)
-            const partialCommon = searchWords.filter((word: string) =>
-              nameWords.some((nameWord: string) => {
-                if (word.length < 4 || nameWord.length < 4) return false;
-                return nameWord.includes(word) || word.includes(nameWord);
-              })
-            );
-
-            // Score basado en palabras exactas (peso 1.0) + parciales (peso 0.5)
-            const totalWords = Math.max(searchWords.length, nameWords.length);
-            const score = totalWords > 0
-              ? (exactCommon.length + partialCommon.length * 0.5) / totalWords
-              : 0;
-
-            // También verificar alias con el mismo criterio estricto
-            const aliasArray = Array.isArray(p.alias) ? p.alias : [];
-            for (const alias of aliasArray) {
-              const normalizedAlias = (alias as string).toLowerCase()
-                .replace(/\s+/g, ' ')
-                .replace(/[^a-z0-9\s]/gi, '')
-                .trim();
-
-              const aliasWords = normalizedAlias.split(' ').filter((w: string) => w.length >= 3);
-              const aliasExact = searchWords.filter((word: string) => aliasWords.includes(word));
-              const aliasPartial = searchWords.filter((word: string) =>
-                aliasWords.some((aliasWord: string) => {
-                  if (word.length < 4 || aliasWord.length < 4) return false;
-                  return aliasWord.includes(word) || word.includes(aliasWord);
-                })
-              );
-
-              const aliasTotalWords = Math.max(searchWords.length, aliasWords.length);
-              const aliasScore = aliasTotalWords > 0
-                ? (aliasExact.length + aliasPartial.length * 0.5) / aliasTotalWords
-                : 0;
-
-              if (aliasScore > bestScore) {
-                bestScore = aliasScore;
-                bestMatch = p;
-                bestMatchWords = aliasExact.length;
-              }
-            }
-
-            if (score > bestScore) {
-              bestScore = score;
-              bestMatch = p;
-              bestMatchWords = exactCommon.length;
-            }
-          }
-
-          // UMBRAL MÁS ESTRICTO: 80% de similitud Y al menos 1 palabra exacta
-          // Esto evita matches como "LANTE INDA" -> "GONZALEZ JORGE A."
-          if (bestMatch && bestScore >= 0.8 && bestMatchWords >= 1) {
-            proveedor = bestMatch;
-            logger.info(`✅ Proveedor found by fuzzy match: ${proveedor.id} (${proveedor.razonSocial})`);
-            logger.info(`   Match score: ${(bestScore * 100).toFixed(1)}%, exact words: ${bestMatchWords}`);
-            logger.info(`   OCR detected: "${parsed.proveedor}"`);
-            proveedorLetra = proveedor.letra;
-          } else if (bestMatch) {
-            logger.warn(`⚠️  Best fuzzy match below threshold:`);
-            logger.warn(`   "${bestMatch.razonSocial}" score=${(bestScore * 100).toFixed(1)}%, exactWords=${bestMatchWords}`);
-            logger.warn(`   OCR detected: "${parsed.proveedor}"`);
-            logger.warn(`   Requires manual assignment (threshold: 80% + 1 exact word)`);
-          }
-        }
-      }
-
-      // ESTRATEGIA 5: Buscar por similitud de items/productos
-      // Si los items del documento coinciden con items de documentos anteriores de un proveedor
-      if (!proveedor && parsed.items && parsed.items.length > 0) {
-        logger.info(`🔍 Attempting item-based provider matching...`);
-
-        // Extraer palabras significativas de los items (>= 4 caracteres)
-        const significantWords = new Set<string>();
-        for (const item of parsed.items) {
-          const desc = (item.descripcion || '').toLowerCase().replace(/[^a-z0-9\s]/g, '');
-          const words = desc.split(/\s+/).filter((w: string) => w.length >= 4);
-          words.forEach((w: string) => significantWords.add(w));
-        }
-
-        const wordList = Array.from(significantWords).slice(0, 10); // Limitar a 10 palabras
-        logger.info(`   Significant words: ${wordList.join(', ')}`);
-
-        if (wordList.length >= 2) {
-          // Construir condiciones OR para cada palabra
-          const likeConditions = wordList
-            .map((word) => `LOWER(di.descripcion) LIKE '%${word.replace(/'/g, "''")}%'`)
-            .join(' OR ');
-
-          const sql = `
-            SELECT d."proveedorId", COUNT(DISTINCT di.descripcion) as "matchCount"
-            FROM documento_items di
-            JOIN documentos d ON di."documentoId" = d.id
-            WHERE d."clienteId" = '${file.clienteId}'::uuid
-              AND d."proveedorId" IS NOT NULL
-              AND (${likeConditions})
-            GROUP BY d."proveedorId"
-            HAVING COUNT(DISTINCT di.descripcion) >= 1
-            ORDER BY "matchCount" DESC
-            LIMIT 1
-          `;
-
-          try {
-            const matchingItems = await prisma.$queryRawUnsafe<Array<{ proveedorId: string; matchCount: bigint }>>(sql);
-
-            if (matchingItems.length > 0 && matchingItems[0]) {
-              const matchedProveedorId = matchingItems[0].proveedorId;
-              const matchedProveedor = await prisma.proveedores.findUnique({
-                where: { id: matchedProveedorId },
-                select: { id: true, razonSocial: true, letra: true, alias: true, cuit: true },
-              });
-
-              if (matchedProveedor) {
-                proveedor = matchedProveedor;
-                logger.info(`✅ Proveedor found by item matching: ${proveedor.id} (${proveedor.razonSocial})`);
-                logger.info(`   Matched ${matchingItems[0].matchCount} items with words: ${wordList.join(', ')}`);
-                proveedorLetra = proveedor.letra;
-              }
-            }
-          } catch (itemMatchError) {
-            logger.warn(`⚠️  Item matching query failed: ${itemMatchError}`);
-          }
-        }
-      }
-
-      // ESTRATEGIA 6: Marcar para revisión manual si no encontró match
-      // NO crear automáticamente, requiere intervención humana
+      // SIN MATCH: Claude puede sugerir la creación de un nuevo proveedor
       if (!proveedor) {
-        logger.warn(`⚠️  NO MATCH FOUND - Proveedor requires manual assignment`);
-        logger.warn(`   OCR detected: "${razonSocial}"`);
-        logger.warn(`   CUIT: ${cuit || 'not detected'}`);
-        logger.warn(`   Document will be marked as PENDIENTE for manual review`);
-
-        // Dejar proveedorId en null - el documento se marcará como PENDIENTE
-        // El usuario deberá asignar manualmente el proveedor correcto desde el dashboard
+        if (parsed.proveedorNuevoSugerido) {
+          logger.info(`💡 Claude suggests new provider: ${parsed.proveedorNuevoSugerido.razonSocial} (CUIT: ${parsed.proveedorNuevoSugerido.cuit || 'N/A'})`);
+        } else {
+          logger.warn(`⚠️  NO MATCH FOUND - Proveedor requires manual assignment`);
+          logger.warn(`   OCR detected: "${razonSocial}" CUIT: ${cuit || 'N/A'}`);
+        }
         proveedorId = null;
       } else {
         proveedorId = proveedor.id;
@@ -779,22 +574,44 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           proveedor: parsed.proveedor,
           subtotal: parsed.subtotal,
           iva: parsed.iva,
+          ivaDesglose: parsed.ivaDesglose,
           total: parsed.total,
           moneda: parsed.moneda,
           confidence: parsed.confidenceScore,
           itemsCount: parsed.items?.length || 0,
-        }, // Solo metadatos, no el JSON completo de Textract (ahorra espacio)
+          proveedorNuevoSugerido: parsed.proveedorNuevoSugerido,
+          notas: parsed.notas,
+        },
         source: file.source || 'SFTP', // From R2 metadata or default to SFTP
         hashSha256: sha256,
         pdfRawKey: file.key,
         pdfFinalKey: null, // Se actualiza después del move
-        textractRawKey: null, // NO guardamos el JSON de Textract (ahorra 455KB por factura)
+        textractRawKey: null, // Legacy field (was Textract JSON, now unused with Claude Vision)
         updatedAt: new Date(),
       },
     });
     
     logger.info(`✅ Documento created: ${documento.id}`);
-    
+
+    // Registrar uso de tokens en ai_usage_logs
+    try {
+      await prisma.ai_usage_logs.create({
+        data: {
+          documentoId: documento.id,
+          clienteId: file.clienteId,
+          usuarioId: null,
+          modelo: OCR_MODEL,
+          inputTokens: parsed.usage.inputTokens,
+          outputTokens: parsed.usage.outputTokens,
+          costoEstimado: calculateCost(OCR_MODEL, parsed.usage),
+          durationMs: ocrDurationMs,
+          source: 'OCR_WORKER',
+        },
+      });
+    } catch (logError) {
+      logger.warn(`⚠️  Failed to log AI usage:`, logError);
+    }
+
     // Enviar notificación al frontend
     try {
       const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
@@ -921,7 +738,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
  */
 export async function startOCRProcessor(): Promise<void> {
   logger.info(`🚀 OCR Processor starting...`);
-  logger.info(`☁️  AWS Textract region: ${TEXTRACT_REGION}`);
+  logger.info(`🤖 Engine: Claude Vision (${OCR_MODEL})`);
   logger.info(`🔢 Max concurrent jobs: ${MAX_CONCURRENT_JOBS}`);
   logger.info(`⏱️  Polling interval: ${POLLING_INTERVAL_MS}ms`);
   

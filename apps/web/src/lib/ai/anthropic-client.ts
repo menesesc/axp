@@ -13,12 +13,12 @@ export function getAnthropicClient(): Anthropic {
   return _client
 }
 
-export const AI_MODEL = 'claude-haiku-4-5'
+export const AI_MODEL = 'claude-sonnet-4-20250514'
 
-// Pricing per million tokens (USD) - Claude Haiku 4.5
+// Pricing per million tokens (USD) - Claude Sonnet 4
 const PRICING = {
-  inputPerMToken: 1.0,
-  outputPerMToken: 5.0,
+  inputPerMToken: 3.0,
+  outputPerMToken: 15.0,
 } as const
 
 export function calculateCost(inputTokens: number, outputTokens: number): number {

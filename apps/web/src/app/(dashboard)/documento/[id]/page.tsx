@@ -17,6 +17,7 @@ import {
   Copy,
   CheckCircle2,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useUser } from '@/hooks/use-user'
@@ -61,6 +62,7 @@ interface Documento {
   missingFields: string[]
   pdfFinalKey: string | null
   pdfRawKey: string
+  jsonNormalizado: Record<string, unknown>
   clientes: { id: string; razonSocial: string; cuit: string }
   proveedores: { id: string; razonSocial: string; cuit: string } | null
 }
@@ -313,6 +315,56 @@ export default function DocumentoPage() {
                     {documento.proveedores?.cuit && <p className="text-xs text-gray-500">CUIT: {documento.proveedores.cuit}</p>}
                   </div>
                 </div>
+                {/* Banner: sugerencia de creación de proveedor desde OCR */}
+                {!documento.proveedores && documento.jsonNormalizado?.proveedorNuevoSugerido && (() => {
+                  const sugerido = documento.jsonNormalizado.proveedorNuevoSugerido as { razonSocial: string; cuit?: string }
+                  return (
+                    <div className="col-span-2 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <UserPlus className="w-4 h-4 text-blue-600 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs text-blue-700 font-medium truncate">
+                            Proveedor detectado: {sugerido.razonSocial}
+                          </p>
+                          {sugerido.cuit && <p className="text-xs text-blue-600">CUIT: {sugerido.cuit}</p>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/proveedores', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                razonSocial: sugerido.razonSocial,
+                                cuit: sugerido.cuit || null,
+                              }),
+                            })
+                            if (!res.ok) {
+                              const err = await res.json()
+                              throw new Error(err.error || 'Error al crear proveedor')
+                            }
+                            const { proveedor: newProv } = await res.json()
+                            // Asignar al documento
+                            await fetch(`/api/documentos/${documento.id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ proveedorId: newProv.id }),
+                            })
+                            toast.success(`Proveedor "${sugerido.razonSocial}" creado y asignado`)
+                            queryClient.invalidateQueries({ queryKey: ['documento', documentoId] })
+                            queryClient.invalidateQueries({ queryKey: ['proveedores'] })
+                          } catch (err: any) {
+                            toast.error(err.message || 'Error al crear proveedor')
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md whitespace-nowrap transition-colors"
+                      >
+                        Crear y asignar
+                      </button>
+                    </div>
+                  )
+                })()}
                 <div className="flex items-start gap-2">
                   <Calendar className="w-4 h-4 text-gray-400 mt-0.5" />
                   <div>

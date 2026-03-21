@@ -326,24 +326,25 @@ enum TipoEmailTemplate {
 }
 
 model ai_usage_logs {
-  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentoId      String     @db.Uuid
-  clienteId        String     @db.Uuid
-  usuarioId        String     @db.Uuid
-  modelo           String     @db.VarChar(100)
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentoId      String      @db.Uuid
+  clienteId        String      @db.Uuid
+  usuarioId        String?     @db.Uuid
+  modelo           String      @db.VarChar(100)
   inputTokens      Int
   outputTokens     Int
-  costoEstimado    Decimal    @db.Decimal(10, 6)
-  camposCorregidos Json       @default("[]")
-  camposSugeridos  Json       @default("{}")
-  aceptado         Boolean    @default(false)
+  costoEstimado    Decimal     @db.Decimal(10, 6)
+  camposCorregidos Json        @default("[]")
+  camposSugeridos  Json        @default("{}")
+  aceptado         Boolean     @default(false)
   durationMs       Int?
-  errorMessage     String?    @db.Text
-  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  errorMessage     String?     @db.Text
+  source           String      @default("MANUAL") @db.VarChar(20)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
 
-  documentos documentos @relation(fields: [documentoId], references: [id], onDelete: Cascade)
-  clientes   clientes   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  usuarios   usuarios   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  documentos documentos  @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  clientes   clientes    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuarios   usuarios?   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([clienteId, createdAt(sort: Desc)])
   @@index([documentoId])
