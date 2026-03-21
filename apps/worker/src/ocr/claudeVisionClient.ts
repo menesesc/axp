@@ -40,6 +40,7 @@ export interface ClaudeVisionResult {
   proveedor: string | null
   proveedorCUIT: string | null
   receptorCUIT: string | null
+  receptorNombre: string | null
   items: DocumentItem[]
   proveedorIdSugerido: string | null
   proveedorNuevoSugerido: { razonSocial: string; cuit: string } | null
@@ -65,6 +66,7 @@ interface RawAIResponse {
   proveedorCUIT: string | null
   proveedorNombre: string | null
   receptorCUIT: string | null
+  receptorNombre: string | null
   items: Array<{
     descripcion: string
     codigo: string | null
@@ -359,6 +361,7 @@ function validateAndNormalize(
     proveedor: raw.proveedorNombre?.toUpperCase().trim() || null,
     proveedorCUIT: validateCUIT(raw.proveedorCUIT),
     receptorCUIT: validateCUIT(raw.receptorCUIT),
+    receptorNombre: raw.receptorNombre?.toUpperCase().trim() || null,
     items,
     proveedorIdSugerido,
     proveedorNuevoSugerido: proveedorIdSugerido ? null : proveedorNuevoSugerido || null,

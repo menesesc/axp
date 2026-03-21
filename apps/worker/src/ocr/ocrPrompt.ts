@@ -66,6 +66,7 @@ Tu tarea es analizar el PDF adjunto y extraer TODOS los campos con máxima preci
 - proveedorNombre: Razón social del emisor tal como aparece en el documento
 - receptorCUIT: CUIT del RECEPTOR (quien recibe la factura), 11 dígitos sin guiones
   Generalmente aparece en la sección "Datos del cliente/comprador/destinatario"
+- receptorNombre: Razón social del RECEPTOR tal como aparece en el documento
 
 ### Items / Líneas de productos
 - items: array de objetos, uno por cada línea de producto/servicio:
@@ -109,6 +110,7 @@ Responde ÚNICAMENTE con un JSON válido (sin markdown, sin backticks, sin texto
   "proveedorCUIT": "11 dígitos sin guiones" | null,
   "proveedorNombre": "razón social del emisor" | null,
   "receptorCUIT": "11 dígitos sin guiones" | null,
+  "receptorNombre": "razón social del receptor" | null,
   "items": [{"descripcion": "string", "codigo": "string|null", "cantidad": number|null, "unidad": "string|null", "precioUnitario": number|null, "subtotal": number|null}],
   "proveedorIdSugerido": "UUID de la lista o null",
   "proveedorNuevoSugerido": {"razonSocial": "string", "cuit": "string"} | null,

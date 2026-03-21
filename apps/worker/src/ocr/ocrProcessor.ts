@@ -18,6 +18,22 @@ import { prisma } from '../lib/prisma';
 // Tipo para EstadoRevision
 type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
 
+// Levenshtein distance para comparar razones sociales con tolerancia a errores de OCR
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
 // Helper para generar UUID (compatible con Bun)
 const generateId = (): string => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -328,32 +344,48 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
     // VALIDACIÓN DE RECEPTOR: Verificar que la factura sea para este cliente
     // Si el CUIT receptor extraído de la factura no coincide con el CUIT del cliente,
-    // marcar para revisión (ej: proveedor envió factura equivocada)
+    // verificar por razón social antes de marcar como mismatch (puede ser error de OCR en el CUIT)
     let receptorMismatch = false;
     if (parsed.receptorCUIT && cliente?.cuit) {
       const receptorNormalized = parsed.receptorCUIT.replace(/\D/g, '');
       const clienteCuitNormalized = cliente.cuit.replace(/\D/g, '');
 
       if (receptorNormalized !== clienteCuitNormalized) {
-        receptorMismatch = true;
-        logger.warn(`⚠️  RECEPTOR MISMATCH: Factura dirigida a CUIT ${parsed.receptorCUIT}, pero el cliente es ${cliente.cuit}`);
-        logger.warn(`   Posible factura enviada por error. Se procesará pero quedará PENDIENTE.`);
+        // CUIT no coincide — verificar si la razón social del receptor coincide con el cliente
+        // Si coincide, es un error de lectura del CUIT, no una factura equivocada
+        const receptorNombreNorm = (parsed.receptorNombre || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const clienteNombreNorm = (cliente.razonSocial || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-        if (!parsed.missingFields.includes('receptorCUIT')) {
-          parsed.missingFields.push('receptorCUIT');
-        }
-
-        const receptorLogger = getDbLogger(file.clienteId);
-        receptorLogger.warning(
-          `Factura con receptor CUIT ${parsed.receptorCUIT} no coincide con cliente ${cliente.cuit} (${cliente.razonSocial})`,
-          {
-            receptorCUIT: parsed.receptorCUIT,
-            clienteCUIT: cliente.cuit,
-            proveedorCUIT: parsed.proveedorCUIT,
-            source: file.source || 'SFTP',
-          },
-          file.filename
+        const nombreMatch = receptorNombreNorm.length > 3 && clienteNombreNorm.length > 3 && (
+          receptorNombreNorm.includes(clienteNombreNorm) ||
+          clienteNombreNorm.includes(receptorNombreNorm) ||
+          levenshteinDistance(receptorNombreNorm, clienteNombreNorm) <= 3
         );
+
+        if (nombreMatch) {
+          logger.info(`✅ Receptor CUIT ${parsed.receptorCUIT} differs from client ${cliente.cuit}, but razón social matches: "${parsed.receptorNombre}" ≈ "${cliente.razonSocial}". Treating as OCR misread.`);
+        } else {
+          receptorMismatch = true;
+          logger.warn(`⚠️  RECEPTOR MISMATCH: Factura dirigida a CUIT ${parsed.receptorCUIT} (${parsed.receptorNombre || 'N/A'}), pero el cliente es ${cliente.cuit} (${cliente.razonSocial})`);
+          logger.warn(`   Posible factura enviada por error. Se procesará pero quedará PENDIENTE.`);
+
+          if (!parsed.missingFields.includes('receptorCUIT')) {
+            parsed.missingFields.push('receptorCUIT');
+          }
+
+          const receptorLogger = getDbLogger(file.clienteId);
+          receptorLogger.warning(
+            `Factura con receptor CUIT ${parsed.receptorCUIT} no coincide con cliente ${cliente.cuit} (${cliente.razonSocial})`,
+            {
+              receptorCUIT: parsed.receptorCUIT,
+              receptorNombre: parsed.receptorNombre,
+              clienteCUIT: cliente.cuit,
+              proveedorCUIT: parsed.proveedorCUIT,
+              source: file.source || 'SFTP',
+            },
+            file.filename
+          );
+        }
       } else {
         logger.info(`✅ Receptor CUIT matches client: ${parsed.receptorCUIT}`);
       }
