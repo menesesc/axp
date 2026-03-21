@@ -39,7 +39,12 @@ export function useRealtimeDocumentos(clienteId: string) {
           if (payload.eventType === 'INSERT' && payload.new?.id) {
             setNewDocumentIds((prev) => new Set(prev).add(payload.new.id))
             const doc = payload.new
-            const tipo = doc.tipo ? `${doc.tipo}${doc.letra ? ` ${doc.letra}` : ''}` : 'Documento'
+            const tipoLabels: Record<string, string> = {
+              'FACTURA': 'Factura',
+              'NOTA_CREDITO': 'Nota de Crédito',
+              'REMITO': 'Remito',
+            }
+            const tipo = `${tipoLabels[doc.tipo] || doc.tipo || 'Documento'}${doc.letra ? ` ${doc.letra}` : ''}`
             const numero = doc.numeroCompleto || ''
             const total = doc.total
               ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(doc.total)
