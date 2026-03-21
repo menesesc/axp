@@ -7,7 +7,7 @@
  * Convierte el PDF a imagen JPEG optimizada (max 1500px) para reducir tokens.
  */
 
-import { getAnthropicClient, OCR_MODEL, parseAIResponse, type TokenUsage } from './anthropicClient'
+import { getAnthropicClient, parseAIResponse, type TokenUsage } from './anthropicClient'
 import { buildOCRSystemPrompt, buildOCRUserMessage, type ProveedorForMatching } from './ocrPrompt'
 import type { CorrectionExample } from './correctionExamples'
 import { PDFDocument } from 'pdf-lib'
@@ -296,6 +296,7 @@ export async function processWithClaudeVision(
   corrections: CorrectionExample[],
   clienteId: string,
   filename: string = 'document.pdf',
+  model: string = 'claude-haiku-4-5-20251001',
 ): Promise<ClaudeVisionResult> {
   const client = getAnthropicClient()
 
@@ -322,7 +323,7 @@ export async function processWithClaudeVision(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await client.messages.create({
-        model: OCR_MODEL,
+        model,
         max_tokens: 4096,
         system: [
           {

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { prisma } from '../lib/prisma'
 
 let _client: Anthropic | null = null
 
@@ -13,9 +14,37 @@ export function getAnthropicClient(): Anthropic {
   return _client
 }
 
-// Modelo principal para OCR: Sonnet 4 (mejor precisión en números y campos)
-// Feature flag para testear Haiku más adelante
-export const OCR_MODEL = process.env.OCR_MODEL || 'claude-sonnet-4-20250514'
+// Mapeo plan → modelo OCR
+const PLAN_MODEL_MAP: Record<string, string> = {
+  'Starter': 'claude-haiku-4-5-20251001',
+  'Profesional': 'claude-sonnet-4-20250514',
+  'Enterprise': 'claude-sonnet-4-20250514',
+}
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
+
+/**
+ * Determina el modelo OCR según el plan del cliente.
+ * Si OCR_MODEL está en env, lo usa como override.
+ */
+export async function getModelForClient(clienteId: string): Promise<string> {
+  if (process.env.OCR_MODEL) return process.env.OCR_MODEL
+
+  try {
+    const result = await prisma.$queryRaw<{ plan_nombre: string }[]>`
+      SELECT p.nombre as plan_nombre
+      FROM suscripciones s
+      JOIN planes p ON s.plan_id = p.id
+      WHERE s."clienteId" = ${clienteId}::uuid
+      AND s.estado IN ('ACTIVA', 'TRIAL')
+      LIMIT 1
+    `
+    const planNombre = result[0]?.plan_nombre || ''
+    return PLAN_MODEL_MAP[planNombre] || DEFAULT_MODEL
+  } catch (error) {
+    console.warn('[OCR] Failed to fetch plan, using default model:', error)
+    return DEFAULT_MODEL
+  }
+}
 
 // Pricing per million tokens (USD)
 const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {

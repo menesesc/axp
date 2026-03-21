@@ -1,12 +1,13 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/hooks/use-user'
 import { useSubscription } from '@/hooks/use-subscription'
 import { formatCurrency } from '@/lib/utils'
+import { toast } from 'sonner'
 import {
   Sparkles,
   Check,
@@ -45,6 +46,31 @@ interface UsageData {
 export default function PlanPage() {
   const { clienteId } = useUser()
   const { subscription, isLoading: subLoading } = useSubscription()
+  const queryClient = useQueryClient()
+
+  const changePlanMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      const res = await fetch('/api/suscripciones/cambiar-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al cambiar plan')
+      }
+      return res.json()
+    },
+    onSuccess: (data) => {
+      toast.success(`Plan cambiado a ${data.plan_nombre}`)
+      queryClient.invalidateQueries({ queryKey: ['subscription'] })
+      queryClient.invalidateQueries({ queryKey: ['usage'] })
+      queryClient.invalidateQueries({ queryKey: ['planes'] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
 
   const { data: planesData, isLoading: planesLoading } = useQuery<{ planes: Plan[] }>({
     queryKey: ['planes'],
@@ -247,8 +273,12 @@ export default function PlanPage() {
                         <Button
                           className="w-full"
                           variant={isUpgrade ? 'default' : 'outline'}
+                          disabled={changePlanMutation.isPending}
+                          onClick={() => changePlanMutation.mutate(plan.id)}
                         >
-                          {isUpgrade ? (
+                          {changePlanMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : isUpgrade ? (
                             <>
                               <Sparkles className="h-4 w-4 mr-2" />
                               Mejorar plan

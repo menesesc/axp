@@ -85,7 +85,7 @@ import { createDbLogger, flushAllLogs } from '../utils/dbLogger';
 import { listR2Objects, downloadFromR2, moveR2Object, deleteR2Object, getObjectMetadata } from '../processor/r2Client';
 import { processWithClaudeVision, type ClaudeVisionResult } from './claudeVisionClient';
 import { fetchCorrectionExamples } from './correctionExamples';
-import { OCR_MODEL, calculateCost } from './anthropicClient';
+import { getModelForClient, calculateCost } from './anthropicClient';
 import { isShuttingDown } from '../index';
 
 const logger = createLogger('OCR');
@@ -263,7 +263,8 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     }
     
     // 4. Obtener proveedores y correcciones para Claude Vision
-    logger.info(`🤖 Processing with Claude Vision...`);
+    const ocrModel = await getModelForClient(file.clienteId);
+    logger.info(`🤖 Processing with Claude Vision (${ocrModel})...`);
     const ocrStartTime = Date.now();
 
     const allProveedores = await prisma.proveedores.findMany({
@@ -279,7 +280,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     let parsed: ClaudeVisionResult;
 
     try {
-      parsed = await processWithClaudeVision(pdfBuffer, allProveedores, corrections, file.clienteId, file.filename);
+      parsed = await processWithClaudeVision(pdfBuffer, allProveedores, corrections, file.clienteId, file.filename, ocrModel);
     } catch (ocrError: any) {
       // Manejar errores de la API de Claude
       if (ocrError?.status === 400 && ocrError?.message?.includes('document')) {
@@ -632,10 +633,10 @@ async function processOCRFile(file: InboxFile): Promise<void> {
           documentoId: documento.id,
           clienteId: file.clienteId,
           usuarioId: null,
-          modelo: OCR_MODEL,
+          modelo: ocrModel,
           inputTokens: parsed.usage.inputTokens,
           outputTokens: parsed.usage.outputTokens,
-          costoEstimado: calculateCost(OCR_MODEL, parsed.usage),
+          costoEstimado: calculateCost(ocrModel, parsed.usage),
           durationMs: ocrDurationMs,
           source: 'OCR_WORKER',
         },
@@ -770,7 +771,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
  */
 export async function startOCRProcessor(): Promise<void> {
   logger.info(`🚀 OCR Processor starting...`);
-  logger.info(`🤖 Engine: Claude Vision (${OCR_MODEL})`);
+  logger.info(`🤖 Engine: Claude Vision (model selected per client plan)`);
   logger.info(`🔢 Max concurrent jobs: ${MAX_CONCURRENT_JOBS}`);
   logger.info(`⏱️  Polling interval: ${POLLING_INTERVAL_MS}ms`);
   
