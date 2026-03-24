@@ -214,6 +214,7 @@ export default function DocumentoPage() {
   const handleStartEdit = () => {
     if (!data?.documento || !isAdmin) return
     setEditData({
+      tipo: data.documento.tipo || 'FACTURA',
       fechaEmision: data.documento.fechaEmision?.split('T')[0] || '',
       fechaVencimiento: data.documento.fechaVencimiento?.split('T')[0] || '',
       total: data.documento.total ?? '',
@@ -472,6 +473,18 @@ export default function DocumentoPage() {
                 {isEditing && (
                   <>
                   <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+                      <select
+                        value={editData.tipo}
+                        onChange={(e) => setEditData({ ...editData, tipo: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="FACTURA">Factura</option>
+                        <option value="NOTA_CREDITO">Nota de Crédito</option>
+                        <option value="REMITO">Remito</option>
+                      </select>
+                    </div>
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Proveedor</label>
                       <select

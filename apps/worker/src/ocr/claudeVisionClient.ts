@@ -395,13 +395,20 @@ function validateAndNormalize(
   proveedores: ProveedorForMatching[],
   usage: TokenUsage,
 ): ClaudeVisionResult {
-  const tipo = validateTipo(raw.tipo)
-  const isNotaCredito = tipo === 'NOTA_CREDITO'
+  let tipo = validateTipo(raw.tipo)
 
   // Validar importes
   let subtotal = validateAmount(raw.subtotal)
   let iva = validateAmount(raw.iva)
   let total = validateAmount(raw.total)
+
+  // Auto-corregir: un REMITO no tiene importes monetarios. Si tiene IVA o total, es una factura.
+  if (tipo === 'REMITO' && (iva !== null || (total !== null && total > 0))) {
+    console.warn(`[Claude Vision] REMITO con IVA/total detectado → corrigiendo a FACTURA`)
+    tipo = 'FACTURA'
+  }
+
+  const isNotaCredito = tipo === 'NOTA_CREDITO'
 
   // Para nota de crédito, asegurar que los importes sean negativos
   if (isNotaCredito) {
