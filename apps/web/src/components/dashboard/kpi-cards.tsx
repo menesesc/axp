@@ -1,27 +1,29 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
-import { ConfidenceAverage } from '@/components/ui/confidence-badge'
-import { FileText, Clock, CheckCircle, CreditCard, Sparkles } from 'lucide-react'
+import { FileText, Clock, CheckCircle, DollarSign, Sparkles } from 'lucide-react'
+import { LineChart, Line, ResponsiveContainer } from 'recharts'
 
 interface KpiCardsProps {
-  totalDocumentos: number
+  documentosHoy: number
   pendientes: number
   confirmados: number
-  pagados: number
+  montoPendiente: number
   confidencePromedio: number
+  confidencePorDia?: { date: string; score: number }[]
   documentosEsteMes?: number
   documentosMesLimite?: number | null
   isLoading?: boolean
 }
 
 export function KpiCards({
-  totalDocumentos,
+  documentosHoy,
   pendientes,
   confirmados,
-  pagados,
+  montoPendiente,
   confidencePromedio,
+  confidencePorDia = [],
   documentosEsteMes = 0,
   documentosMesLimite,
   isLoading,
@@ -32,14 +34,14 @@ export function KpiCards({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-      {/* Total Documentos */}
+      {/* Documentos Hoy */}
       <Card className="border shadow-sm">
         <CardContent className="pt-4 pb-4">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm text-slate-500">Documentos</p>
+              <p className="text-sm text-slate-500">Hoy</p>
               <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
-                {isLoading ? '-' : totalDocumentos.toLocaleString('es-AR')}
+                {isLoading ? '-' : documentosHoy.toLocaleString('es-AR')}
               </p>
               <p className="text-xs text-slate-400 mt-0.5">
                 {documentosMesLimite
@@ -107,42 +109,56 @@ export function KpiCards({
         </CardContent>
       </Card>
 
-      {/* Pagados */}
+      {/* A Pagar */}
       <Card className="border shadow-sm">
         <CardContent className="pt-4 pb-4">
           <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-slate-500">Pagados</p>
-              <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
-                {isLoading ? '-' : pagados.toLocaleString('es-AR')}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-slate-500">A Pagar</p>
+              <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums truncate">
+                {isLoading ? '-' : formatCurrency(montoPendiente)}
               </p>
-              <p className="text-xs text-slate-400 mt-0.5">Con orden de pago</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isLoading ? '' : `${confirmados} doc${confirmados !== 1 ? 's' : ''} pendientes`}
+              </p>
             </div>
-            <div className="p-2 rounded-lg bg-blue-50">
-              <CreditCard className="h-4 w-4 text-blue-600" />
+            <div className="p-2 rounded-lg bg-orange-50">
+              <DollarSign className="h-4 w-4 text-orange-600" />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Confidence Card */}
+      {/* Confianza OCR con Sparkline */}
       <Card className="border shadow-sm">
         <CardContent className="pt-4 pb-4">
           <div className="flex items-start justify-between">
-            <div className="flex-1">
+            <div>
               <p className="text-sm text-slate-500">Confianza OCR</p>
               <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
                 {isLoading ? '-' : `${confidencePromedio.toFixed(0)}%`}
               </p>
-              <p className="text-xs text-slate-400 mt-0.5">Promedio últimos 30 días</p>
+              <p className="text-xs text-slate-400 mt-0.5">Promedio 30 días</p>
             </div>
             <div className="p-2 rounded-lg bg-blue-50">
               <Sparkles className="h-4 w-4 text-blue-600" />
             </div>
           </div>
-          <div className="mt-3">
-            <ConfidenceAverage score={confidencePromedio} />
-          </div>
+          {!isLoading && confidencePorDia.length > 1 && (
+            <div className="mt-2 h-10">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={confidencePorDia}>
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#3b82f6"
+                    strokeWidth={1.5}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

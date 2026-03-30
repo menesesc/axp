@@ -46,6 +46,7 @@ export async function GET() {
       documentosPorDiaRaw,
       montosPorDiaRaw,
       confidenceAvg,
+      confidencePorDiaRaw2,
     ] = await Promise.all([
       // Total documentos
       prisma.documentos.count({
@@ -182,6 +183,18 @@ export async function GET() {
           confidenceScore: true,
         },
       }),
+
+      // Confidence promedio por día (últimos 30 días) para sparkline
+      prisma.documentos.groupBy({
+        where: {
+          clienteId,
+          createdAt: { gte: fromDate },
+          confidenceScore: { not: null },
+        },
+        by: ['fechaEmision'],
+        _avg: { confidenceScore: true },
+        orderBy: { fechaEmision: 'asc' },
+      }),
     ])
 
     // Obtener límite de documentos del plan (raw query ya que no está en Prisma)
@@ -237,6 +250,25 @@ export async function GET() {
 
     // Calcular promedio de confianza (0 si no hay documentos)
     const confidencePromedio = confidenceAvg?._avg?.confidenceScore ?? 0
+
+    // Normalizar confidence por día a 30 días
+    const confidenceByDate = new Map<string, number>()
+    for (const row of confidencePorDiaRaw2) {
+      if (!row.fechaEmision) continue
+      const key = row.fechaEmision.toISOString().slice(0, 10)
+      confidenceByDate.set(key, Math.round(row._avg?.confidenceScore ?? 0))
+    }
+    const confidencePorDia: { date: string; score: number }[] = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today)
+      d.setDate(today.getDate() - i)
+      d.setHours(0, 0, 0, 0)
+      const key = d.toISOString().slice(0, 10)
+      const score = confidenceByDate.get(key)
+      if (score !== undefined) {
+        confidencePorDia.push({ date: key, score })
+      }
+    }
 
     // Obtener totales por proveedor con desglose por estado
     const proveedorEstadosRaw = await prisma.$queryRaw<Array<{
@@ -329,6 +361,7 @@ export async function GET() {
       tasaExito,
       documentosPorDia,
       confidencePromedio,
+      confidencePorDia,
       totalesPorProveedor,
     })
   } catch (error) {

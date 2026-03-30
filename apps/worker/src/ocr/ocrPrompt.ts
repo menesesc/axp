@@ -50,6 +50,16 @@ Tu tarea es analizar el PDF adjunto y extraer TODOS los campos con máxima preci
 - fechaVencimiento: formato YYYY-MM-DD (fecha de vencimiento de pago, puede ser igual a emisión)
 
 ### Importes
+FORMATO NUMÉRICO ARGENTINO: Los documentos argentinos usan PUNTO (.) como separador de miles y COMA (,) como separador decimal.
+  Ejemplos de lectura correcta:
+  - "1.234.567,89" = 1234567.89 (un millón doscientos treinta y cuatro mil...)
+  - "430.496,21" = 430496.21 (cuatrocientos treinta mil...)
+  - "90.404,20" = 90404.20 (noventa mil...)
+  - "15.935,62" = 15935.62 (quince mil...)
+  - "9.128,50" = 9128.50 (nueve mil...)
+  NUNCA interpretes el punto como separador decimal en importes argentinos. Un subtotal de "430.496,21" NO es 430.50, es 430496.21.
+  En el JSON de respuesta, devuelve siempre el número SIN formato (punto decimal anglosajón): 430496.21
+
 - moneda: "ARS" | "USD" | "EUR" (default "ARS")
 - subtotal: Importe Neto Gravado (decimal, ej: 15234.56). NO incluye IVA.
 - iva: Suma de TODAS las alícuotas de IVA (decimal)

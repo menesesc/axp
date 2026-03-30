@@ -84,10 +84,13 @@ export default function Home() {
   const errores = stats?.totalErrores || 0
   const duplicados = stats?.totalDuplicados || 0
   const confidencePromedio = stats?.confidencePromedio ?? 0
+  const confidencePorDia = stats?.confidencePorDia || []
   const documentosPorDia = stats?.documentosPorDia || []
   const totalesPorProveedor = stats?.totalesPorProveedor || []
+  const documentosHoy = stats?.documentosHoy || 0
   const documentosEsteMes = stats?.documentosEsteMes || 0
   const documentosMesLimite = stats?.documentosMesLimite ?? null
+  const montoPendiente = paymentStats?.montoPendiente || 0
 
   const handleUpload = () => {
     setUploadOpen(true)
@@ -119,14 +122,15 @@ export default function Home() {
 
         {/* KPI Cards */}
         <KpiCards
-          totalDocumentos={totalDocumentos}
+          documentosHoy={documentosHoy}
           pendientes={pendientes}
           confirmados={confirmados}
-          pagados={pagados}
+          montoPendiente={montoPendiente}
           confidencePromedio={confidencePromedio}
+          confidencePorDia={confidencePorDia}
           documentosEsteMes={documentosEsteMes}
           documentosMesLimite={documentosMesLimite}
-          isLoading={statsLoading}
+          isLoading={statsLoading || paymentsLoading}
         />
 
         {/* Main Content Grid */}

@@ -467,6 +467,18 @@ function validateAndNormalize(
     }
   }).filter(item => item.descripcion.length > 0)
 
+  // Sanity check: detectar error de parsing de separador de miles
+  // Si la suma de items es >> total del encabezado, el OCR malinterpretó los montos del header
+  if (total !== null && items.length > 0) {
+    const itemsSum = items.reduce((sum, item) => sum + Math.abs(item.subtotal || 0), 0)
+    if (itemsSum > 0 && Math.abs(total) > 0 && itemsSum > Math.abs(total) * 5) {
+      console.warn(
+        `[Claude Vision] POSIBLE ERROR DE MILES: suma items=$${itemsSum.toFixed(2)} >> total encabezado=$${Math.abs(total).toFixed(2)}. ` +
+        `El OCR probablemente malinterpretó el separador de miles en los montos del encabezado.`
+      )
+    }
+  }
+
   // Calcular campos faltantes
   const missingFields: string[] = []
   if (!raw.proveedorCUIT && !raw.proveedorNombre) missingFields.push('proveedor')
