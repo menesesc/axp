@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { useUser } from '@/hooks/use-user'
 import { useQuery } from '@tanstack/react-query'
-import { KpiCards } from '@/components/dashboard/kpi-cards'
+import { OperationsKpis, FinanceKpis, PurchasingKpis } from '@/components/dashboard/kpi-cards'
 import { RecentDocumentsCard } from '@/components/dashboard/recent-documents-card'
 import { StatusChart } from '@/components/dashboard/status-chart'
 import { QuickActions } from '@/components/dashboard/quick-actions'
@@ -12,6 +12,8 @@ import { PaymentsSummary } from '@/components/dashboard/payments-summary'
 import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
+import { PurchasingTabContent } from '@/components/dashboard/purchasing-tab'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { useState } from 'react'
 import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
@@ -76,6 +78,16 @@ export default function Home() {
     enabled: !!clienteId,
   })
 
+  const { data: itemStats, isLoading: itemsLoading } = useQuery({
+    queryKey: ['item-stats', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/items/stats')
+      if (!res.ok) return { topItems: [], byProvider: [], priceVariation: [], monthlyTrend: [] }
+      return res.json()
+    },
+    enabled: !!clienteId,
+  })
+
   if (!clienteId) {
     return (
       <DashboardLayout>
@@ -87,8 +99,7 @@ export default function Home() {
     )
   }
 
-  const recentDocs = docs?.documentos || []
-  const totalDocumentos = stats?.totalDocumentos || 0
+  // Stats data
   const pendientes = stats?.totalPendientes || 0
   const confirmados = stats?.totalConfirmados || 0
   const pagados = stats?.totalPagados || 0
@@ -102,6 +113,13 @@ export default function Home() {
   const documentosEsteMes = stats?.documentosEsteMes || 0
   const documentosMesLimite = stats?.documentosMesLimite ?? null
   const montoPendiente = paymentStats?.montoPendiente || 0
+
+  // Items data
+  const monthlyTrend = itemStats?.monthlyTrend || []
+  const currentMonth = new Date().toISOString().slice(0, 7)
+  const compradoEsteMes = monthlyTrend.find((m: any) => m.mes === currentMonth)?.totalSubtotal || 0
+  const itemsActivos = itemStats?.topItems?.length || 0
+  const alertasPrecios = itemStats?.priceVariation?.length || 0
 
   const handleUpload = () => {
     setUploadOpen(true)
@@ -131,58 +149,102 @@ export default function Home() {
           }
         />
 
-        {/* KPI Cards */}
-        <KpiCards
-          documentosHoy={documentosHoy}
-          pendientes={pendientes}
-          confirmados={confirmados}
-          montoPendiente={montoPendiente}
-          confidencePromedio={confidencePromedio}
-          confidencePorDia={confidencePorDia}
-          documentosEsteMes={documentosEsteMes}
-          documentosMesLimite={documentosMesLimite}
-          isLoading={statsLoading || paymentsLoading}
-        />
+        {/* Tabs */}
+        <Tabs defaultValue="operaciones">
+          <TabsList>
+            <TabsTrigger value="operaciones">Operaciones</TabsTrigger>
+            <TabsTrigger value="finanzas">Finanzas</TabsTrigger>
+            <TabsTrigger value="compras">Compras</TabsTrigger>
+          </TabsList>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Left column - Recent docs + Provider chart */}
-          <div className="lg:col-span-2 space-y-4">
-            <RecentDocumentsCard documents={recentDocs} isLoading={docsLoading} />
-            <ProviderTotalsChart data={totalesPorProveedor} isLoading={statsLoading} />
-          </div>
+          {/* ─── Tab Operaciones ─── */}
+          <TabsContent value="operaciones">
+            <div className="space-y-4">
+              <OperationsKpis
+                documentosHoy={documentosHoy}
+                pendientes={pendientes}
+                confidencePromedio={confidencePromedio}
+                confidencePorDia={confidencePorDia}
+                documentosEsteMes={documentosEsteMes}
+                documentosMesLimite={documentosMesLimite}
+                isLoading={statsLoading}
+              />
 
-          {/* Right column - Charts */}
-          <div className="space-y-4">
-            <StatusChart
-              pendientes={pendientes}
-              confirmados={confirmados}
-              pagados={pagados}
-              errores={errores}
-              duplicados={duplicados}
-              isLoading={statsLoading}
-            />
-            <DocumentsTrendCard data={documentosPorDia} isLoading={statsLoading} />
-          </div>
-        </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2">
+                  <RecentDocumentsCard documents={docs?.documentos || []} isLoading={docsLoading} />
+                </div>
+                <div>
+                  <StatusChart
+                    pendientes={pendientes}
+                    confirmados={confirmados}
+                    pagados={pagados}
+                    errores={errores}
+                    duplicados={duplicados}
+                    isLoading={statsLoading}
+                  />
+                </div>
+              </div>
 
-        {/* Debt + Payments */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <ProviderDebtCard
-              data={deudaData?.proveedores || []}
-              isLoading={deudaLoading}
-            />
-          </div>
-          <div>
-            <PaymentsSummary
-              proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
-              montoPendiente={paymentStats?.montoPendiente || 0}
-              ordenesRecientes={paymentStats?.ordenesRecientes || []}
-              isLoading={paymentsLoading}
-            />
-          </div>
-        </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2">
+                  <ProviderTotalsChart data={totalesPorProveedor} isLoading={statsLoading} />
+                </div>
+                <div>
+                  <DocumentsTrendCard data={documentosPorDia} isLoading={statsLoading} />
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ─── Tab Finanzas ─── */}
+          <TabsContent value="finanzas">
+            <div className="space-y-4">
+              <FinanceKpis
+                confirmados={confirmados}
+                montoPendiente={montoPendiente}
+                proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
+                isLoading={statsLoading || paymentsLoading}
+              />
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2">
+                  <ProviderDebtCard
+                    data={deudaData?.proveedores || []}
+                    isLoading={deudaLoading}
+                  />
+                </div>
+                <div>
+                  <PaymentsSummary
+                    proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
+                    montoPendiente={paymentStats?.montoPendiente || 0}
+                    ordenesRecientes={paymentStats?.ordenesRecientes || []}
+                    isLoading={paymentsLoading}
+                  />
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ─── Tab Compras ─── */}
+          <TabsContent value="compras">
+            <div className="space-y-4">
+              <PurchasingKpis
+                compradoEsteMes={compradoEsteMes}
+                itemsActivos={itemsActivos}
+                alertasPrecios={alertasPrecios}
+                isLoading={itemsLoading}
+              />
+
+              <PurchasingTabContent
+                topItems={itemStats?.topItems || []}
+                priceVariation={itemStats?.priceVariation || []}
+                byProvider={itemStats?.byProvider || []}
+                isLoading={itemsLoading}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
