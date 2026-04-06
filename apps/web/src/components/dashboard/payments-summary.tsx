@@ -41,7 +41,7 @@ export function PaymentsSummary({
   isLoading,
 }: PaymentsSummaryProps) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4">
       {/* Pagos pendientes */}
       <Card className="border shadow-sm">
         <CardHeader className="pb-3">

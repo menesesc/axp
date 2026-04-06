@@ -60,6 +60,8 @@ export function useRealtimeDocumentos(clienteId: string) {
           queryClient.invalidateQueries({ queryKey: ['documentos'] })
           queryClient.invalidateQueries({ queryKey: ['stats'] })
           queryClient.invalidateQueries({ queryKey: ['recent-docs'] })
+          queryClient.invalidateQueries({ queryKey: ['provider-debt'] })
+          queryClient.invalidateQueries({ queryKey: ['payment-stats'] })
         }
       )
       .subscribe((status, err) => {

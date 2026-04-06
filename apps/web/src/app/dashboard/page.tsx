@@ -11,6 +11,7 @@ import { QuickActions } from '@/components/dashboard/quick-actions'
 import { PaymentsSummary } from '@/components/dashboard/payments-summary'
 import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
+import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
 import { toast } from 'sonner'
 import { useState } from 'react'
 import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
@@ -60,6 +61,16 @@ export default function Home() {
           ordenesRecientes: [],
         }
       }
+      return res.json()
+    },
+    enabled: !!clienteId,
+  })
+
+  const { data: deudaData, isLoading: deudaLoading } = useQuery({
+    queryKey: ['provider-debt', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/proveedores/deuda')
+      if (!res.ok) return { proveedores: [] }
       return res.json()
     },
     enabled: !!clienteId,
@@ -155,15 +166,22 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Payments Summary */}
-        <div>
-          <h2 className="text-sm font-medium text-slate-900 mb-3">Pagos</h2>
-          <PaymentsSummary
-            proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
-            montoPendiente={paymentStats?.montoPendiente || 0}
-            ordenesRecientes={paymentStats?.ordenesRecientes || []}
-            isLoading={paymentsLoading}
-          />
+        {/* Debt + Payments */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <ProviderDebtCard
+              data={deudaData?.proveedores || []}
+              isLoading={deudaLoading}
+            />
+          </div>
+          <div>
+            <PaymentsSummary
+              proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
+              montoPendiente={paymentStats?.montoPendiente || 0}
+              ordenesRecientes={paymentStats?.ordenesRecientes || []}
+              isLoading={paymentsLoading}
+            />
+          </div>
         </div>
       </div>
 
