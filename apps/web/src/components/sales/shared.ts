@@ -22,7 +22,14 @@ export function fmtNumAR(n: number | string | null | undefined, decimals = 0): s
 export function fmtFecha(iso: string): string {
   try {
     const d = new Date(iso)
-    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    // Renderizar en UTC para que no se "corra un día" en zonas con offset negativo (GMT-3 Argentina).
+    // La columna en DB es @db.Date (solo día), guardada como 00:00 UTC.
+    return d.toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
   } catch {
     return iso
   }
