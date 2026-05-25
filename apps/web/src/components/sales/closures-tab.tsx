@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Upload, Receipt, ChevronDown, ChevronUp, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
-import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip, XAxis } from 'recharts'
 import { DateRange } from './date-range'
 import { fmtAR, fmtNumAR, fmtFecha, defaultRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
 import { ClosureDetail } from './closure-detail'
@@ -72,15 +72,16 @@ export function ClosuresTab() {
     )
   }, [closures])
 
-  // Series diarias para sparklines (cierres por día, tickets por día, cubiertos por día)
+  // Series diarias para sparklines (cierres, tickets, cubiertos y ventas totales por día)
   const daily = useMemo(() => {
-    const map = new Map<string, { fecha: string; cierres: number; tickets: number; cubiertos: number }>()
+    const map = new Map<string, { fecha: string; cierres: number; tickets: number; cubiertos: number; ventas: number }>()
     for (const c of closures) {
       const key = c.fecha.slice(0, 10)
-      const cur = map.get(key) ?? { fecha: key, cierres: 0, tickets: 0, cubiertos: 0 }
+      const cur = map.get(key) ?? { fecha: key, cierres: 0, tickets: 0, cubiertos: 0, ventas: 0 }
       cur.cierres += 1
       cur.tickets += c.cantTickets ?? 0
       cur.cubiertos += Number(c.cantCubiertos ?? 0)
+      cur.ventas += Number(c.totalVentas ?? 0)
       map.set(key, cur)
     }
     return Array.from(map.values()).sort((a, b) => a.fecha.localeCompare(b.fecha))
@@ -201,7 +202,15 @@ export function ClosuresTab() {
           dataKey="cubiertos"
           color="#f59e0b"
         />
-        <KPI label="Ventas totales" value={fmtAR(totals.ventas)} highlight />
+        <KPI
+          label="Ventas totales"
+          value={fmtAR(totals.ventas)}
+          series={daily}
+          dataKey="ventas"
+          color="#10b981"
+          highlight
+          isCurrency
+        />
       </div>
 
       {/* Tabla */}
@@ -258,13 +267,15 @@ function KPI({
   series,
   dataKey,
   color,
+  isCurrency,
 }: {
   label: string
   value: string
   highlight?: boolean
-  series?: Array<{ fecha: string; cierres: number; tickets: number; cubiertos: number }>
-  dataKey?: 'cierres' | 'tickets' | 'cubiertos'
+  series?: Array<{ fecha: string; cierres: number; tickets: number; cubiertos: number; ventas: number }>
+  dataKey?: 'cierres' | 'tickets' | 'cubiertos' | 'ventas'
   color?: string
+  isCurrency?: boolean
 }) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -276,6 +287,7 @@ function KPI({
         <div className="mt-2 h-10 -mx-1">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={series} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+              <XAxis dataKey="fecha" hide />
               <Line
                 type="monotone"
                 dataKey={dataKey}
@@ -288,7 +300,7 @@ function KPI({
                 cursor={false}
                 contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
                 labelFormatter={(l) => fmtFecha(String(l))}
-                formatter={((v: number) => [fmtNumAR(v), label]) as never}
+                formatter={((v: number) => [isCurrency ? fmtAR(v) : fmtNumAR(v), label]) as never}
               />
             </LineChart>
           </ResponsiveContainer>

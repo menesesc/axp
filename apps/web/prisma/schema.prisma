@@ -429,6 +429,12 @@ model sales_closures {
   cantFacturaBElectronica Int?
   facturaB                Decimal? @db.Decimal(14, 2)
   cantFacturaB            Int?
+  notaCreditoAElectronica     Decimal? @db.Decimal(14, 2)
+  cantNotaCreditoAElectronica Int?
+  notaCreditoBElectronica     Decimal? @db.Decimal(14, 2)
+  cantNotaCreditoBElectronica Int?
+  notaCreditoB                Decimal? @db.Decimal(14, 2)
+  cantNotaCreditoB            Int?
   descuentoTotal      Decimal?    @db.Decimal(14, 2)
   cantCubiertos       Decimal?    @db.Decimal(10, 2)
   promedioCubierto    Decimal?    @db.Decimal(14, 2)

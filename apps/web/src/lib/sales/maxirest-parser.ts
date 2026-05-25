@@ -70,6 +70,12 @@ export interface ParsedResumen {
   cantFacturaBElectronica: number | null
   facturaB: number | null
   cantFacturaB: number | null
+  notaCreditoAElectronica: number | null
+  cantNotaCreditoAElectronica: number | null
+  notaCreditoBElectronica: number | null
+  cantNotaCreditoBElectronica: number | null
+  notaCreditoB: number | null
+  cantNotaCreditoB: number | null
   descuentoTotal: number | null
   cantCubiertos: number | null
   promedioCubierto: number | null
@@ -309,6 +315,12 @@ function parseResumen(section: string): ParsedResumen {
     cantFacturaBElectronica: null,
     facturaB: null,
     cantFacturaB: null,
+    notaCreditoAElectronica: null,
+    cantNotaCreditoAElectronica: null,
+    notaCreditoBElectronica: null,
+    cantNotaCreditoBElectronica: null,
+    notaCreditoB: null,
+    cantNotaCreditoB: null,
     descuentoTotal: null,
     cantCubiertos: null,
     promedioCubierto: null,
@@ -326,6 +338,13 @@ function parseResumen(section: string): ParsedResumen {
     const m = section.match(rx)
     if (!m) return null
     return { total: parseNumber(g(m, 1)), cant: parseInt(g(m, 2), 10) }
+  }
+
+  function matchPairSigned(rx: RegExp): { total: number; cant: number } | null {
+    const m = section.match(rx)
+    if (!m) return null
+    const sign = g(m, 1) === '-' ? -1 : 1
+    return { total: sign * parseNumber(g(m, 2)), cant: parseInt(g(m, 3), 10) }
   }
 
   const totalLine = section.match(/^\s*TOTAL\s+(\d+(?:\.\d+)?)\s+(\d+)\s*$/m)
@@ -347,6 +366,15 @@ function parseResumen(section: string): ParsedResumen {
   // porque tras "B " viene texto "ELECTRÓNIC" en vez de dígitos.
   const facB = matchPair(/^\s*Factura\s+B\s+(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
   if (facB) { out.facturaB = facB.total; out.cantFacturaB = facB.cant }
+
+  // Notas de crédito (signo negativo en el PDF; las restamos del TOTAL).
+  // "N.Crédito" puede aparecer como "N.Crédito" o "N.Credito" (sin tilde).
+  const ncA = matchPairSigned(/^\s*N\.?\s*Cr[ée]dito\s+A\s+ELECTR[ÓO]N[A-Z]*\s+(-?)(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
+  if (ncA) { out.notaCreditoAElectronica = ncA.total; out.cantNotaCreditoAElectronica = ncA.cant }
+  const ncBe = matchPairSigned(/^\s*N\.?\s*Cr[ée]dito\s+B\s+ELECTR[ÓO]N[A-Z]*\s+(-?)(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
+  if (ncBe) { out.notaCreditoBElectronica = ncBe.total; out.cantNotaCreditoBElectronica = ncBe.cant }
+  const ncB = matchPairSigned(/^\s*N\.?\s*Cr[ée]dito\s+B\s+(-?)(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
+  if (ncB) { out.notaCreditoB = ncB.total; out.cantNotaCreditoB = ncB.cant }
 
   out.descuentoTotal = matchSingle(/^\s*\d+\.Descuento\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)
   out.cantCubiertos = matchSingle(/^\s*TOTAL CUBIERTOS\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)

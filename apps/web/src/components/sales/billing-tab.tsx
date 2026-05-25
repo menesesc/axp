@@ -19,36 +19,56 @@ import {
   Cell,
 } from 'recharts'
 
+type BillingKey =
+  | 'facturaAElectronica'
+  | 'facturaBElectronica'
+  | 'facturaB'
+  | 'notaCreditoAElectronica'
+  | 'notaCreditoBElectronica'
+  | 'notaCreditoB'
+
 interface BillingResp {
-  total: number
+  totalNeto: number
+  totalFacturas: number
+  totalNotasCredito: number
   series: Array<{
     fecha: string
     facturaAElectronica: number
     facturaBElectronica: number
     facturaB: number
-    total: number
+    notaCreditoAElectronica: number
+    notaCreditoBElectronica: number
+    notaCreditoB: number
+    totalFacturas: number
+    totalNotasCredito: number
+    totalNeto: number
   }>
   breakdown: Array<{
     tipo: string
-    key: 'facturaAElectronica' | 'facturaBElectronica' | 'facturaB'
+    key: BillingKey
     importe: number
     cantidad: number
     porcentaje: number
+    kind: 'factura' | 'credito'
   }>
 }
-
-type BillingKey = 'facturaAElectronica' | 'facturaBElectronica' | 'facturaB'
 
 const COLORS: Record<BillingKey, string> = {
   facturaAElectronica: '#0ea5e9',
   facturaBElectronica: '#6366f1',
   facturaB: '#f59e0b',
+  notaCreditoAElectronica: '#fb7185',
+  notaCreditoBElectronica: '#f43f5e',
+  notaCreditoB: '#e11d48',
 }
 
 const LABELS: Record<BillingKey, string> = {
   facturaAElectronica: 'Factura A elec.',
   facturaBElectronica: 'Factura B elec.',
   facturaB: 'Factura B',
+  notaCreditoAElectronica: 'N. Crédito A elec.',
+  notaCreditoBElectronica: 'N. Crédito B elec.',
+  notaCreditoB: 'N. Crédito B',
 }
 
 export function BillingTab() {
@@ -68,13 +88,22 @@ export function BillingTab() {
 
   const breakdown = data?.breakdown ?? []
   const series = data?.series ?? []
-  const total = data?.total ?? 0
-  const totalCant = breakdown.reduce((s, b) => s + b.cantidad, 0)
+  const totalNeto = data?.totalNeto ?? 0
+  const totalFacturas = data?.totalFacturas ?? 0
+  const totalNC = data?.totalNotasCredito ?? 0
 
-  const hasData = total > 0
+  const facturas = breakdown.filter((b) => b.kind === 'factura')
+  const ncActivas = breakdown.filter((b) => b.kind === 'credito' && Math.abs(b.importe) > 0.01)
+  const totalCantFacturas = facturas.reduce((s, b) => s + b.cantidad, 0)
+  const totalCantNC = ncActivas.reduce((s, b) => s + b.cantidad, 0)
 
-  // Datos para el pie: filtramos los que tienen importe > 0 para no mostrar slices vacíos
-  const pieData = breakdown.filter((b) => b.importe > 0)
+  const hasData = totalFacturas > 0
+
+  // Pie: solo facturas positivas
+  const pieData = facturas.filter((b) => b.importe > 0)
+
+  // ¿Mostrar líneas de NC en el chart? Solo si hubo NC.
+  const showNcLines = ncActivas.length > 0
 
   return (
     <div className="space-y-4">
@@ -93,10 +122,15 @@ export function BillingTab() {
         </div>
       ) : (
         <>
-          {/* KPIs por tipo */}
+          {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KPI label="Total facturado" value={fmtAR(total)} subtitle={`${fmtNumAR(totalCant)} comprobantes`} highlight />
-            {breakdown.map((b) => (
+            <KPI
+              label="Total neto"
+              value={fmtAR(totalNeto)}
+              subtitle={totalNC < 0 ? `Bruto ${fmtAR(totalFacturas)} − NC ${fmtAR(-totalNC)}` : `${fmtNumAR(totalCantFacturas)} comprobantes`}
+              highlight
+            />
+            {facturas.map((b) => (
               <KPI
                 key={b.key}
                 label={b.tipo}
@@ -108,7 +142,7 @@ export function BillingTab() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Gráfico de líneas (1 línea por tipo) */}
+            {/* Gráfico de líneas */}
             <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-4">
               <h3 className="text-sm font-medium text-slate-700 mb-3">Facturación diaria por tipo</h3>
               <div style={{ width: '100%', height: 320 }}>
@@ -122,38 +156,36 @@ export function BillingTab() {
                       formatter={((v: number, name: string) => [fmtAR(v), name]) as never}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="facturaAElectronica"
-                      name={LABELS.facturaAElectronica}
-                      stroke={COLORS.facturaAElectronica}
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="facturaBElectronica"
-                      name={LABELS.facturaBElectronica}
-                      stroke={COLORS.facturaBElectronica}
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="facturaB"
-                      name={LABELS.facturaB}
-                      stroke={COLORS.facturaB}
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
+                    {facturas.map((b) => (
+                      <Line
+                        key={b.key}
+                        type="monotone"
+                        dataKey={b.key}
+                        name={LABELS[b.key]}
+                        stroke={COLORS[b.key]}
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                      />
+                    ))}
+                    {showNcLines && (
+                      <Line
+                        type="monotone"
+                        dataKey="totalNotasCredito"
+                        name="Notas de crédito"
+                        stroke="#e11d48"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        dot={{ r: 2 }}
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Pie chart */}
+            {/* Pie chart (solo facturas) */}
             <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-medium text-slate-700 mb-3">Distribución</h3>
+              <h3 className="text-sm font-medium text-slate-700 mb-3">Distribución (facturas)</h3>
               <div style={{ width: '100%', height: 240 }}>
                 <ResponsiveContainer>
                   <PieChart>
@@ -189,7 +221,7 @@ export function BillingTab() {
             </div>
           </div>
 
-          {/* Tabla con importe + porcentaje */}
+          {/* Tabla */}
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
@@ -201,7 +233,7 @@ export function BillingTab() {
                 </tr>
               </thead>
               <tbody>
-                {breakdown.map((b) => (
+                {facturas.map((b) => (
                   <tr key={b.key} className="border-b border-slate-100">
                     <td className="px-4 py-2.5">
                       <span className="inline-block w-2.5 h-2.5 rounded-sm mr-2 align-middle" style={{ background: COLORS[b.key] }} />
@@ -223,10 +255,41 @@ export function BillingTab() {
                   </tr>
                 ))}
                 <tr className="bg-slate-50 font-medium">
-                  <td className="px-4 py-2.5 text-slate-700">Total</td>
-                  <td className="px-4 py-2.5 text-right text-slate-700">{fmtNumAR(totalCant)}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(total)}</td>
+                  <td className="px-4 py-2.5 text-slate-700">Subtotal facturas</td>
+                  <td className="px-4 py-2.5 text-right text-slate-700">{fmtNumAR(totalCantFacturas)}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(totalFacturas)}</td>
                   <td className="px-4 py-2.5 text-right text-slate-500">100%</td>
+                </tr>
+
+                {ncActivas.length > 0 && (
+                  <>
+                    {ncActivas.map((b) => (
+                      <tr key={b.key} className="border-b border-slate-100">
+                        <td className="px-4 py-2.5">
+                          <span className="inline-block w-2.5 h-2.5 rounded-sm mr-2 align-middle" style={{ background: COLORS[b.key] }} />
+                          <span className="text-rose-700">{b.tipo}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(b.cantidad)}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-rose-700">{fmtAR(b.importe)}</td>
+                        <td className="px-4 py-2.5 text-right text-rose-600 text-xs">
+                          {Math.round(b.porcentaje)}% s/facturado
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-rose-50/60 font-medium">
+                      <td className="px-4 py-2.5 text-rose-700">Subtotal notas de crédito</td>
+                      <td className="px-4 py-2.5 text-right text-rose-700">{fmtNumAR(totalCantNC)}</td>
+                      <td className="px-4 py-2.5 text-right text-rose-700">{fmtAR(totalNC)}</td>
+                      <td className="px-4 py-2.5" />
+                    </tr>
+                  </>
+                )}
+
+                <tr className="bg-emerald-50/60 font-semibold border-t-2 border-emerald-200">
+                  <td className="px-4 py-2.5 text-emerald-800">Total neto facturado</td>
+                  <td className="px-4 py-2.5 text-right text-emerald-800">{fmtNumAR(totalCantFacturas + totalCantNC)}</td>
+                  <td className="px-4 py-2.5 text-right text-emerald-800">{fmtAR(totalNeto)}</td>
+                  <td className="px-4 py-2.5" />
                 </tr>
               </tbody>
             </table>
