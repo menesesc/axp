@@ -24,6 +24,41 @@ model clientes {
   processing_logs  processing_logs[]
   email_templates  email_templates[]
   ai_usage_logs    ai_usage_logs[]
+  sales_closures        sales_closures[]
+  sales_product_master  sales_product_master[]
+  ventas           ventas[]
+}
+
+model ventas {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId     String        @db.Uuid
+  fecha         DateTime      @db.Date
+  nroDocumento  String?       @db.VarChar(100)
+  tipoDoc       String?       @db.VarChar(50)
+  clienteNombre String?       @db.VarChar(255)
+  formaPago     String?       @db.VarChar(100)
+  subtotal      Decimal?      @db.Decimal(14, 2)
+  total         Decimal?      @db.Decimal(14, 2)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  clientes      clientes      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  venta_items   venta_items[]
+
+  @@index([clienteId, fecha])
+  @@index([clienteId, nroDocumento])
+}
+
+model venta_items {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ventaId        String   @db.Uuid
+  linea          Int
+  descripcion    String   @db.Text
+  cantidad       Decimal? @db.Decimal(14, 3)
+  precioUnitario Decimal? @db.Decimal(14, 2)
+  subtotal       Decimal? @db.Decimal(14, 2)
+  ventas         ventas   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+
+  @@index([ventaId])
 }
 
 model documento_items {
@@ -348,4 +383,173 @@ model ai_usage_logs {
 
   @@index([clienteId, createdAt(sort: Desc)])
   @@index([documentoId])
+}
+
+// =====================================================
+// MODULO: VENTAS / CIERRES DE CAJA MAXIREST
+// =====================================================
+
+enum TurnoNombre {
+  ALMUERZO
+  CENA
+  OTRO
+}
+
+enum MovimientoTipo {
+  INGRESO
+  EGRESO
+}
+
+model sales_closures {
+  id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId           String      @db.Uuid
+  fecha               DateTime    @db.Date
+  nroCierre           Int
+  turnoNombre         TurnoNombre @default(OTRO)
+  turnoNumero         Int?
+  sucursal            String?     @db.VarChar(100)
+  empresaNombre       String?     @db.VarChar(255)
+  cuit                String?     @db.VarChar(11)
+  domicilio           String?     @db.VarChar(255)
+  usuarioApertura     String?     @db.VarChar(50)
+  horaApertura        String?     @db.VarChar(8)
+  usuarioCierre       String?     @db.VarChar(50)
+  horaCierre          String?     @db.VarChar(8)
+  totalIngresos       Decimal?    @db.Decimal(14, 2)
+  totalEgresos        Decimal?    @db.Decimal(14, 2)
+  saldoCaja           Decimal?    @db.Decimal(14, 2)
+  totalVentas         Decimal?    @db.Decimal(14, 2)
+  cantTickets         Int?
+  efectivo            Decimal?    @db.Decimal(14, 2)
+  ctaCte              Decimal?    @db.Decimal(14, 2)
+  tarjetas            Decimal?    @db.Decimal(14, 2)
+  descuentoTotal      Decimal?    @db.Decimal(14, 2)
+  cantCubiertos       Decimal?    @db.Decimal(10, 2)
+  promedioCubierto    Decimal?    @db.Decimal(14, 2)
+  netoGravado         Decimal?    @db.Decimal(14, 2)
+  ivaTotal            Decimal?    @db.Decimal(14, 2)
+  pdfR2Key            String?     @db.VarChar(500)
+  rawText             String?     @db.Text
+  source              String      @default("EMAIL") @db.VarChar(20)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+
+  clientes            clientes                  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  payments            sales_closure_payments[]
+  items               sales_closure_items[]
+  waiters             sales_closure_waiters[]
+  movements           sales_closure_movements[]
+
+  @@unique([clienteId, fecha, nroCierre])
+  @@index([clienteId, fecha])
+  @@index([clienteId, sucursal, fecha])
+}
+
+model sales_closure_payments {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId   String          @db.Uuid
+  formaCobro  String          @db.VarChar(100)
+  sigla       String?         @db.VarChar(10)
+  total       Decimal         @db.Decimal(14, 2)
+  cantidad    Int             @default(0)
+  closure     sales_closures  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+
+  @@index([closureId])
+  @@index([formaCobro])
+}
+
+model sales_closure_items {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId       String                @db.Uuid
+  productMasterId String?               @db.Uuid
+  rubroCodigo     String?               @db.VarChar(10)
+  rubroNombre     String?               @db.VarChar(100)
+  codigo          String                @db.VarChar(20)
+  nombre          String                @db.VarChar(255)
+  unidades        Decimal               @db.Decimal(14, 3)
+  importe         Decimal               @db.Decimal(14, 2)
+  closure         sales_closures        @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  productMaster   sales_product_master? @relation(fields: [productMasterId], references: [id], onDelete: SetNull)
+
+  @@index([closureId])
+  @@index([productMasterId])
+  @@index([codigo])
+  @@index([rubroCodigo])
+}
+
+model sales_closure_waiters {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId     String          @db.Uuid
+  codigo        String          @db.VarChar(20)
+  nombre        String          @db.VarChar(150)
+  importe       Decimal         @db.Decimal(14, 2)
+  cantVentas    Int             @default(0)
+  cantCubiertos Int             @default(0)
+  closure       sales_closures  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+
+  @@index([closureId])
+  @@index([codigo])
+}
+
+model sales_closure_movements {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId       String          @db.Uuid
+  tipo            MovimientoTipo
+  conceptoCodigo  String          @db.VarChar(50)
+  detalle         String          @db.VarChar(255)
+  total           Decimal         @db.Decimal(14, 2)
+  closure         sales_closures  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+
+  @@index([closureId])
+}
+
+model sales_product_master {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId       String                  @db.Uuid
+  codigoMaxirest  String                  @db.VarChar(20)
+  nombre          String                  @db.VarChar(255)
+  rubroCodigo     String?                 @db.VarChar(10)
+  rubroNombre     String?                 @db.VarChar(100)
+  activo          Boolean                 @default(true)
+  lastSeenAt      DateTime?               @db.Timestamptz(3)
+  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
+
+  clientes        clientes                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  closureItems    sales_closure_items[]
+  recipes         sales_recipes[]
+
+  @@unique([clienteId, codigoMaxirest])
+  @@index([clienteId])
+  @@index([clienteId, rubroCodigo])
+}
+
+model sales_recipes {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productMasterId String                  @db.Uuid
+  version         Int                     @default(1)
+  activa          Boolean                 @default(true)
+  notas           String?                 @db.Text
+  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
+
+  productMaster   sales_product_master    @relation(fields: [productMasterId], references: [id], onDelete: Cascade)
+  ingredients     sales_recipe_items[]
+
+  @@unique([productMasterId, version])
+  @@index([productMasterId, activa])
+}
+
+model sales_recipe_items {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId          String          @db.Uuid
+  itemDescripcion   String          @db.VarChar(255)
+  itemCompraId      String?         @db.Uuid
+  cantidad          Decimal         @db.Decimal(14, 4)
+  unidad            String          @db.VarChar(10)
+  mermaPct          Decimal         @default(0) @db.Decimal(5, 2)
+  notas             String?         @db.Text
+  recipe            sales_recipes   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId])
 }

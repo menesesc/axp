@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveSender } from '@/lib/email/resolve-sender'
 import { uploadToR2 } from '@/lib/r2/client'
 import { prisma } from '@/lib/prisma'
+import { ingestMaxirestPdf, isMaxirestEmail } from '@/lib/sales/maxirest-ingest'
 import crypto from 'crypto'
 
 /**
@@ -66,7 +67,59 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, processed: 0 })
     }
 
-    // Resolve sender to client
+    // Rama Maxirest: cierres de caja del POS gastronómico.
+    // Detección por sender oficial o por subject (permite reenvíos manuales desde cualquier email).
+    // Identificación de cliente por CUIT del PDF (no requiere usuarios.email match).
+    if (isMaxirestEmail({ from, subject })) {
+      const results: Array<{ filename: string; status: string; message: string; nroCierre?: number | undefined }> = []
+      let okCount = 0
+      let firstClienteId: string | undefined
+      for (const att of pdfAttachments) {
+        const pdfBuffer = Buffer.from(att.content, 'base64')
+        const r = await ingestMaxirestPdf(pdfBuffer, {
+          source: 'EMAIL',
+          forwardedBy: from,
+          filename: att.filename,
+        })
+        results.push({
+          filename: att.filename,
+          status: r.status,
+          message: r.message,
+          nroCierre: r.nroCierre,
+        })
+        if (r.status === 'OK') {
+          okCount++
+          if (!firstClienteId && r.clienteId) firstClienteId = r.clienteId
+        }
+        if (r.clienteId) {
+          await prisma.processing_logs.create({
+            data: {
+              cliente_id: r.clienteId,
+              level: r.status === 'OK' ? 'INFO' : 'WARN',
+              source: 'EMAIL_INBOUND_MAXIREST',
+              message: r.message,
+              details: {
+                from,
+                subject,
+                filename: att.filename,
+                nroCierre: r.nroCierre,
+                fecha: r.fecha,
+                status: r.status,
+              },
+            },
+          }).catch(() => {})
+        }
+      }
+      return NextResponse.json({
+        received: true,
+        processed: okCount,
+        total: pdfAttachments.length,
+        flow: 'MAXIREST',
+        results,
+      })
+    }
+
+    // Resolve sender to client (flujo normal)
     const resolved = await resolveSender(from)
 
     if (!resolved) {

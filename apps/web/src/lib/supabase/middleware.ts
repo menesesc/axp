@@ -44,7 +44,9 @@ export async function updateSession(request: NextRequest) {
   const isPublicPath =
     publicPaths.has(pathname) ||
     pathname.startsWith('/demo/') ||
-    pathname === '/api/lead'
+    pathname === '/api/lead' ||
+    // Webhooks server-to-server (validan firma propia, no sesión Supabase)
+    pathname === '/api/email/inbound'
 
   // Si no hay usuario y no es una ruta pública, redirigir a login
   if (!user && !isPublicPath) {
