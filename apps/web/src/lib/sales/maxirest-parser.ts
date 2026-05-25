@@ -64,6 +64,12 @@ export interface ParsedResumen {
   efectivo: number | null
   ctaCte: number | null
   tarjetas: number | null
+  facturaAElectronica: number | null
+  cantFacturaAElectronica: number | null
+  facturaBElectronica: number | null
+  cantFacturaBElectronica: number | null
+  facturaB: number | null
+  cantFacturaB: number | null
   descuentoTotal: number | null
   cantCubiertos: number | null
   promedioCubierto: number | null
@@ -297,6 +303,12 @@ function parseResumen(section: string): ParsedResumen {
     efectivo: null,
     ctaCte: null,
     tarjetas: null,
+    facturaAElectronica: null,
+    cantFacturaAElectronica: null,
+    facturaBElectronica: null,
+    cantFacturaBElectronica: null,
+    facturaB: null,
+    cantFacturaB: null,
     descuentoTotal: null,
     cantCubiertos: null,
     promedioCubierto: null,
@@ -310,6 +322,12 @@ function parseResumen(section: string): ParsedResumen {
     return parseNumber(g(m, 1))
   }
 
+  function matchPair(rx: RegExp): { total: number; cant: number } | null {
+    const m = section.match(rx)
+    if (!m) return null
+    return { total: parseNumber(g(m, 1)), cant: parseInt(g(m, 2), 10) }
+  }
+
   const totalLine = section.match(/^\s*TOTAL\s+(\d+(?:\.\d+)?)\s+(\d+)\s*$/m)
   if (totalLine) {
     out.totalVentas = parseNumber(g(totalLine, 1))
@@ -319,6 +337,17 @@ function parseResumen(section: string): ParsedResumen {
   out.efectivo = matchSingle(/^\s*Efectivo\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)
   out.ctaCte = matchSingle(/^\s*Cta\.?\s*Cte\.?\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)
   out.tarjetas = matchSingle(/^\s*Tarjetas\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)
+
+  // Tipos de facturación (RESUMEN DE VENTAS). En el PDF aparece truncado "ELECTRÓNIC".
+  const facA = matchPair(/^\s*Factura\s+A\s+ELECTR[ÓO]NIC[A]?\s+(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
+  if (facA) { out.facturaAElectronica = facA.total; out.cantFacturaAElectronica = facA.cant }
+  const facBe = matchPair(/^\s*Factura\s+B\s+ELECTR[ÓO]NIC[A]?\s+(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
+  if (facBe) { out.facturaBElectronica = facBe.total; out.cantFacturaBElectronica = facBe.cant }
+  // Factura B (papel): misma línea SIN "ELECTRÓNIC". El regex no matchea las otras dos
+  // porque tras "B " viene texto "ELECTRÓNIC" en vez de dígitos.
+  const facB = matchPair(/^\s*Factura\s+B\s+(\d+(?:\.\d+)?)\s+(\d+)\s*$/im)
+  if (facB) { out.facturaB = facB.total; out.cantFacturaB = facB.cant }
+
   out.descuentoTotal = matchSingle(/^\s*\d+\.Descuento\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)
   out.cantCubiertos = matchSingle(/^\s*TOTAL CUBIERTOS\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)
   out.promedioCubierto = matchSingle(/^\s*Promedio por cubiert\S*\s+(\d+(?:\.\d+)?)\s+\d+\s*$/m)

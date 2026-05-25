@@ -54,6 +54,15 @@ describe('parseMaxirestClosure', () => {
     expect(parsed.resumen.descuentoTotal).toBe(122400)
   })
 
+  test('resumen: tipos de facturación (A elec, B elec, B)', () => {
+    expect(parsed.resumen.facturaAElectronica).toBeNull()
+    expect(parsed.resumen.cantFacturaAElectronica).toBeNull()
+    expect(parsed.resumen.facturaBElectronica).toBe(2785700)
+    expect(parsed.resumen.cantFacturaBElectronica).toBe(23)
+    expect(parsed.resumen.facturaB).toBe(1092400)
+    expect(parsed.resumen.cantFacturaB).toBe(15)
+  })
+
   test('pagos: 7 formas de cobro', () => {
     expect(parsed.pagos).toHaveLength(7)
     const efectivo = parsed.pagos.find((p) => p.formaCobro === 'Efectivo')

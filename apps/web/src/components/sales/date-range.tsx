@@ -62,6 +62,14 @@ export function DateRange({ from, to, onChange, sucursales, sucursal, onSucursal
           type="button"
           variant="outline"
           size="sm"
+          onClick={() => onChange({ from: daysAgo(1), to: daysAgo(1) })}
+        >
+          Ayer
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
           onClick={() => onChange({ from: daysAgo(6), to: todayIso() })}
         >
           7d

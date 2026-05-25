@@ -233,7 +233,7 @@ function RubroBlock({
     <>
       <tr className="bg-slate-50/70">
         <td className="px-3 py-1.5 text-slate-600 font-medium" colSpan={3}>{rubro}</td>
-        <td className="px-3 py-1.5 text-right text-slate-500">{fmtNumAR(totalUnid, 1)}</td>
+        <td className="px-3 py-1.5 text-right text-slate-500">{fmtNumAR(totalUnid)}</td>
         <td className="px-3 py-1.5 text-right text-slate-700 font-medium">{fmtAR(totalImporte)}</td>
       </tr>
       {items.map((it) => (
@@ -241,7 +241,7 @@ function RubroBlock({
           <td className="px-3 py-1.5" />
           <td className="px-3 py-1.5 text-slate-400">{it.codigo}</td>
           <td className="px-3 py-1.5 text-slate-700">{it.nombre}</td>
-          <td className="px-3 py-1.5 text-right text-slate-600">{fmtNumAR(Number(it.unidades), 1)}</td>
+          <td className="px-3 py-1.5 text-right text-slate-600">{fmtNumAR(Number(it.unidades))}</td>
           <td className="px-3 py-1.5 text-right text-slate-700">{fmtAR(it.importe)}</td>
         </tr>
       ))}

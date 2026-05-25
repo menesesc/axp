@@ -4,8 +4,8 @@ import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { DateRange } from './date-range'
-import { fmtAR, fmtNumAR, fmtFecha } from './shared'
-import { AlertTriangle, Trash2, Tag, FileText, Loader2 } from 'lucide-react'
+import { fmtAR, fmtNumAR, fmtFecha, useSort, type SortDir } from './shared'
+import { AlertTriangle, Trash2, Tag, FileText, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface SummaryResp {
@@ -123,6 +123,25 @@ export function AuditTab() {
   }
 
   const totals = summary?.totals ?? {}
+
+  const eventsList = events?.events ?? []
+  type SortKey = 'fecha' | 'hora' | 'tipo' | 'mesa' | 'mozo' | 'detalle' | 'monto'
+  const getValue = (e: AuditEvent, k: SortKey): number | string => {
+    switch (k) {
+      case 'fecha': return e.fechaCierre ?? ''
+      case 'hora': return e.hora ?? ''
+      case 'tipo': return e.tipo
+      case 'mesa': return e.mesa ?? ''
+      case 'mozo': return e.mozo ?? ''
+      case 'detalle': return e.productoNombre ?? e.detalle ?? ''
+      case 'monto': return e.monto ?? 0
+    }
+  }
+  const { sorted: sortedEvents, sort, toggle } = useSort<AuditEvent, SortKey>(
+    eventsList,
+    getValue,
+    { key: 'fecha', dir: 'desc' }
+  )
 
   return (
     <div className="space-y-4">
@@ -276,17 +295,17 @@ export function AuditTab() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Fecha</th>
-                  <th className="text-left px-4 py-2 font-medium">Hora</th>
-                  <th className="text-left px-4 py-2 font-medium">Tipo</th>
-                  <th className="text-left px-4 py-2 font-medium">Mesa</th>
-                  <th className="text-left px-4 py-2 font-medium">Mozo</th>
-                  <th className="text-left px-4 py-2 font-medium">Detalle</th>
-                  <th className="text-right px-4 py-2 font-medium">Monto</th>
+                  <SortTh label="Fecha" k="fecha" sort={sort} onToggle={toggle} />
+                  <SortTh label="Hora" k="hora" sort={sort} onToggle={toggle} />
+                  <SortTh label="Tipo" k="tipo" sort={sort} onToggle={toggle} />
+                  <SortTh label="Mesa" k="mesa" sort={sort} onToggle={toggle} />
+                  <SortTh label="Mozo" k="mozo" sort={sort} onToggle={toggle} />
+                  <SortTh label="Detalle" k="detalle" sort={sort} onToggle={toggle} />
+                  <SortTh label="Monto" k="monto" sort={sort} onToggle={toggle} align="right" />
                 </tr>
               </thead>
               <tbody>
-                {events.events.map((e) => (
+                {sortedEvents.map((e) => (
                   <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50/60">
                     <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
                       {e.fechaCierre ? fmtFecha(e.fechaCierre) : '—'}
@@ -379,4 +398,39 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-slate-400 text-center py-3">{children}</p>
+}
+
+function SortTh<K extends string>({
+  label,
+  k,
+  sort,
+  onToggle,
+  align,
+}: {
+  label: string
+  k: K
+  sort: { key: K; dir: SortDir }
+  onToggle: (k: K) => void
+  align?: 'right' | 'left'
+}) {
+  const active = sort.key === k
+  const cls = align === 'right' ? 'text-right' : 'text-left'
+  return (
+    <th className={`px-4 py-2 font-medium ${cls}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(k)}
+        className={`inline-flex items-center gap-1 hover:text-slate-700 ${
+          active ? 'text-slate-700' : ''
+        } ${align === 'right' ? 'flex-row-reverse' : ''}`}
+      >
+        <span>{label}</span>
+        {active ? (
+          sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <span className="w-3" />
+        )}
+      </button>
+    </th>
+  )
 }

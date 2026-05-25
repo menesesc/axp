@@ -102,7 +102,7 @@ export function PaymentsTab() {
                     </td>
                     <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(p.cantidad)}</td>
                     <td className="px-4 py-2.5 text-right font-medium text-slate-800">{fmtAR(p.total)}</td>
-                    <td className="px-4 py-2.5 text-right text-slate-600">{p.porcentaje.toFixed(1)}%</td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">{Math.round(p.porcentaje)}%</td>
                   </tr>
                 ))}
               </tbody>

@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
-import { fmtAR, fmtFecha, defaultRange } from './shared'
+import { fmtAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange } from './shared'
 import { Sun, Moon } from 'lucide-react'
 import {
   LineChart,
@@ -81,10 +81,10 @@ export function ByShiftTab() {
         ) : (
           <div style={{ width: '100%', height: 360 }}>
             <ResponsiveContainer>
-              <LineChart data={series}>
+              <LineChart data={series} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
                 <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => fmtAR(v).replace(/[ $]/g, '').trim()} tick={{ fontSize: 11 }} />
+                <XAxis dataKey="fecha" tickFormatter={fmtFechaShort} tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={fmtCompactAR} tick={{ fontSize: 11 }} width={56} />
                 <Tooltip
                   labelFormatter={(l) => fmtFecha(String(l))}
                   formatter={((v: number, name: string) => [fmtAR(v), name]) as never}

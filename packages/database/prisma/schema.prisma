@@ -425,6 +425,12 @@ model sales_closures {
   efectivo            Decimal?    @db.Decimal(14, 2)
   ctaCte              Decimal?    @db.Decimal(14, 2)
   tarjetas            Decimal?    @db.Decimal(14, 2)
+  facturaAElectronica     Decimal? @db.Decimal(14, 2)
+  cantFacturaAElectronica Int?
+  facturaBElectronica     Decimal? @db.Decimal(14, 2)
+  cantFacturaBElectronica Int?
+  facturaB                Decimal? @db.Decimal(14, 2)
+  cantFacturaB            Int?
   descuentoTotal      Decimal?    @db.Decimal(14, 2)
   cantCubiertos       Decimal?    @db.Decimal(10, 2)
   promedioCubierto    Decimal?    @db.Decimal(14, 2)

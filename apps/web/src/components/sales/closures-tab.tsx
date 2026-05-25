@@ -3,10 +3,11 @@
 import { useState, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { Upload, Receipt, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { Upload, Receipt, ChevronDown, ChevronUp, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
+import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip } from 'recharts'
 import { DateRange } from './date-range'
-import { fmtAR, fmtNumAR, fmtFecha, defaultRange, TURNO_LABEL, TURNO_BADGE } from './shared'
+import { fmtAR, fmtNumAR, fmtFecha, defaultRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
 import { ClosureDetail } from './closure-detail'
 
 interface ClosureRow {
@@ -25,6 +26,8 @@ interface ClosureRow {
   tarjetas: string | null
   source: string
 }
+
+type SortKey = 'fecha' | 'turno' | 'nroCierre' | 'tickets' | 'cubiertos' | 'ticketProm' | 'total'
 
 export function ClosuresTab() {
   const queryClient = useQueryClient()
@@ -57,6 +60,7 @@ export function ClosuresTab() {
   })
 
   const closures = data?.closures ?? []
+
   const totals = useMemo(() => {
     return closures.reduce(
       (acc, c) => ({
@@ -67,6 +71,40 @@ export function ClosuresTab() {
       { ventas: 0, tickets: 0, cubiertos: 0 }
     )
   }, [closures])
+
+  // Series diarias para sparklines (cierres por día, tickets por día, cubiertos por día)
+  const daily = useMemo(() => {
+    const map = new Map<string, { fecha: string; cierres: number; tickets: number; cubiertos: number }>()
+    for (const c of closures) {
+      const key = c.fecha.slice(0, 10)
+      const cur = map.get(key) ?? { fecha: key, cierres: 0, tickets: 0, cubiertos: 0 }
+      cur.cierres += 1
+      cur.tickets += c.cantTickets ?? 0
+      cur.cubiertos += Number(c.cantCubiertos ?? 0)
+      map.set(key, cur)
+    }
+    return Array.from(map.values()).sort((a, b) => a.fecha.localeCompare(b.fecha))
+  }, [closures])
+
+  const getValue = (c: ClosureRow, k: SortKey): number | string => {
+    switch (k) {
+      case 'fecha': return c.fecha
+      case 'turno': return `${c.turnoNumero ?? 0}-${c.turnoNombre}`
+      case 'nroCierre': return c.nroCierre
+      case 'tickets': return c.cantTickets ?? 0
+      case 'cubiertos': return Number(c.cantCubiertos ?? 0)
+      case 'ticketProm':
+        return c.cantTickets && c.cantTickets > 0
+          ? Number(c.totalVentas ?? 0) / c.cantTickets
+          : 0
+      case 'total': return Number(c.totalVentas ?? 0)
+    }
+  }
+  const { sorted, sort, toggle } = useSort<ClosureRow, SortKey>(
+    closures,
+    getValue,
+    { key: 'fecha', dir: 'desc' }
+  )
 
   async function handleUpload(file: File) {
     setUploading(true)
@@ -142,9 +180,27 @@ export function ClosuresTab() {
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-3">
-        <KPI label="Cierres" value={fmtNumAR(closures.length)} />
-        <KPI label="Tickets" value={fmtNumAR(totals.tickets)} />
-        <KPI label="Cubiertos" value={fmtNumAR(totals.cubiertos)} />
+        <KPI
+          label="Cierres"
+          value={fmtNumAR(closures.length)}
+          series={daily}
+          dataKey="cierres"
+          color="#6366f1"
+        />
+        <KPI
+          label="Tickets"
+          value={fmtNumAR(totals.tickets)}
+          series={daily}
+          dataKey="tickets"
+          color="#0ea5e9"
+        />
+        <KPI
+          label="Cubiertos"
+          value={fmtNumAR(totals.cubiertos)}
+          series={daily}
+          dataKey="cubiertos"
+          color="#f59e0b"
+        />
         <KPI label="Ventas totales" value={fmtAR(totals.ventas)} highlight />
       </div>
 
@@ -165,22 +221,21 @@ export function ClosuresTab() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
               <tr>
-                <Th>Fecha</Th>
-                <Th>Turno</Th>
-                <Th>Cierre #</Th>
-                <Th>Sucursal</Th>
-                <Th align="right">Tickets</Th>
-                <Th align="right">Cubiertos</Th>
-                <Th align="right">Ticket prom.</Th>
-                <Th align="right">Total</Th>
-                <Th />
+                <SortTh label="Fecha" k="fecha" sort={sort} onToggle={toggle} />
+                <SortTh label="Turno" k="turno" sort={sort} onToggle={toggle} />
+                <SortTh label="Cierre #" k="nroCierre" sort={sort} onToggle={toggle} />
+                <SortTh label="Tickets" k="tickets" sort={sort} onToggle={toggle} align="right" />
+                <SortTh label="Cubiertos" k="cubiertos" sort={sort} onToggle={toggle} align="right" />
+                <SortTh label="Ticket prom." k="ticketProm" sort={sort} onToggle={toggle} align="right" />
+                <SortTh label="Total" k="total" sort={sort} onToggle={toggle} align="right" />
+                <th className="px-4 py-3 w-8" />
               </tr>
             </thead>
             <tbody>
-              {closures.map((c) => {
+              {sorted.map((c) => {
                 const expanded = expandedId === c.id
                 return (
-                  <ClosureRow
+                  <ClosureRowItem
                     key={c.id}
                     row={c}
                     expanded={expanded}
@@ -196,23 +251,93 @@ export function ClosuresTab() {
   )
 }
 
-function KPI({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function KPI({
+  label,
+  value,
+  highlight,
+  series,
+  dataKey,
+  color,
+}: {
+  label: string
+  value: string
+  highlight?: boolean
+  series?: Array<{ fecha: string; cierres: number; tickets: number; cubiertos: number }>
+  dataKey?: 'cierres' | 'tickets' | 'cubiertos'
+  color?: string
+}) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
       <p className="text-xs text-slate-500">{label}</p>
       <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-emerald-700' : 'text-slate-800'}`}>
         {value}
       </p>
+      {series && dataKey && series.length > 1 && (
+        <div className="mt-2 h-10 -mx-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={series} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+              <Line
+                type="monotone"
+                dataKey={dataKey}
+                stroke={color ?? '#6366f1'}
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <RTooltip
+                cursor={false}
+                contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
+                labelFormatter={(l) => fmtFecha(String(l))}
+                formatter={((v: number) => [fmtNumAR(v), label]) as never}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   )
 }
 
-function Th({ children, align }: { children?: React.ReactNode; align?: 'right' | 'left' | 'center' }) {
-  const cls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-  return <th className={`px-4 py-3 font-medium ${cls}`}>{children}</th>
+function SortTh<K extends string>({
+  label,
+  k,
+  sort,
+  onToggle,
+  align,
+}: {
+  label: string
+  k: K
+  sort: { key: K; dir: SortDir }
+  onToggle: (k: K) => void
+  align?: 'right' | 'left'
+}) {
+  const active = sort.key === k
+  const cls = align === 'right' ? 'text-right' : 'text-left'
+  return (
+    <th className={`px-4 py-3 font-medium ${cls}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(k)}
+        className={`inline-flex items-center gap-1 hover:text-slate-700 ${
+          active ? 'text-slate-700' : ''
+        } ${align === 'right' ? 'flex-row-reverse' : ''}`}
+      >
+        <span>{label}</span>
+        {active ? (
+          sort.dir === 'asc' ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <span className="w-3" />
+        )}
+      </button>
+    </th>
+  )
 }
 
-function ClosureRow({
+function ClosureRowItem({
   row,
   expanded,
   onToggle,
@@ -238,7 +363,6 @@ function ClosureRow({
           </span>
         </td>
         <td className="px-4 py-3 text-slate-600">#{row.nroCierre}</td>
-        <td className="px-4 py-3 text-slate-600">{row.sucursal ?? '—'}</td>
         <td className="px-4 py-3 text-right text-slate-600">{fmtNumAR(row.cantTickets)}</td>
         <td className="px-4 py-3 text-right text-slate-600">{fmtNumAR(Number(row.cantCubiertos ?? 0))}</td>
         <td className="px-4 py-3 text-right text-slate-600">{fmtAR(ticketProm)}</td>
@@ -249,7 +373,7 @@ function ClosureRow({
       </tr>
       {expanded && (
         <tr className="bg-slate-50 border-b border-slate-100">
-          <td colSpan={9} className="p-0">
+          <td colSpan={8} className="p-0">
             <ClosureDetail closureId={row.id} />
           </td>
         </tr>

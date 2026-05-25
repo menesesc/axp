@@ -5,7 +5,8 @@ export function fmtAR(n: number | string | null | undefined): string {
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
   }).format(num)
 }
 
@@ -36,6 +37,33 @@ export function fmtFecha(iso: string): string {
 }
 
 /**
+ * Versión corta (DD/MM) para ejes de gráficos.
+ */
+export function fmtFechaShort(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      timeZone: 'UTC',
+    })
+  } catch {
+    return iso
+  }
+}
+
+/**
+ * Compactar números grandes para ejes: 1.234.567 → "1,2M", 12.345 → "12k".
+ */
+export function fmtCompactAR(n: number): string {
+  if (n == null || isNaN(n)) return ''
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
+  if (abs >= 1_000) return `${Math.round(n / 1_000)}k`
+  return String(Math.round(n))
+}
+
+/**
  * Devuelve rango de fechas por defecto (últimos 30 días en formato YYYY-MM-DD).
  */
 export function defaultRange(): { from: string; to: string } {
@@ -55,4 +83,47 @@ export const TURNO_BADGE: Record<string, string> = {
   ALMUERZO: 'bg-amber-100 text-amber-700 border-amber-200',
   CENA: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   OTRO: 'bg-slate-100 text-slate-600 border-slate-200',
+}
+
+/**
+ * Hook utilitario de orden por columna para tablas client-side.
+ */
+import { useState, useMemo } from 'react'
+
+export type SortDir = 'asc' | 'desc'
+
+export function useSort<T, K extends string>(
+  items: T[],
+  getValue: (item: T, key: K) => number | string | null | undefined,
+  initial: { key: K; dir: SortDir }
+) {
+  const [sort, setSort] = useState<{ key: K; dir: SortDir }>(initial)
+
+  const sorted = useMemo(() => {
+    const arr = [...items]
+    arr.sort((a, b) => {
+      const va = getValue(a, sort.key)
+      const vb = getValue(b, sort.key)
+      const na = va == null ? '' : va
+      const nb = vb == null ? '' : vb
+      let cmp: number
+      if (typeof na === 'number' && typeof nb === 'number') {
+        cmp = na - nb
+      } else {
+        cmp = String(na).localeCompare(String(nb), 'es', { numeric: true, sensitivity: 'base' })
+      }
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [items, sort, getValue])
+
+  function toggle(key: K) {
+    setSort((s) =>
+      s.key === key
+        ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'asc' }
+    )
+  }
+
+  return { sorted, sort, toggle }
 }

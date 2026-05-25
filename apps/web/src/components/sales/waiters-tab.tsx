@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
-import { fmtAR, fmtNumAR, defaultRange } from './shared'
+import { fmtAR, fmtNumAR, fmtCompactAR, defaultRange } from './shared'
 import { Users } from 'lucide-react'
 import {
   BarChart,
@@ -63,7 +63,7 @@ export function WaitersTab() {
               <ResponsiveContainer>
                 <BarChart data={chartData} layout="vertical" margin={{ left: 30, right: 16 }}>
                   <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                  <XAxis type="number" tickFormatter={(v) => fmtAR(v).replace('$', '').trim()} tick={{ fontSize: 11 }} />
+                  <XAxis type="number" tickFormatter={fmtCompactAR} tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={90} />
                   <Tooltip formatter={((v: number) => fmtAR(v)) as never} />
                   <Bar dataKey="importe" fill="#6366f1" radius={[0, 4, 4, 0]} />
