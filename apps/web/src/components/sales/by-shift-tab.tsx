@@ -3,11 +3,13 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
-import { fmtAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange } from './shared'
+import { fmtAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange, groupByWeekday } from './shared'
 import { Sun, Moon } from 'lucide-react'
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -23,8 +25,11 @@ interface ShiftData {
   cierres: { almuerzo: number; cena: number; otro: number }
 }
 
+type WeekdayMetric = 'avg' | 'total'
+
 export function ByShiftTab() {
   const [{ from, to }, setRange] = useState(defaultRange())
+  const [wdMetric, setWdMetric] = useState<WeekdayMetric>('avg')
 
   const params = useMemo(() => new URLSearchParams({ from, to }).toString(), [from, to])
 
@@ -42,6 +47,25 @@ export function ByShiftTab() {
   const totals = data?.totals ?? { almuerzo: 0, cena: 0, otro: 0, total: 0 }
   const proms = data?.promedioPorTurno ?? { almuerzo: 0, cena: 0, otro: 0 }
   const cierres = data?.cierres ?? { almuerzo: 0, cena: 0, otro: 0 }
+
+  // Agrupar por día de la semana (suma de almuerzo + cena por weekday)
+  const weekdayData = useMemo(() => {
+    const grouped = groupByWeekday(series, ['almuerzo', 'cena', 'otro', 'total'])
+    return grouped.map((g) => {
+      const divisor = wdMetric === 'avg' && g.count > 0 ? g.count : 1
+      return {
+        short: g.short,
+        label: g.label,
+        count: g.count,
+        almuerzo: g.almuerzo / divisor,
+        cena: g.cena / divisor,
+        otro: g.otro / divisor,
+        total: g.total / divisor,
+      }
+    })
+  }, [series, wdMetric])
+
+  const hayWeekdayData = weekdayData.some((d) => d.count > 0)
 
   return (
     <div className="space-y-4">
@@ -110,6 +134,59 @@ export function ByShiftTab() {
             </ResponsiveContainer>
           </div>
         )}
+      </div>
+
+      {/* Gráfico por día de la semana */}
+      <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-slate-700">Ventas por día de la semana</h3>
+          <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+            <button
+              onClick={() => setWdMetric('avg')}
+              className={`px-2.5 py-1 text-xs rounded ${
+                wdMetric === 'avg' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+              }`}
+            >
+              Promedio
+            </button>
+            <button
+              onClick={() => setWdMetric('total')}
+              className={`px-2.5 py-1 text-xs rounded ${
+                wdMetric === 'total' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+              }`}
+            >
+              Total
+            </button>
+          </div>
+        </div>
+        {!hayWeekdayData ? (
+          <div className="p-8 text-center text-slate-400 text-sm">Sin datos para agrupar</div>
+        ) : (
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <BarChart data={weekdayData} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+                <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
+                <XAxis dataKey="short" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={fmtCompactAR} tick={{ fontSize: 11 }} width={56} />
+                <Tooltip
+                  labelFormatter={(_l, payload) => {
+                    const p = payload?.[0]?.payload as { label?: string; count?: number } | undefined
+                    return p ? `${p.label} (${p.count ?? 0} cierres)` : ''
+                  }}
+                  formatter={((v: number, name: string) => [fmtAR(v), name]) as never}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="almuerzo" name="Almuerzo" stackId="d" fill="#f59e0b" />
+                <Bar dataKey="cena" name="Cena" stackId="d" fill="#6366f1" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <p className="text-xs text-slate-400 mt-2">
+          {wdMetric === 'avg'
+            ? 'Promedio = total del día de la semana / cantidad de cierres para ese día.'
+            : 'Suma de ventas para cada día de la semana en el rango seleccionado.'}
+        </p>
       </div>
     </div>
   )

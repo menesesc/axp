@@ -3,11 +3,13 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
-import { fmtAR, fmtNumAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange } from './shared'
+import { fmtAR, fmtNumAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange, groupByWeekday } from './shared'
 import { FileText } from 'lucide-react'
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -71,8 +73,11 @@ const LABELS: Record<BillingKey, string> = {
   notaCreditoB: 'N. Crédito B',
 }
 
+type WeekdayMetric = 'avg' | 'total'
+
 export function BillingTab() {
   const [{ from, to }, setRange] = useState(defaultRange())
+  const [wdMetric, setWdMetric] = useState<WeekdayMetric>('avg')
 
   const params = useMemo(() => new URLSearchParams({ from, to }).toString(), [from, to])
 
@@ -94,6 +99,32 @@ export function BillingTab() {
 
   const facturas = breakdown.filter((b) => b.kind === 'factura')
   const ncActivas = breakdown.filter((b) => b.kind === 'credito' && Math.abs(b.importe) > 0.01)
+
+  // Agrupar por día de la semana
+  const weekdayData = useMemo(() => {
+    const grouped = groupByWeekday(series, [
+      'facturaAElectronica',
+      'facturaBElectronica',
+      'facturaB',
+      'notaCreditoAElectronica',
+      'notaCreditoBElectronica',
+      'notaCreditoB',
+    ])
+    return grouped.map((g) => {
+      const divisor = wdMetric === 'avg' && g.count > 0 ? g.count : 1
+      return {
+        short: g.short,
+        label: g.label,
+        count: g.count,
+        facturaAElectronica: g.facturaAElectronica / divisor,
+        facturaBElectronica: g.facturaBElectronica / divisor,
+        facturaB: g.facturaB / divisor,
+        notasCredito: (g.notaCreditoAElectronica + g.notaCreditoBElectronica + g.notaCreditoB) / divisor,
+      }
+    })
+  }, [series, wdMetric])
+  const hayWeekdayData = weekdayData.some((d) => d.count > 0)
+  const showNcInWeekday = ncActivas.length > 0
   const totalCantFacturas = facturas.reduce((s, b) => s + b.cantidad, 0)
   const totalCantNC = ncActivas.reduce((s, b) => s + b.cantidad, 0)
 
@@ -219,6 +250,63 @@ export function BillingTab() {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Por día de la semana */}
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-slate-700">Facturación por día de la semana</h3>
+              <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                <button
+                  onClick={() => setWdMetric('avg')}
+                  className={`px-2.5 py-1 text-xs rounded ${
+                    wdMetric === 'avg' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                  }`}
+                >
+                  Promedio
+                </button>
+                <button
+                  onClick={() => setWdMetric('total')}
+                  className={`px-2.5 py-1 text-xs rounded ${
+                    wdMetric === 'total' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                  }`}
+                >
+                  Total
+                </button>
+              </div>
+            </div>
+            {!hayWeekdayData ? (
+              <div className="p-8 text-center text-slate-400 text-sm">Sin datos para agrupar</div>
+            ) : (
+              <div style={{ width: '100%', height: 280 }}>
+                <ResponsiveContainer>
+                  <BarChart data={weekdayData} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+                    <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
+                    <XAxis dataKey="short" tick={{ fontSize: 11 }} />
+                    <YAxis tickFormatter={fmtCompactAR} tick={{ fontSize: 11 }} width={56} />
+                    <Tooltip
+                      labelFormatter={(_l, payload) => {
+                        const p = payload?.[0]?.payload as { label?: string; count?: number } | undefined
+                        return p ? `${p.label} (${p.count ?? 0} cierres)` : ''
+                      }}
+                      formatter={((v: number, name: string) => [fmtAR(v), name]) as never}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="facturaAElectronica" name={LABELS.facturaAElectronica} stackId="d" fill={COLORS.facturaAElectronica} />
+                    <Bar dataKey="facturaBElectronica" name={LABELS.facturaBElectronica} stackId="d" fill={COLORS.facturaBElectronica} />
+                    <Bar dataKey="facturaB" name={LABELS.facturaB} stackId="d" fill={COLORS.facturaB} radius={[2, 2, 0, 0]} />
+                    {showNcInWeekday && (
+                      <Bar dataKey="notasCredito" name="Notas de crédito" stackId="d" fill="#e11d48" />
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-2">
+              {wdMetric === 'avg'
+                ? 'Promedio = total del día de la semana / cantidad de días con cierre.'
+                : 'Suma de facturación para cada día de la semana en el rango.'}
+            </p>
           </div>
 
           {/* Tabla */}

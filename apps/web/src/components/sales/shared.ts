@@ -86,6 +86,58 @@ export const TURNO_BADGE: Record<string, string> = {
 }
 
 /**
+ * Días de la semana en orden Lun-Dom (ordinal usado por getISODay).
+ */
+export const WEEKDAYS: ReadonlyArray<{ key: number; label: string; short: string }> = [
+  { key: 1, label: 'Lunes',     short: 'Lun' },
+  { key: 2, label: 'Martes',    short: 'Mar' },
+  { key: 3, label: 'Miércoles', short: 'Mié' },
+  { key: 4, label: 'Jueves',    short: 'Jue' },
+  { key: 5, label: 'Viernes',   short: 'Vie' },
+  { key: 6, label: 'Sábado',    short: 'Sáb' },
+  { key: 7, label: 'Domingo',   short: 'Dom' },
+]
+
+/**
+ * Devuelve día de la semana ISO (1=Lun..7=Dom) interpretando la fecha en UTC
+ * para evitar saltos por timezone (las fechas en DB son @db.Date, 00:00 UTC).
+ */
+export function getWeekdayISO(iso: string): number {
+  const d = new Date(iso)
+  const day = d.getUTCDay() // 0=Dom, 1=Lun, ..., 6=Sáb
+  return day === 0 ? 7 : day
+}
+
+/**
+ * Agrupa una serie diaria por día de la semana sumando valores numéricos.
+ * Devuelve [{ key, label, short, count, ...sumas }, ...] con los 7 días siempre presentes.
+ */
+export function groupByWeekday<T extends { fecha: string }>(
+  series: T[],
+  sumKeys: Array<keyof T>
+): Array<{ key: number; label: string; short: string; count: number } & Record<string, number>> {
+  const buckets = WEEKDAYS.map((w) => {
+    const base: Record<string, number> = { count: 0 }
+    for (const k of sumKeys) base[k as string] = 0
+    return { ...w, ...base }
+  })
+  for (const row of series) {
+    const wd = getWeekdayISO(row.fecha)
+    const bucket = buckets[wd - 1]
+    if (!bucket) continue
+    bucket.count += 1
+    for (const k of sumKeys) {
+      const v = row[k]
+      if (typeof v === 'number') {
+        const ck = k as string
+        bucket[ck] = ((bucket[ck] as number) ?? 0) + v
+      }
+    }
+  }
+  return buckets as Array<{ key: number; label: string; short: string; count: number } & Record<string, number>>
+}
+
+/**
  * Hook utilitario de orden por columna para tablas client-side.
  */
 import { useState, useMemo } from 'react'
