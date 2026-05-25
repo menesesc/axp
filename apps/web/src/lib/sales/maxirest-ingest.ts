@@ -158,8 +158,10 @@ export async function ingestMaxirestPdf(
   }
 
   // 5. Subir PDF original a R2 del cliente (best-effort)
+  // Importante: NO usar prefijo `inbox/` — el worker OCR escanea inbox/* recursivamente
+  // y procesaría el cierre Maxirest también como factura.
   const fechaIso = parsed.fecha.toISOString().slice(0, 10)
-  const pdfR2Key = `inbox/maxirest/${fechaIso}_t${parsed.turnoNumero}_c${parsed.nroCierre}.pdf`
+  const pdfR2Key = `sales/maxirest/${fechaIso}_t${parsed.turnoNumero}_c${parsed.nroCierre}.pdf`
   try {
     await uploadToR2(bucket, pdfR2Key, pdfBuffer, {
       source,
