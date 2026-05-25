@@ -441,10 +441,54 @@ model sales_closures {
   items               sales_closure_items[]
   waiters             sales_closure_waiters[]
   movements           sales_closure_movements[]
+  auditEvents         sales_closure_audit_events[]
 
   @@unique([clienteId, fecha, nroCierre])
   @@index([clienteId, fecha])
   @@index([clienteId, sucursal, fecha])
+}
+
+// Tipo de fuente en la auditoria del PDF Maxirest.
+// CAJERO = bloque "Usuario: JOHAN" (caja registradora)
+// MOZO   = bloque "Usuario: MOZOS" (especificaciones manuales al cargar pedidos)
+enum AuditFuente {
+  CAJERO
+  MOZO
+}
+
+// Tipo de evento en la auditoria.
+enum AuditTipo {
+  EMISION         // "Emision de control de mesa N..." (cierre del ticket)
+  DESCUENTO       // "FCB X-Y con descuento, Z%, $..."
+  ELIMINACION     // "DEL: 1 ESPINACA A LA CREMA" (item borrado del ticket)
+  ESPECIFICACION  // "Especif.Manual de X: ..." (modificacion al pedido)
+  OTRO
+}
+
+// Cada fila = un evento de auditoria. Permite agregar/filtrar por mozo, tipo, fecha.
+// Datos no normalizados a proposito (mesa, mozo, comprobante) para evitar joins en reportes.
+model sales_closure_audit_events {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId       String         @db.Uuid
+  fuente          AuditFuente
+  tipo            AuditTipo
+  mesa            String?        @db.VarChar(20)  // numero/codigo de mesa, ej "4", "2003"
+  mozo            String?        @db.VarChar(20)  // codigo del mozo
+  comprobante     String?        @db.VarChar(50)  // "FCB 0003-00013946"
+  importeMesa     Decimal?       @db.Decimal(14, 2)  // total de la mesa
+  horaApertura    String?        @db.VarChar(8)
+  hora            String?        @db.VarChar(8)   // hora del evento (HH:MM)
+  detalle         String         @db.Text
+  monto           Decimal?       @db.Decimal(14, 2)  // ej. importe del descuento
+  porcentaje      Decimal?       @db.Decimal(5, 2)   // ej. 30.00 (descuentos)
+  productoCodigo  String?        @db.VarChar(20)     // para ELIMINACION/ESPECIFICACION
+  productoNombre  String?        @db.VarChar(255)
+  closure         sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
+
+  @@index([closureId])
+  @@index([closureId, tipo])
+  @@index([closureId, mozo])
+  @@index([tipo])
 }
 
 // Forma de cobro de un cierre (Efectivo, Visa, MP, Amex, etc.)

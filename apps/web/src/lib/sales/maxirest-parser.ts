@@ -10,6 +10,24 @@
 
 export type TurnoNombre = 'ALMUERZO' | 'CENA' | 'OTRO'
 export type MovimientoTipo = 'INGRESO' | 'EGRESO'
+export type AuditFuente = 'CAJERO' | 'MOZO'
+export type AuditTipo = 'EMISION' | 'DESCUENTO' | 'ELIMINACION' | 'ESPECIFICACION' | 'OTRO'
+
+export interface ParsedAuditEvent {
+  fuente: AuditFuente
+  tipo: AuditTipo
+  mesa: string | null
+  mozo: string | null
+  comprobante: string | null
+  importeMesa: number | null
+  horaApertura: string | null
+  hora: string | null
+  detalle: string
+  monto: number | null
+  porcentaje: number | null
+  productoCodigo: string | null
+  productoNombre: string | null
+}
 
 export interface ParsedClosure {
   empresa: string
@@ -29,6 +47,7 @@ export interface ParsedClosure {
   pagos: ParsedPago[]
   articulos: ParsedArticulo[]
   mozos: ParsedMozo[]
+  auditoria: ParsedAuditEvent[]
   rawText: string
 }
 
@@ -404,6 +423,181 @@ function parseMozos(section: string): ParsedMozo[] {
   return mozos
 }
 
+interface BloqueMesa {
+  mesa: string | null
+  mozo: string | null
+  horaApertura: string | null
+  comprobante: string | null
+  importeMesa: number | null
+}
+
+function classifyAuditTipo(detalle: string): AuditTipo {
+  if (/Emisi[oó]n de control/i.test(detalle)) return 'EMISION'
+  if (/^\s*DEL\s*:/i.test(detalle)) return 'ELIMINACION'
+  if (/Especif\.?\s*Manual/i.test(detalle)) return 'ESPECIFICACION'
+  if (/con\s+descue|Descuent|%/i.test(detalle)) return 'DESCUENTO'
+  return 'OTRO'
+}
+
+function extractMonto(detalle: string): number | null {
+  // "...$ 58800" o "...$ 58800.00" — capturamos último $ seguido de número
+  const matches = detalle.match(/\$\s*(\d+(?:[.,]\d+)?)/g)
+  if (!matches || matches.length === 0) return null
+  const last = matches[matches.length - 1]
+  if (!last) return null
+  const m = last.match(/\$\s*(\d+(?:[.,]\d+)?)/)
+  if (!m) return null
+  return parseNumber(g(m, 1))
+}
+
+function extractPorcentaje(detalle: string): number | null {
+  const m = detalle.match(/(\d+(?:\.\d+)?)\s*%/)
+  if (!m) return null
+  return parseNumber(g(m, 1))
+}
+
+function extractProductoFromEspecif(detalle: string): { codigo: string | null; nombre: string | null; nota: string | null } {
+  // "Especif.Manual de 00302.MILANESA WEISS: sin sals"
+  const m = detalle.match(/Especif\.?\s*Manual\s+de\s+(\d+)\.([^:]+):\s*(.*)/i)
+  if (!m) return { codigo: null, nombre: null, nota: null }
+  return {
+    codigo: g(m, 1),
+    nombre: g(m, 2).trim(),
+    nota: g(m, 3).trim() || null,
+  }
+}
+
+function extractProductoFromDel(detalle: string): { cantidad: number | null; nombre: string | null } {
+  // "DEL: 1 ESPINACA A LA CREMA [-" → cantidad=1, nombre="ESPINACA A LA CREMA"
+  const m = detalle.match(/DEL\s*:\s*(\d+(?:\.\d+)?)?\s*(.+?)(?:\s*[\[(]|\s*$)/i)
+  if (!m) return { cantidad: null, nombre: null }
+  return {
+    cantidad: g(m, 1) ? parseNumber(g(m, 1)) : null,
+    nombre: g(m, 2).trim() || null,
+  }
+}
+
+function parseAuditoria(section: string): ParsedAuditEvent[] {
+  if (!section) return []
+  const lines = section.split(/\r?\n/)
+  const out: ParsedAuditEvent[] = []
+  let fuente: AuditFuente | null = null
+  let bloque: BloqueMesa | null = null
+  let eventoIdx = -1 // índice en out del evento actual (para continuación de líneas)
+
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '')
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (/^[~=]+$/.test(trimmed)) continue
+    if (/^-{4,}/.test(trimmed)) {
+      // separador entre secciones JOHAN/MOZOS
+      bloque = null
+      eventoIdx = -1
+      continue
+    }
+
+    // Cambio de "Usuario:"
+    const userM = trimmed.match(/^Usuario:\s*(\S+)/i)
+    if (userM) {
+      const u = g(userM, 1).toUpperCase()
+      fuente = u === 'JOHAN' || u === 'CAJERO' ? 'CAJERO' : u === 'MOZOS' ? 'MOZO' : null
+      bloque = null
+      eventoIdx = -1
+      continue
+    }
+    if (/^Fecha\s+\d/i.test(trimmed)) continue
+    if (/^\*\*\s*FIN/i.test(trimmed)) break
+    if (/^Auditorias\s+varias/i.test(trimmed)) {
+      bloque = null
+      eventoIdx = -1
+      continue
+    }
+    if (/^Ultima\s+comanda/i.test(trimmed)) {
+      // "16:27 Ultima comanda emitida:      1\n79" — ignorar, no es relevante
+      bloque = null
+      eventoIdx = -1
+      continue
+    }
+    if (!fuente) continue
+
+    // Inicio de bloque "Mesa..."
+    const mesaM = line.match(/^\s*Mesa(\S+)\s+Mozo\s+(\S+)\s+Aper\.(\d{1,2}:\d{2})/i)
+    if (mesaM) {
+      bloque = {
+        mesa: g(mesaM, 1),
+        mozo: g(mesaM, 2),
+        horaApertura: g(mesaM, 3),
+        comprobante: null,
+        importeMesa: null,
+      }
+      eventoIdx = -1
+      continue
+    }
+
+    // Línea de comprobante (con o sin Cli.X prefix)
+    if (bloque && !bloque.comprobante) {
+      const cm = line.match(/(?:Cli\.\S+\s+)?(?:FCB\s+)?(\d{1,4})-(\d{1,8})\s+\$\s+([\d.,]+)/)
+      if (cm) {
+        bloque.comprobante = `FCB ${g(cm, 1)}-${g(cm, 2)}`
+        bloque.importeMesa = parseNumber(g(cm, 3))
+        eventoIdx = -1
+        continue
+      }
+    }
+
+    // Inicio de evento por timestamp HH:MM
+    const evM = line.match(/^\s*(\d{1,2}:\d{2})\s+(.+)$/)
+    if (evM) {
+      const hora = g(evM, 1)
+      const detalleInicial = g(evM, 2).trim()
+      out.push({
+        fuente,
+        tipo: 'OTRO',
+        mesa: bloque?.mesa ?? null,
+        mozo: bloque?.mozo ?? null,
+        comprobante: bloque?.comprobante ?? null,
+        importeMesa: bloque?.importeMesa ?? null,
+        horaApertura: bloque?.horaApertura ?? null,
+        hora,
+        detalle: detalleInicial,
+        monto: null,
+        porcentaje: null,
+        productoCodigo: null,
+        productoNombre: null,
+      })
+      eventoIdx = out.length - 1
+      continue
+    }
+
+    // Continuación de evento (líneas siguientes sin timestamp)
+    if (eventoIdx >= 0) {
+      const ev = out[eventoIdx]
+      if (ev) ev.detalle = (ev.detalle + ' ' + trimmed).trim()
+    }
+  }
+
+  // Clasificar + extraer campos derivados
+  for (const ev of out) {
+    ev.tipo = classifyAuditTipo(ev.detalle)
+    if (ev.tipo === 'DESCUENTO') {
+      ev.monto = extractMonto(ev.detalle)
+      ev.porcentaje = extractPorcentaje(ev.detalle)
+    } else if (ev.tipo === 'EMISION') {
+      ev.monto = extractMonto(ev.detalle)
+    } else if (ev.tipo === 'ELIMINACION') {
+      const { nombre } = extractProductoFromDel(ev.detalle)
+      ev.productoNombre = nombre
+    } else if (ev.tipo === 'ESPECIFICACION') {
+      const { codigo, nombre } = extractProductoFromEspecif(ev.detalle)
+      ev.productoCodigo = codigo
+      ev.productoNombre = nombre
+    }
+  }
+
+  return out
+}
+
 /**
  * Función principal: texto plano del PDF Maxirest → estructura tipada.
  * Lanza Error si falla el parseo del header.
@@ -431,6 +625,9 @@ export function parseMaxirestClosure(rawText: string): ParsedClosure {
       sections.auditoria > 0 ? sections.auditoria : -1
     )
   )
+  const auditoria = sections.auditoria > 0
+    ? parseAuditoria(text.slice(sections.auditoria))
+    : []
 
   return {
     ...header,
@@ -439,6 +636,7 @@ export function parseMaxirestClosure(rawText: string): ParsedClosure {
     pagos,
     articulos,
     mozos,
+    auditoria,
     rawText,
   }
 }

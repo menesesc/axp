@@ -1,6 +1,10 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { RefreshCw, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { fmtAR, fmtNumAR } from './shared'
 
 interface ClosureDetailData {
@@ -41,6 +45,9 @@ interface ClosureDetailData {
 }
 
 export function ClosureDetail({ closureId }: { closureId: string }) {
+  const queryClient = useQueryClient()
+  const [reparsing, setReparsing] = useState(false)
+
   const { data, isLoading } = useQuery({
     queryKey: ['sales-closure', closureId],
     queryFn: async () => {
@@ -50,6 +57,27 @@ export function ClosureDetail({ closureId }: { closureId: string }) {
     },
     staleTime: 60_000,
   })
+
+  async function handleReparse() {
+    setReparsing(true)
+    try {
+      const res = await fetch(`/api/sales/closures/${closureId}/reparse`, { method: 'POST' })
+      const body = await res.json()
+      if (res.ok && body.status === 'OK') {
+        toast.success(body.message ?? 'Cierre re-parseado')
+        queryClient.invalidateQueries({ queryKey: ['sales-closure', closureId] })
+        queryClient.invalidateQueries({ queryKey: ['sales-closures'] })
+        queryClient.invalidateQueries({ queryKey: ['sales-audit-summary'] })
+        queryClient.invalidateQueries({ queryKey: ['sales-audit-events'] })
+      } else {
+        toast.error(body.message || 'Error re-parseando')
+      }
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setReparsing(false)
+    }
+  }
 
   if (isLoading) return <div className="p-6 text-sm text-slate-400">Cargando detalle...</div>
   if (!data) return null
@@ -66,12 +94,21 @@ export function ClosureDetail({ closureId }: { closureId: string }) {
 
   return (
     <div className="p-6 space-y-6 text-sm">
-      {/* Header info */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Info label="Apertura" value={c.usuarioApertura ? `${c.horaApertura} — ${c.usuarioApertura}` : '—'} />
-        <Info label="Cierre" value={c.usuarioCierre ? `${c.horaCierre} — ${c.usuarioCierre}` : '—'} />
-        <Info label="Neto" value={fmtAR(c.netoGravado)} />
-        <Info label="IVA" value={fmtAR(c.ivaTotal)} />
+      {/* Header info + botón reparsear */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
+          <Info label="Apertura" value={c.usuarioApertura ? `${c.horaApertura} — ${c.usuarioApertura}` : '—'} />
+          <Info label="Cierre" value={c.usuarioCierre ? `${c.horaCierre} — ${c.usuarioCierre}` : '—'} />
+          <Info label="Neto" value={fmtAR(c.netoGravado)} />
+          <Info label="IVA" value={fmtAR(c.ivaTotal)} />
+        </div>
+        <Button onClick={handleReparse} disabled={reparsing} variant="outline" size="sm">
+          {reparsing ? (
+            <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Re-parseando...</>
+          ) : (
+            <><RefreshCw className="h-4 w-4 mr-1.5" /> Re-parsear</>
+          )}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -8,6 +8,7 @@ import { RankingTab } from '@/components/sales/ranking-tab'
 import { WaitersTab } from '@/components/sales/waiters-tab'
 import { PaymentsTab } from '@/components/sales/payments-tab'
 import { ByShiftTab } from '@/components/sales/by-shift-tab'
+import { AuditTab } from '@/components/sales/audit-tab'
 import { CsvTab } from '@/components/sales/csv-tab'
 
 export default function VentasPage() {
@@ -31,6 +32,7 @@ export default function VentasPage() {
             <TabsTrigger value="mozos">Mozos</TabsTrigger>
             <TabsTrigger value="pagos">Formas de pago</TabsTrigger>
             <TabsTrigger value="turnos">Por turno</TabsTrigger>
+            <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
             <TabsTrigger value="csv">Ventas (CSV)</TabsTrigger>
           </TabsList>
 
@@ -48,6 +50,9 @@ export default function VentasPage() {
           </TabsContent>
           <TabsContent value="turnos" className="mt-6">
             <ByShiftTab />
+          </TabsContent>
+          <TabsContent value="auditoria" className="mt-6">
+            <AuditTab />
           </TabsContent>
           <TabsContent value="csv" className="mt-6">
             <CsvTab clienteId={clienteId} />

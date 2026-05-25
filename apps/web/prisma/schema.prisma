@@ -439,10 +439,48 @@ model sales_closures {
   items               sales_closure_items[]
   waiters             sales_closure_waiters[]
   movements           sales_closure_movements[]
+  auditEvents         sales_closure_audit_events[]
 
   @@unique([clienteId, fecha, nroCierre])
   @@index([clienteId, fecha])
   @@index([clienteId, sucursal, fecha])
+}
+
+enum AuditFuente {
+  CAJERO
+  MOZO
+}
+
+enum AuditTipo {
+  EMISION
+  DESCUENTO
+  ELIMINACION
+  ESPECIFICACION
+  OTRO
+}
+
+model sales_closure_audit_events {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId       String         @db.Uuid
+  fuente          AuditFuente
+  tipo            AuditTipo
+  mesa            String?        @db.VarChar(20)
+  mozo            String?        @db.VarChar(20)
+  comprobante     String?        @db.VarChar(50)
+  importeMesa     Decimal?       @db.Decimal(14, 2)
+  horaApertura    String?        @db.VarChar(8)
+  hora            String?        @db.VarChar(8)
+  detalle         String         @db.Text
+  monto           Decimal?       @db.Decimal(14, 2)
+  porcentaje      Decimal?       @db.Decimal(5, 2)
+  productoCodigo  String?        @db.VarChar(20)
+  productoNombre  String?        @db.VarChar(255)
+  closure         sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
+
+  @@index([closureId])
+  @@index([closureId, tipo])
+  @@index([closureId, mozo])
+  @@index([tipo])
 }
 
 model sales_closure_payments {
