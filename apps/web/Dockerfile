@@ -2,7 +2,8 @@
 # Build desde el ROOT del monorepo: docker build -f apps/web/Dockerfile .
 
 FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# pnpm fijado a v10.x: v11+ requiere Node 22 (usa node:sqlite built-in)
+RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
 # ------- Dependencies -------
 FROM base AS deps
