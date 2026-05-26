@@ -336,6 +336,20 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
     handleDownloadPdf()
   }
 
+  const handleStartNewOrder = () => {
+    setCreatedPagoId(null)
+    setSavedDraftId(null)
+    setStep(1)
+    setSelectedProveedor('')
+    setProveedorInput('')
+    setShowProveedorDropdown(false)
+    setSelectedDocs(new Set())
+    setFecha(new Date())
+    setNota('')
+    setMethods([])
+    setIsDownloading(false)
+  }
+
   const toggleDoc = (docId: string) => {
     const newSet = new Set(selectedDocs)
     if (newSet.has(docId)) {
@@ -436,7 +450,7 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
               <div className="pt-4 flex flex-col items-center gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => router.push('/pagos/nueva')}
+                  onClick={handleStartNewOrder}
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Nueva orden de pago

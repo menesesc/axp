@@ -9,49 +9,93 @@ export async function GET() {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
   }
 
-  // Proveedores con documentos confirmados
-  const proveedoresConSaldo = await prisma.proveedores.count({
-    where: {
-      clienteId: user.clienteId,
-      activo: true,
-      documentos: {
-        some: {
-          estadoRevision: 'CONFIRMADO',
-        },
-      },
-    },
-  })
+  const ahora = new Date()
+  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1)
+  const fin7dias = new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-  // Monto total de documentos confirmados
-  const documentosConfirmados = await prisma.documentos.aggregate({
-    where: {
-      clienteId: user.clienteId,
-      estadoRevision: 'CONFIRMADO',
-    },
-    _sum: {
-      total: true,
-    },
-  })
-
-  // Últimas 3 órdenes de pago
-  const ordenesRecientes = await prisma.pagos.findMany({
-    where: {
-      clienteId: user.clienteId,
-    },
-    include: {
-      proveedores: {
-        select: {
-          razonSocial: true,
-        },
+  const [
+    proveedoresConSaldo,
+    documentosConfirmados,
+    porEstado,
+    pagadoMes,
+    proximos7,
+    ordenesRecientes,
+  ] = await Promise.all([
+    prisma.proveedores.count({
+      where: {
+        clienteId: user.clienteId,
+        activo: true,
+        documentos: { some: { estadoRevision: 'CONFIRMADO' } },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 3,
-  })
+    }),
+    prisma.documentos.aggregate({
+      where: { clienteId: user.clienteId, estadoRevision: 'CONFIRMADO' },
+      _sum: { total: true },
+    }),
+    prisma.pagos.groupBy({
+      by: ['estado'],
+      where: { clienteId: user.clienteId },
+      _sum: { montoTotal: true },
+      _count: { _all: true },
+    }),
+    prisma.pagos.aggregate({
+      where: {
+        clienteId: user.clienteId,
+        estado: 'PAGADO',
+        fecha: { gte: inicioMes },
+      },
+      _sum: { montoTotal: true },
+      _count: { _all: true },
+    }),
+    prisma.$queryRaw<Array<{ total: number; cantidad: bigint }>>`
+      SELECT
+        COALESCE(SUM(pm.monto), 0)::float as total,
+        COUNT(DISTINCT p.id) as cantidad
+      FROM pago_metodos pm
+      JOIN pagos p ON pm."pagoId" = p.id
+      WHERE p."clienteId" = ${user.clienteId}::uuid
+        AND p.estado IN ('BORRADOR', 'EMITIDA')
+        AND CASE
+          WHEN pm.tipo IN ('CHEQUE', 'ECHEQ') AND pm.meta->>'fecha' IS NOT NULL
+            THEN (pm.meta->>'fecha')::date
+          ELSE p.fecha
+        END BETWEEN ${ahora}::date AND ${fin7dias}::date
+    `,
+    prisma.pagos.findMany({
+      where: { clienteId: user.clienteId },
+      include: { proveedores: { select: { razonSocial: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    }),
+  ])
+
+  const estados = {
+    BORRADOR: { count: 0, total: 0 },
+    EMITIDA: { count: 0, total: 0 },
+    PAGADO: { count: 0, total: 0 },
+  }
+  for (const e of porEstado) {
+    const key = e.estado as keyof typeof estados
+    if (estados[key]) {
+      estados[key] = {
+        count: e._count._all,
+        total: Number(e._sum.montoTotal ?? 0),
+      }
+    }
+  }
 
   return NextResponse.json({
     proveedoresConSaldo,
     montoPendiente: documentosConfirmados._sum?.total || 0,
+    estados,
+    pagadoMes: {
+      count: pagadoMes._count._all,
+      total: Number(pagadoMes._sum.montoTotal ?? 0),
+    },
+    proximos7: {
+      total: Number(proximos7[0]?.total ?? 0),
+      cantidad: Number(proximos7[0]?.cantidad ?? 0),
+    },
     ordenesRecientes: ordenesRecientes.map((o) => ({
       id: o.id,
       fecha: o.fecha,

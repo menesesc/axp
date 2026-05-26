@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatCurrency, formatDate, formatNumeroOrden } from '@/lib/utils'
-import { CreditCard, MoreHorizontal, Eye, Edit, CheckCircle, Download, Trash2 } from 'lucide-react'
+import { CreditCard, MoreHorizontal, Eye, Edit, CheckCircle, Download, Trash2, FileText } from 'lucide-react'
 import type { PaymentMethod } from '@/components/ui/payment-method-badge'
 
 interface PaymentMethodItem {
@@ -66,21 +66,23 @@ export function PaymentOrdersTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Fecha</TableHead>
+              <TableHead className="w-20">Orden</TableHead>
+              <TableHead className="w-24">Fecha</TableHead>
               <TableHead>Proveedor</TableHead>
-              <TableHead>Documentos</TableHead>
+              <TableHead className="w-16 text-center">Docs</TableHead>
               <TableHead>Formas de pago</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="w-24">Estado</TableHead>
+              <TableHead className="text-right w-32">Total</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {[...Array(5)].map((_, i) => (
               <TableRow key={i}>
+                <TableCell><Skeleton className="h-4 w-14" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
                 <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                 <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-24 ml-auto" /></TableCell>
@@ -115,22 +117,22 @@ export function PaymentOrdersTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-16">#</TableHead>
+            <TableHead className="w-20">Orden</TableHead>
             <TableHead className="w-24">Fecha</TableHead>
             <TableHead>Proveedor</TableHead>
-            <TableHead className="w-20">Docs</TableHead>
+            <TableHead className="w-16 text-center">Docs</TableHead>
             <TableHead>Formas de pago</TableHead>
             <TableHead className="w-24">Estado</TableHead>
-            <TableHead className="text-right w-28">Total</TableHead>
+            <TableHead className="text-right w-32">Total</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {orders.map((order) => (
-            <TableRow key={order.id} className="group">
-              <TableCell className="text-slate-500 text-sm font-medium tabular-nums">
+            <TableRow key={order.id} className="group hover:bg-slate-50/60 transition-colors">
+              <TableCell className="font-mono text-xs text-slate-600 tabular-nums">
                 <Link href={`/pagos/${order.id}`} className="block">
-                  {formatNumeroOrden(order.numero)}
+                  #{formatNumeroOrden(order.numero)}
                 </Link>
               </TableCell>
               <TableCell className="text-slate-500 text-sm">
@@ -139,12 +141,15 @@ export function PaymentOrdersTable({
                 </Link>
               </TableCell>
               <TableCell>
-                <Link href={`/pagos/${order.id}`} className="block font-medium text-slate-900">
+                <Link href={`/pagos/${order.id}`} className="block font-medium text-slate-900 truncate max-w-[24ch]">
                   {order.proveedor.razonSocial}
                 </Link>
               </TableCell>
-              <TableCell className="text-slate-500 text-sm">
-                {order.documentosCount}
+              <TableCell className="text-slate-500 text-sm text-center">
+                <span className="inline-flex items-center gap-1">
+                  <FileText className="h-3.5 w-3.5 text-slate-400" />
+                  {order.documentosCount}
+                </span>
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
@@ -152,7 +157,7 @@ export function PaymentOrdersTable({
                     <PaymentMethodBadge key={m.id} method={m.tipo} showIcon={false} />
                   ))}
                   {order.metodos.length > 3 && (
-                    <span className="text-xs text-slate-500">
+                    <span className="inline-flex items-center text-xs text-slate-500 px-1.5 py-0.5 rounded-full border border-slate-200 bg-slate-50">
                       +{order.metodos.length - 3}
                     </span>
                   )}
@@ -161,7 +166,7 @@ export function PaymentOrdersTable({
               <TableCell>
                 <StatusBadge status={order.estado === 'PAGADO' ? 'PAGADA' : order.estado} />
               </TableCell>
-              <TableCell className="text-right font-medium text-slate-900 tabular-nums">
+              <TableCell className="text-right font-semibold text-slate-900 tabular-nums">
                 {formatCurrency(order.montoTotal)}
               </TableCell>
               <TableCell>

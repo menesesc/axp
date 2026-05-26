@@ -104,7 +104,7 @@ export function ClosuresTab() {
   const { sorted, sort, toggle } = useSort<ClosureRow, SortKey>(
     closures,
     getValue,
-    { key: 'fecha', dir: 'desc' }
+    { key: 'nroCierre', dir: 'desc' }
   )
 
   async function handleUpload(file: File) {

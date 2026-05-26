@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
-import { fmtAR, fmtNumAR, fmtFechaShort, fmtFecha, fmtCompactAR, defaultRange, useSort, type SortDir } from './shared'
+import { fmtAR, fmtNumAR, fmtFechaShort, fmtFecha, fmtCompactAR, defaultRange, groupByWeekday, useSort, type SortDir } from './shared'
 import { Package, Search, X, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   BarChart,
@@ -28,7 +28,7 @@ interface RankingItem {
   unidadesDia: number
 }
 
-type SortKey = 'idx' | 'nombre' | 'rubro' | 'unidades' | 'importe' | 'promedioDiario' | 'dias'
+type SortKey = 'idx' | 'nombre' | 'rubro' | 'unidades' | 'importe' | 'promedioDiario' | 'unidadesDia' | 'dias'
 
 export function RankingTab() {
   const [{ from, to }, setRange] = useState(defaultRange())
@@ -76,6 +76,7 @@ export function RankingTab() {
       case 'unidades': return it.unidades
       case 'importe': return it.importe
       case 'promedioDiario': return it.promedioDiario
+      case 'unidadesDia': return it.unidadesDia
       case 'dias': return it.dias
     }
   }
@@ -152,7 +153,8 @@ export function RankingTab() {
                 <SortTh label="Unidades" k="unidades" sort={sort} onToggle={toggle} align="right" />
                 <SortTh label="Importe" k="importe" sort={sort} onToggle={toggle} align="right" />
                 <SortTh label="Días" k="dias" sort={sort} onToggle={toggle} align="right" />
-                <SortTh label="Prom. diario" k="promedioDiario" sort={sort} onToggle={toggle} align="right" />
+                <SortTh label="Unid./día" k="unidadesDia" sort={sort} onToggle={toggle} align="right" />
+                <SortTh label="$/día" k="promedioDiario" sort={sort} onToggle={toggle} align="right" />
                 <th className="px-4 py-2.5 w-40">Participación</th>
                 {groupBy === 'item' && <th className="w-8" />}
               </tr>
@@ -184,6 +186,7 @@ export function RankingTab() {
                   <td colSpan={groupBy === 'item' ? 3 : 2} className="px-4 py-2.5 text-slate-600 text-right">Total mostrado</td>
                   <td className="px-4 py-2.5 text-right text-slate-700">{fmtNumAR(data.total.unidades)}</td>
                   <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(data.total.importe)}</td>
+                  <td />
                   <td />
                   <td />
                   <td />
@@ -233,6 +236,7 @@ function RankingRow({
         <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(item.unidades)}</td>
         <td className="px-4 py-2.5 text-right font-medium text-slate-800">{fmtAR(item.importe)}</td>
         <td className="px-4 py-2.5 text-right text-slate-500">{fmtNumAR(item.dias)}</td>
+        <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(item.unidadesDia, 1)}</td>
         <td className="px-4 py-2.5 text-right text-slate-600">{fmtAR(item.promedioDiario)}</td>
         <td className="px-4 py-2.5">
           <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -247,7 +251,7 @@ function RankingRow({
       </tr>
       {expanded && item.codigo && (
         <tr className="bg-slate-50 border-b border-slate-100">
-          <td colSpan={9} className="p-0">
+          <td colSpan={10} className="p-0">
             <ProductDetail codigo={item.codigo} nombre={item.nombre} from={from} to={to} />
           </td>
         </tr>
@@ -294,6 +298,8 @@ function ProductDetail({
 }) {
   const [byShift, setByShift] = useState(true)
   const [metric, setMetric] = useState<'unidades' | 'importe'>('unidades')
+  const [view, setView] = useState<'fecha' | 'weekday'>('fecha')
+  const [wdMetric, setWdMetric] = useState<'avg' | 'total'>('avg')
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales-ranking-product', codigo, from, to],
@@ -306,16 +312,56 @@ function ProductDetail({
     staleTime: 60_000,
   })
 
+  const weekdayData = useMemo(() => {
+    if (!data) return []
+    const grouped = groupByWeekday(data.series, [
+      'ALMUERZO_u', 'ALMUERZO_i', 'CENA_u', 'CENA_i', 'OTRO_u', 'OTRO_i', 'unidades', 'importe',
+    ])
+    return grouped.map((g) => {
+      const divisor = wdMetric === 'avg' && g.count > 0 ? g.count : 1
+      return {
+        short: g.short,
+        label: g.label,
+        count: g.count,
+        ALMUERZO_u: g.ALMUERZO_u / divisor,
+        ALMUERZO_i: g.ALMUERZO_i / divisor,
+        CENA_u: g.CENA_u / divisor,
+        CENA_i: g.CENA_i / divisor,
+        OTRO_u: g.OTRO_u / divisor,
+        OTRO_i: g.OTRO_i / divisor,
+        unidades: g.unidades / divisor,
+        importe: g.importe / divisor,
+      }
+    })
+  }, [data, wdMetric])
+
   if (isLoading) return <div className="p-6 text-sm text-slate-400">Cargando movimiento diario...</div>
   if (!data || data.series.length === 0) {
     return <div className="p-6 text-sm text-slate-400">Sin movimiento en el rango</div>
   }
 
-  const fmtVal = (v: number) => (metric === 'importe' ? fmtAR(v) : fmtNumAR(v))
+  const fmtVal = (v: number) =>
+    metric === 'importe'
+      ? fmtAR(v)
+      : fmtNumAR(v, view === 'weekday' && wdMetric === 'avg' ? 1 : 0)
   const showOtro = data.porTurno.OTRO.unidades > 0
-
-  // dataKeys según métrica
   const suf = metric === 'unidades' ? '_u' : '_i'
+
+  // Promedios por turno: total / cantidad de días en los que apareció el producto en ese turno.
+  const diasPorTurno = data.series.reduce(
+    (acc, s) => ({
+      ALMUERZO: acc.ALMUERZO + (s.ALMUERZO_u > 0 ? 1 : 0),
+      CENA: acc.CENA + (s.CENA_u > 0 ? 1 : 0),
+    }),
+    { ALMUERZO: 0, CENA: 0 }
+  )
+  const promAlmuerzoU = diasPorTurno.ALMUERZO > 0 ? data.porTurno.ALMUERZO.unidades / diasPorTurno.ALMUERZO : 0
+  const promCenaU = diasPorTurno.CENA > 0 ? data.porTurno.CENA.unidades / diasPorTurno.CENA : 0
+  const promAlmuerzoI = diasPorTurno.ALMUERZO > 0 ? data.porTurno.ALMUERZO.importe / diasPorTurno.ALMUERZO : 0
+  const promCenaI = diasPorTurno.CENA > 0 ? data.porTurno.CENA.importe / diasPorTurno.CENA : 0
+  const totalDias = data.series.length
+  const promTotalU = totalDias > 0 ? data.totals.unidades / totalDias : 0
+  const promTotalI = totalDias > 0 ? data.totals.importe / totalDias : 0
 
   return (
     <div className="p-6 space-y-4">
@@ -324,7 +370,25 @@ function ProductDetail({
           <p className="text-xs text-slate-500 uppercase tracking-wide">{data.rubroNombre ?? 'Producto'}</p>
           <h4 className="text-sm font-medium text-slate-800">{nombre ?? data.nombre ?? codigo}</h4>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+            <button
+              onClick={() => setView('fecha')}
+              className={`px-2.5 py-1 text-xs rounded-md ${
+                view === 'fecha' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
+              }`}
+            >
+              Por fecha
+            </button>
+            <button
+              onClick={() => setView('weekday')}
+              className={`px-2.5 py-1 text-xs rounded-md ${
+                view === 'weekday' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
+              }`}
+            >
+              Por día de semana
+            </button>
+          </div>
           <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
             <button
               onClick={() => setMetric('unidades')}
@@ -343,43 +407,97 @@ function ProductDetail({
               Importe
             </button>
           </div>
-          <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              checked={byShift}
-              onChange={(e) => setByShift(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Desglosar por turno
-          </label>
+          {view === 'weekday' ? (
+            <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+              <button
+                onClick={() => setWdMetric('avg')}
+                className={`px-2.5 py-1 text-xs rounded-md ${
+                  wdMetric === 'avg' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
+                }`}
+              >
+                Promedio
+              </button>
+              <button
+                onClick={() => setWdMetric('total')}
+                className={`px-2.5 py-1 text-xs rounded-md ${
+                  wdMetric === 'total' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
+                }`}
+              >
+                Total
+              </button>
+            </div>
+          ) : (
+            <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={byShift}
+                onChange={(e) => setByShift(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Desglosar por turno
+            </label>
+          )}
         </div>
       </div>
 
-      {/* Mini KPIs por turno */}
+      {/* Mini KPIs por turno: total + promedio por día con ventas */}
       <div className="grid grid-cols-3 gap-3">
-        <MiniKPI label="Total" unidades={data.totals.unidades} importe={data.totals.importe} />
-        <MiniKPI label="Almuerzo" unidades={data.porTurno.ALMUERZO.unidades} importe={data.porTurno.ALMUERZO.importe} color="amber" />
-        <MiniKPI label="Cena" unidades={data.porTurno.CENA.unidades} importe={data.porTurno.CENA.importe} color="indigo" />
+        <MiniKPI
+          label="Total"
+          unidades={data.totals.unidades}
+          importe={data.totals.importe}
+          promU={promTotalU}
+          promI={promTotalI}
+        />
+        <MiniKPI
+          label="Almuerzo"
+          unidades={data.porTurno.ALMUERZO.unidades}
+          importe={data.porTurno.ALMUERZO.importe}
+          promU={promAlmuerzoU}
+          promI={promAlmuerzoI}
+          color="amber"
+        />
+        <MiniKPI
+          label="Cena"
+          unidades={data.porTurno.CENA.unidades}
+          importe={data.porTurno.CENA.importe}
+          promU={promCenaU}
+          promI={promCenaI}
+          color="indigo"
+        />
       </div>
 
-      {/* Gráfico de barras diario */}
+      {/* Gráfico de barras */}
       <div className="bg-white rounded border border-slate-200 p-3" style={{ height: 280 }}>
         <ResponsiveContainer>
-          <BarChart data={data.series} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+          <BarChart
+            data={view === 'fecha' ? data.series : weekdayData}
+            margin={{ left: 8, right: 16, top: 8, bottom: 8 }}
+          >
             <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-            <XAxis dataKey="fecha" tickFormatter={fmtFechaShort} tick={{ fontSize: 11 }} />
+            {view === 'fecha' ? (
+              <XAxis dataKey="fecha" tickFormatter={fmtFechaShort} tick={{ fontSize: 11 }} />
+            ) : (
+              <XAxis dataKey="short" tick={{ fontSize: 11 }} />
+            )}
             <YAxis
               tickFormatter={metric === 'importe' ? fmtCompactAR : (v) => fmtNumAR(v)}
               tick={{ fontSize: 11 }}
               width={56}
-              allowDecimals={false}
+              allowDecimals={view === 'weekday' && wdMetric === 'avg'}
             />
             <Tooltip
-              labelFormatter={(l) => fmtFecha(String(l))}
+              labelFormatter={(l, payload) => {
+                if (view === 'fecha') return fmtFecha(String(l))
+                const p = payload?.[0]?.payload as { label?: string; count?: number } | undefined
+                return p ? `${p.label} (${p.count ?? 0} cierres)` : String(l)
+              }}
               formatter={((v: number, name: string) => [fmtVal(v), name]) as never}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            {byShift ? (
+            {view === 'fecha' && !byShift ? (
+              <Bar dataKey={metric === 'importe' ? 'importe' : 'unidades'} name="Total" fill="#6366f1" radius={[2, 2, 0, 0]} />
+            ) : (
               <>
                 <Bar dataKey={`ALMUERZO${suf}`} stackId="t" name="Almuerzo" fill="#f59e0b" radius={[0, 0, 0, 0]} />
                 <Bar dataKey={`CENA${suf}`} stackId="t" name="Cena" fill="#6366f1" radius={[2, 2, 0, 0]} />
@@ -387,19 +505,26 @@ function ProductDetail({
                   <Bar dataKey={`OTRO${suf}`} stackId="t" name="Otro" fill="#94a3b8" radius={[0, 0, 0, 0]} />
                 )}
               </>
-            ) : (
-              <Bar dataKey={metric === 'importe' ? 'importe' : 'unidades'} name="Total" fill="#6366f1" radius={[2, 2, 0, 0]} />
             )}
           </BarChart>
         </ResponsiveContainer>
       </div>
+      {view === 'weekday' && (
+        <p className="text-xs text-slate-400 -mt-2">
+          {wdMetric === 'avg'
+            ? 'Promedio = total del día de la semana / cantidad de cierres del producto para ese día.'
+            : 'Suma de ventas del producto para cada día de la semana en el rango seleccionado.'}
+        </p>
+      )}
 
-      {/* Tabla diaria */}
+      {/* Tabla */}
       <div className="bg-white rounded border border-slate-200 overflow-hidden">
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Fecha</th>
+              <th className="text-left px-3 py-2 font-medium">
+                {view === 'fecha' ? 'Fecha' : 'Día'}
+              </th>
               <th className="text-right px-3 py-2 font-medium">Almuerzo (u/$)</th>
               <th className="text-right px-3 py-2 font-medium">Cena (u/$)</th>
               <th className="text-right px-3 py-2 font-medium">Total unid.</th>
@@ -407,19 +532,39 @@ function ProductDetail({
             </tr>
           </thead>
           <tbody>
-            {data.series.map((s) => (
-              <tr key={s.fecha} className="border-t border-slate-100">
-                <td className="px-3 py-1.5 text-slate-600">{fmtFecha(s.fecha)}</td>
-                <td className="px-3 py-1.5 text-right text-amber-700">
-                  {fmtNumAR(s.ALMUERZO_u)} <span className="text-slate-400">/</span> {fmtAR(s.ALMUERZO_i)}
-                </td>
-                <td className="px-3 py-1.5 text-right text-indigo-700">
-                  {fmtNumAR(s.CENA_u)} <span className="text-slate-400">/</span> {fmtAR(s.CENA_i)}
-                </td>
-                <td className="px-3 py-1.5 text-right font-medium text-slate-700">{fmtNumAR(s.unidades)}</td>
-                <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(s.importe)}</td>
-              </tr>
-            ))}
+            {view === 'fecha'
+              ? data.series.map((s) => (
+                  <tr key={s.fecha} className="border-t border-slate-100">
+                    <td className="px-3 py-1.5 text-slate-600">{fmtFecha(s.fecha)}</td>
+                    <td className="px-3 py-1.5 text-right text-amber-700">
+                      {fmtNumAR(s.ALMUERZO_u)} <span className="text-slate-400">/</span> {fmtAR(s.ALMUERZO_i)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-indigo-700">
+                      {fmtNumAR(s.CENA_u)} <span className="text-slate-400">/</span> {fmtAR(s.CENA_i)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-medium text-slate-700">{fmtNumAR(s.unidades)}</td>
+                    <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(s.importe)}</td>
+                  </tr>
+                ))
+              : weekdayData.map((w) => {
+                  const dec = wdMetric === 'avg' ? 1 : 0
+                  return (
+                    <tr key={w.short} className="border-t border-slate-100">
+                      <td className="px-3 py-1.5 text-slate-600">
+                        {w.label}{' '}
+                        <span className="text-slate-400">({w.count})</span>
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-amber-700">
+                        {fmtNumAR(w.ALMUERZO_u, dec)} <span className="text-slate-400">/</span> {fmtAR(w.ALMUERZO_i)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-indigo-700">
+                        {fmtNumAR(w.CENA_u, dec)} <span className="text-slate-400">/</span> {fmtAR(w.CENA_i)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-medium text-slate-700">{fmtNumAR(w.unidades, dec)}</td>
+                      <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(w.importe)}</td>
+                    </tr>
+                  )
+                })}
           </tbody>
         </table>
       </div>
@@ -431,11 +576,15 @@ function MiniKPI({
   label,
   unidades,
   importe,
+  promU,
+  promI,
   color,
 }: {
   label: string
   unidades: number
   importe: number
+  promU?: number
+  promI?: number
   color?: 'amber' | 'indigo'
 }) {
   const colorMap = {
@@ -450,6 +599,14 @@ function MiniKPI({
         <span className="text-base font-semibold text-slate-800">{fmtNumAR(unidades)}</span>
         <span className="text-xs text-slate-500">u · {fmtAR(importe)}</span>
       </div>
+      {(promU != null || promI != null) && (
+        <p className="text-[10px] text-slate-500 mt-1">
+          Prom. {promU != null ? `${fmtNumAR(promU, 1)} u` : ''}
+          {promU != null && promI != null ? ' · ' : ''}
+          {promI != null ? fmtAR(promI) : ''}
+          <span className="text-slate-400"> /día</span>
+        </p>
+      )}
     </div>
   )
 }

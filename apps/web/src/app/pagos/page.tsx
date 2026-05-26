@@ -13,7 +13,18 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { Plus, ChevronLeft, ChevronRight, Search, Sparkles } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Sparkles,
+  FileEdit,
+  Send,
+  CheckCircle2,
+  CalendarClock,
+} from 'lucide-react'
 
 interface PaymentOrder {
   id: string
@@ -43,6 +54,16 @@ interface PagosResponse {
   }
 }
 
+interface PagosStats {
+  estados: {
+    BORRADOR: { count: number; total: number }
+    EMITIDA: { count: number; total: number }
+    PAGADO: { count: number; total: number }
+  }
+  pagadoMes: { count: number; total: number }
+  proximos7: { total: number; cantidad: number }
+}
+
 export default function PagosPage() {
   const queryClient = useQueryClient()
   const { clienteId, isAdmin } = useUser()
@@ -54,7 +75,6 @@ export default function PagosPage() {
   const [reconciliationOpen, setReconciliationOpen] = useState(false)
   const pageSize = 25
 
-  // Debounce proveedor search
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -82,6 +102,17 @@ export default function PagosPage() {
     enabled: !!clienteId,
   })
 
+  const { data: stats } = useQuery<PagosStats>({
+    queryKey: ['pagos-stats', clienteId],
+    queryFn: async () => {
+      const res = await fetch('/api/pagos/stats')
+      if (!res.ok) throw new Error('Failed to fetch')
+      return res.json()
+    },
+    enabled: !!clienteId,
+    staleTime: 30_000,
+  })
+
   const markPaidMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/pagos/${id}`, {
@@ -94,6 +125,7 @@ export default function PagosPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pagos'] })
+      queryClient.invalidateQueries({ queryKey: ['pagos-stats'] })
       toast.success('Orden marcada como pagada')
     },
     onError: () => {
@@ -111,6 +143,7 @@ export default function PagosPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pagos'] })
+      queryClient.invalidateQueries({ queryKey: ['pagos-stats'] })
       toast.success('Orden eliminada')
     },
     onError: () => {
@@ -134,6 +167,12 @@ export default function PagosPage() {
       </DashboardLayout>
     )
   }
+
+  const estados = stats?.estados
+  const emitidas = estados?.EMITIDA
+  const borradores = estados?.BORRADOR
+  const pagadoMes = stats?.pagadoMes
+  const proximos = stats?.proximos7
 
   return (
     <DashboardLayout>
@@ -161,6 +200,48 @@ export default function PagosPage() {
             )
           }
         />
+
+        {/* KPI cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard
+            label="A pagar (emitidas)"
+            value={formatCurrency(emitidas?.total ?? 0)}
+            hint={`${emitidas?.count ?? 0} órdenes pendientes`}
+            icon={<Send className="h-4 w-4" />}
+            tone="blue"
+            active={estado === 'EMITIDA'}
+            onClick={() => {
+              setEstado(estado === 'EMITIDA' ? '' : 'EMITIDA')
+              setPage(1)
+            }}
+          />
+          <StatCard
+            label="Próximos 7 días"
+            value={formatCurrency(proximos?.total ?? 0)}
+            hint={`${proximos?.cantidad ?? 0} órdenes con vencimiento`}
+            icon={<CalendarClock className="h-4 w-4" />}
+            tone="amber"
+          />
+          <StatCard
+            label="Borradores"
+            value={formatCurrency(borradores?.total ?? 0)}
+            hint={`${borradores?.count ?? 0} sin emitir`}
+            icon={<FileEdit className="h-4 w-4" />}
+            tone="slate"
+            active={estado === 'BORRADOR'}
+            onClick={() => {
+              setEstado(estado === 'BORRADOR' ? '' : 'BORRADOR')
+              setPage(1)
+            }}
+          />
+          <StatCard
+            label="Pagado este mes"
+            value={formatCurrency(pagadoMes?.total ?? 0)}
+            hint={`${pagadoMes?.count ?? 0} órdenes liquidadas`}
+            icon={<CheckCircle2 className="h-4 w-4" />}
+            tone="emerald"
+          />
+        </div>
 
         {/* Filters */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -247,4 +328,79 @@ export default function PagosPage() {
       />
     </DashboardLayout>
   )
+}
+
+type Tone = 'blue' | 'amber' | 'slate' | 'emerald'
+
+function StatCard({
+  label,
+  value,
+  hint,
+  icon,
+  tone,
+  active,
+  onClick,
+}: {
+  label: string
+  value: string
+  hint?: string
+  icon: React.ReactNode
+  tone: Tone
+  active?: boolean
+  onClick?: () => void
+}) {
+  const toneMap: Record<Tone, { iconWrap: string; ring: string }> = {
+    blue: {
+      iconWrap: 'bg-blue-50 text-blue-600',
+      ring: 'ring-blue-300',
+    },
+    amber: {
+      iconWrap: 'bg-amber-50 text-amber-600',
+      ring: 'ring-amber-300',
+    },
+    slate: {
+      iconWrap: 'bg-slate-100 text-slate-600',
+      ring: 'ring-slate-300',
+    },
+    emerald: {
+      iconWrap: 'bg-emerald-50 text-emerald-600',
+      ring: 'ring-emerald-300',
+    },
+  }
+  const t = toneMap[tone]
+
+  const content = (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="text-xl font-semibold text-slate-900 mt-1 tabular-nums truncate">
+          {value}
+        </p>
+        {hint && (
+          <p className="text-xs text-slate-400 mt-1 truncate">{hint}</p>
+        )}
+      </div>
+      <div className={`shrink-0 rounded-md p-2 ${t.iconWrap}`}>
+        {icon}
+      </div>
+    </div>
+  )
+
+  const baseCls =
+    'block rounded-lg border bg-white shadow-sm p-4 text-left transition-all'
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`${baseCls} hover:shadow-md hover:border-slate-300 w-full ${
+          active ? `ring-2 ${t.ring} border-transparent` : 'border-slate-200'
+        }`}
+      >
+        {content}
+      </button>
+    )
+  }
+  return <div className={`${baseCls} border-slate-200`}>{content}</div>
 }

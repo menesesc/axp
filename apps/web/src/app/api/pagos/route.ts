@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: { fecha: 'desc' },
+      orderBy: { numero: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
