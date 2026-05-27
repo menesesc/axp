@@ -91,11 +91,25 @@ async function processQueueItem(item: QueueItem): Promise<void> {
       },
     });
 
-    // Buscar el archivo en el directorio processed
+    // Buscar el archivo en el directorio processed.
+    // Retry con espera: el watcher hace INSERT en queue y move file casi
+    // simultáneamente. Si el processor hace polling justo en el medio, el
+    // archivo aún no terminó de aparecer en el filesystem compartido.
     const filePath = join(PROCESSED_DIR, item.sourceRef);
-
+    const maxFileCheckAttempts = 6; // 6 intentos × 2s = 12s de gracia
+    let fileCheckAttempt = 0;
+    while (!existsSync(filePath) && fileCheckAttempt < maxFileCheckAttempts) {
+      if (fileCheckAttempt === 0) {
+        logger.warn(`⏳ File not visible yet, waiting: ${filePath}`);
+      }
+      await sleep(2000);
+      fileCheckAttempt++;
+    }
     if (!existsSync(filePath)) {
-      throw new Error(`File not found in processed directory: ${filePath}`);
+      throw new Error(`File not found in processed directory after ${maxFileCheckAttempts * 2}s: ${filePath}`);
+    }
+    if (fileCheckAttempt > 0) {
+      logger.info(`✅ File appeared after ${fileCheckAttempt * 2}s of waiting`);
     }
 
     // Leer el archivo
