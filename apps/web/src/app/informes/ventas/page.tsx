@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -64,6 +64,22 @@ function ayer(): string {
 }
 
 export default function InformeVentasPage() {
+  // useSearchParams requiere Suspense boundary en Next.js 14 para no romper
+  // el prerender en build time.
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="p-12 text-center text-slate-400">Cargando...</div>
+        </DashboardLayout>
+      }
+    >
+      <InformeVentasContent />
+    </Suspense>
+  )
+}
+
+function InformeVentasContent() {
   const sp = useSearchParams()
   const router = useRouter()
 
