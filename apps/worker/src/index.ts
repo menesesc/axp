@@ -44,9 +44,30 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
+// Validación de env vars críticas por modo. Si falta una, fail-fast.
+// Esto evita que el worker arranque "a medias" y abandone archivos después
+// de N reintentos.
+function validateEnv(mode: string): void {
+  const required: Record<string, string[]> = {
+    watcher: ['DATABASE_URL'],
+    processor: ['DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'],
+    ocr: ['DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'ANTHROPIC_API_KEY'],
+  };
+  const vars = required[mode] ?? [];
+  const missing = vars.filter((v) => !process.env[v]);
+  if (missing.length > 0) {
+    console.error(`❌ Missing required env vars for mode "${mode}": ${missing.join(', ')}`);
+    console.error('   Configurar en Dokploy + docker-compose.prod.yml (environment: block)');
+    process.exit(1);
+  }
+  console.log(`✅ Env vars validated for mode: ${mode}`);
+}
+
 // Start en modo seleccionado
 async function main() {
   try {
+    validateEnv(WORKER_MODE);
+
     if (WORKER_MODE === 'watcher') {
       await startWatcher();
     } else if (WORKER_MODE === 'processor') {
