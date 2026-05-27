@@ -80,45 +80,57 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ranking, groupBy, total })
   }
 
-  // groupBy=item: agrupamos por código.
-  const grouped = await prisma.sales_closure_items.groupBy({
-    by: ['codigo'],
-    where: { closureId: { in: closureIds } },
-    _sum: { unidades: true, importe: true },
-    orderBy: { _sum: { importe: 'desc' } },
-    take: limit,
-  })
+  // groupBy=item: agrupamos por (codigo, nombre).
+  // Maxirest imprime "****" para ítems sin código numérico (cubiertos, copa
+  // champagne, sopa del día, etc.). Si agrupáramos solo por codigo, todos
+  // esos productos distintos quedarían sumados bajo un único bucket "****".
+  const grouped = await prisma.$queryRaw<
+    Array<{
+      codigo: string
+      nombre: string
+      rubroCodigo: string | null
+      rubroNombre: string | null
+      unidades: number
+      importe: number
+      dias: bigint
+    }>
+  >(Prisma.sql`
+    SELECT
+      i.codigo,
+      i.nombre,
+      i."rubroCodigo",
+      i."rubroNombre",
+      SUM(i.unidades)::float as unidades,
+      SUM(i.importe)::float as importe,
+      COUNT(DISTINCT c.fecha) as dias
+    FROM sales_closure_items i
+    JOIN sales_closures c ON c.id = i."closureId"
+    WHERE c.id = ANY(${closureIds}::uuid[])
+    GROUP BY i.codigo, i.nombre, i."rubroCodigo", i."rubroNombre"
+    ORDER BY SUM(i.importe) DESC
+    LIMIT ${limit}
+  `)
 
-  const codigos = grouped.map((g) => g.codigo)
-  const [masters, diasByCodigo] = await Promise.all([
-    prisma.sales_product_master.findMany({
-      where: { clienteId: clienteId!, codigoMaxirest: { in: codigos } },
-      select: { codigoMaxirest: true, nombre: true, rubroCodigo: true, rubroNombre: true },
-    }),
-    prisma.$queryRaw<Array<{ codigo: string; dias: bigint }>>(
-      Prisma.sql`
-        SELECT i.codigo, COUNT(DISTINCT c.fecha) as dias
-        FROM sales_closure_items i
-        JOIN sales_closures c ON c.id = i."closureId"
-        WHERE c.id = ANY(${closureIds}::uuid[])
-          AND i.codigo = ANY(${codigos}::text[])
-        GROUP BY i.codigo
-      `
-    ),
-  ])
+  // Master para enriquecer nombres "oficiales" cuando el código es estable.
+  const codigosEstables = grouped.filter((g) => g.codigo !== '****').map((g) => g.codigo)
+  const masters = codigosEstables.length > 0
+    ? await prisma.sales_product_master.findMany({
+        where: { clienteId: clienteId!, codigoMaxirest: { in: codigosEstables } },
+        select: { codigoMaxirest: true, nombre: true, rubroCodigo: true, rubroNombre: true },
+      })
+    : []
   const masterByCodigo = new Map(masters.map((m) => [m.codigoMaxirest, m]))
-  const diasMap = new Map(diasByCodigo.map((d) => [d.codigo, Number(d.dias)]))
 
   const ranking = grouped.map((g) => {
-    const m = masterByCodigo.get(g.codigo)
-    const unidades = Number(g._sum.unidades ?? 0)
-    const importe = Number(g._sum.importe ?? 0)
-    const dias = diasMap.get(g.codigo) ?? 0
+    const m = g.codigo !== '****' ? masterByCodigo.get(g.codigo) : undefined
+    const unidades = Number(g.unidades)
+    const importe = Number(g.importe)
+    const dias = Number(g.dias)
     return {
       codigo: g.codigo,
-      nombre: m?.nombre ?? g.codigo,
-      rubroCodigo: m?.rubroCodigo ?? null,
-      rubroNombre: m?.rubroNombre ?? null,
+      nombre: m?.nombre ?? g.nombre,
+      rubroCodigo: m?.rubroCodigo ?? g.rubroCodigo,
+      rubroNombre: m?.rubroNombre ?? g.rubroNombre,
       unidades,
       importe,
       dias,

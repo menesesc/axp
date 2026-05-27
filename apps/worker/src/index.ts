@@ -12,6 +12,7 @@
 import { startWatcher } from './watcher/webdavWatcher';
 import { startProcessor } from './processor/queueProcessor';
 import { startOCRProcessor } from './ocr/ocrProcessor';
+import { startScheduler } from './scheduler/reportScheduler';
 
 const WORKER_MODE = process.env.WORKER_MODE || 'watcher';
 
@@ -52,6 +53,7 @@ function validateEnv(mode: string): void {
     watcher: ['DATABASE_URL'],
     processor: ['DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'],
     ocr: ['DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'ANTHROPIC_API_KEY'],
+    scheduler: ['SCHEDULER_TOKEN', 'SCHEDULER_API_URL'],
   };
   const vars = required[mode] ?? [];
   const missing = vars.filter((v) => !process.env[v]);
@@ -74,9 +76,11 @@ async function main() {
       await startProcessor();
     } else if (WORKER_MODE === 'ocr') {
       await startOCRProcessor();
+    } else if (WORKER_MODE === 'scheduler') {
+      await startScheduler();
     } else {
       console.error(`❌ Invalid WORKER_MODE: ${WORKER_MODE}`);
-      console.error('   Valid values: watcher, processor, ocr');
+      console.error('   Valid values: watcher, processor, ocr, scheduler');
       process.exit(1);
     }
   } catch (error) {

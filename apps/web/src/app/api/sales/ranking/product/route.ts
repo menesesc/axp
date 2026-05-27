@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
   if (!codigo) {
     return NextResponse.json({ error: 'codigo is required' }, { status: 400 })
   }
+  // nombre desambigua cuando el código no es único (caso ****).
+  const nombre = sp.get('nombre')
   const from = sp.get('from')
   const to = sp.get('to')
   const sucursal = sp.get('sucursal')
@@ -30,11 +32,11 @@ export async function GET(request: NextRequest) {
   if (Object.keys(dateFilter).length > 0) closureWhere.fecha = dateFilter
   if (sucursal) closureWhere.sucursal = sucursal
 
+  const itemsWhere: Record<string, unknown> = { codigo, closure: closureWhere }
+  if (nombre) itemsWhere.nombre = nombre
+
   const items = await prisma.sales_closure_items.findMany({
-    where: {
-      codigo,
-      closure: closureWhere,
-    },
+    where: itemsWhere,
     select: {
       unidades: true,
       importe: true,

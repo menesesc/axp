@@ -69,3 +69,17 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OCR_MODEL=${OCR_MODEL}
     restart: unless-stopped
+
+  scheduler:
+    build:
+      context: ../../
+      dockerfile: apps/worker/Dockerfile
+    container_name: axp-scheduler
+    working_dir: /app/apps/worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_MODE=scheduler
+      - SCHEDULER_API_URL=${SCHEDULER_API_URL}
+      - SCHEDULER_TOKEN=${SCHEDULER_TOKEN}
+      - SCHEDULER_POLL_INTERVAL=60000
+    restart: unless-stopped

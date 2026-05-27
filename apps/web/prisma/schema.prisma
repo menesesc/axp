@@ -26,6 +26,7 @@ model clientes {
   ai_usage_logs    ai_usage_logs[]
   sales_closures        sales_closures[]
   sales_product_master  sales_product_master[]
+  sales_report_subscriptions sales_report_subscriptions[]
   ventas           ventas[]
 }
 
@@ -602,4 +603,70 @@ model sales_recipe_items {
   recipe            sales_recipes   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 
   @@index([recipeId])
+}
+
+model sales_report_subscriptions {
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId   String                @db.Uuid
+  nombre      String                @db.VarChar(120)
+  frecuencia  FrecuenciaInforme
+  diaSemana   Int?
+  diaMes      Int?
+  hora        String                @default("07:00") @db.VarChar(5)
+  tz          String                @default("America/Argentina/Buenos_Aires") @db.VarChar(64)
+  sucursal    String?               @db.VarChar(100)
+  topN        Int                   @default(10)
+  activo      Boolean               @default(true)
+  createdAt   DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime              @updatedAt @db.Timestamptz(3)
+
+  clientes    clientes              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  recipients  sales_report_subscription_recipients[]
+  runs        sales_report_runs[]
+
+  @@index([clienteId])
+  @@index([activo, frecuencia])
+}
+
+model sales_report_subscription_recipients {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId  String                     @db.Uuid
+  email           String                     @db.VarChar(255)
+  nombre          String?                    @db.VarChar(255)
+  usuarioId       String?                    @db.Uuid
+  createdAt       DateTime                   @default(now()) @db.Timestamptz(3)
+
+  subscription    sales_report_subscriptions @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, email])
+  @@index([subscriptionId])
+}
+
+model sales_report_runs {
+  id                  String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId      String                     @db.Uuid
+  fechaInformeDesde   DateTime                   @db.Date
+  fechaInformeHasta   DateTime                   @db.Date
+  ejecutadoEn         DateTime                   @default(now()) @db.Timestamptz(3)
+  status              StatusInformeRun
+  destinatariosCount  Int                        @default(0)
+  resendMessageIds    Json                       @default("[]")
+  error               String?                    @db.Text
+
+  subscription        sales_report_subscriptions @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, fechaInformeDesde])
+  @@index([subscriptionId, ejecutadoEn(sort: Desc)])
+}
+
+enum FrecuenciaInforme {
+  DIARIA
+  SEMANAL
+  MENSUAL
+}
+
+enum StatusInformeRun {
+  OK
+  FAIL
+  SKIP
 }

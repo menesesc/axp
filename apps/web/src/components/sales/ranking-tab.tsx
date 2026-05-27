@@ -34,7 +34,8 @@ export function RankingTab() {
   const [{ from, to }, setRange] = useState(defaultRange())
   const [groupBy, setGroupBy] = useState<'item' | 'rubro'>('item')
   const [search, setSearch] = useState('')
-  const [expandedCodigo, setExpandedCodigo] = useState<string | null>(null)
+  // Clave compuesta codigo|nombre porque "****" se reusa para varios productos.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ from, to, groupBy, limit: '200' })
@@ -114,7 +115,7 @@ export function RankingTab() {
           </div>
           <div className="inline-flex bg-slate-100 rounded-lg p-1">
             <button
-              onClick={() => { setGroupBy('item'); setExpandedCodigo(null) }}
+              onClick={() => { setGroupBy('item'); setExpandedKey(null) }}
               className={`px-3 py-1.5 text-sm rounded-md transition ${
                 groupBy === 'item' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
               }`}
@@ -122,7 +123,7 @@ export function RankingTab() {
               Por producto
             </button>
             <button
-              onClick={() => { setGroupBy('rubro'); setExpandedCodigo(null) }}
+              onClick={() => { setGroupBy('rubro'); setExpandedKey(null) }}
               className={`px-3 py-1.5 text-sm rounded-md transition ${
                 groupBy === 'rubro' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
               }`}
@@ -162,10 +163,11 @@ export function RankingTab() {
             <tbody>
               {sorted.map((it, idx) => {
                 const pct = maxImporte > 0 ? (it.importe / maxImporte) * 100 : 0
-                const expanded = groupBy === 'item' && it.codigo === expandedCodigo
+                const itemKey = `${it.codigo ?? ''}|${it.nombre ?? ''}`
+                const expanded = groupBy === 'item' && itemKey === expandedKey
                 return (
                   <RankingRow
-                    key={`${it.codigo ?? ''}-${it.rubroCodigo ?? ''}-${idx}`}
+                    key={`${itemKey}-${it.rubroCodigo ?? ''}-${idx}`}
                     idx={idx}
                     item={it}
                     groupBy={groupBy}
@@ -173,7 +175,7 @@ export function RankingTab() {
                     expanded={expanded}
                     onToggle={
                       groupBy === 'item' && it.codigo
-                        ? () => setExpandedCodigo(expanded ? null : it.codigo!)
+                        ? () => setExpandedKey(expanded ? null : itemKey)
                         : undefined
                     }
                     from={from}
@@ -302,9 +304,12 @@ function ProductDetail({
   const [wdMetric, setWdMetric] = useState<'avg' | 'total'>('avg')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-ranking-product', codigo, from, to],
+    queryKey: ['sales-ranking-product', codigo, nombre, from, to],
     queryFn: async () => {
       const sp = new URLSearchParams({ codigo, from, to })
+      // Cuando el código no es único (Maxirest imprime **** para ítems sin
+      // código numérico), enviamos el nombre para desambiguar.
+      if (codigo === '****' && nombre) sp.append('nombre', nombre)
       const res = await fetch(`/api/sales/ranking/product?${sp.toString()}`)
       if (!res.ok) throw new Error('Error cargando detalle')
       return res.json() as Promise<ProductDetailData>
