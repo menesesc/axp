@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams
   const proveedorId = searchParams.get('proveedorId')
+  // Cuando se edita una orden, los documentos asignados a ESA orden deben
+  // aparecer en la lista (para poder mantenerlos o quitarlos).
+  const excludePagoId = searchParams.get('excludePagoId')
 
   if (!proveedorId) {
     return NextResponse.json(
@@ -34,18 +37,21 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Obtener IDs de documentos que ya están en alguna orden de pago
+  // Obtener IDs de documentos que ya están en alguna OTRA orden de pago.
+  // Si estamos editando una orden, NO excluimos los documentos de esa orden.
   const docsEnPago = await prisma.pago_documentos.findMany({
+    where: excludePagoId ? { pagoId: { not: excludePagoId } } : {},
     select: { documentoId: true },
   })
   const docsEnPagoIds = new Set(docsEnPago.map((d) => d.documentoId))
 
-  // Obtener documentos confirmados de este proveedor que no están pagados
+  // Obtener documentos confirmados o pagados (de la orden que se edita)
+  // de este proveedor que no están en otra orden.
   const documentos = await prisma.documentos.findMany({
     where: {
       clienteId: user.clienteId,
       proveedorId,
-      estadoRevision: 'CONFIRMADO',
+      estadoRevision: { in: ['CONFIRMADO', 'PAGADO'] },
     },
     select: {
       id: true,

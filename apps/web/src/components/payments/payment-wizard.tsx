@@ -146,11 +146,15 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
       )
     : proveedores
 
-  // Fetch documentos pendientes del proveedor seleccionado
+  // Fetch documentos pendientes del proveedor seleccionado.
+  // En modo edición, incluimos los docs de la orden actual (sino quedarían
+  // ocultos por estar "ya en una orden de pago").
   const { data: docsData, isLoading: loadingDocs } = useQuery({
-    queryKey: ['documentos-pendientes', selectedProveedor],
+    queryKey: ['documentos-pendientes', selectedProveedor, editMode?.pagoId],
     queryFn: async () => {
-      const res = await fetch(`/api/pagos/documentos-pendientes?proveedorId=${selectedProveedor}`)
+      const params = new URLSearchParams({ proveedorId: selectedProveedor })
+      if (editMode?.pagoId) params.append('excludePagoId', editMode.pagoId)
+      const res = await fetch(`/api/pagos/documentos-pendientes?${params}`)
       if (!res.ok) throw new Error('Failed to fetch')
       return res.json()
     },
