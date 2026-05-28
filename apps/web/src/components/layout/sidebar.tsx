@@ -61,9 +61,9 @@ const navigationSections: NavSection[] = [
     title: 'Documentos',
     items: [
       { name: 'Documentos', href: '/documentos', icon: FileText, badge: true },
-      { name: 'Items', href: '/items', icon: Package },
-      { name: 'Proveedores', href: '/proveedores', icon: Users },
-      { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true },
+      { name: 'Items', href: '/items', icon: Package, viewerHidden: true },
+      { name: 'Proveedores', href: '/proveedores', icon: Users, viewerHidden: true },
+      { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true, viewerHidden: true },
     ],
   },
   {
@@ -182,9 +182,10 @@ function SidebarContent({
               )}
               <div className="space-y-0.5">
                 {visibleItems.map((item) => {
-                  const isActive =
-                    pathname === item.href ||
-                    (item.href !== '/' && pathname.startsWith(item.href + '/'))
+                  // Match exacto: si usáramos startsWith, `/informes` matchearía
+                  // como prefijo de `/informes/ventas`, `/informes/compras`, etc.
+                  // y "Resumen Ejecutivo" quedaría activo en todos los sub-informes.
+                  const isActive = pathname === item.href
                   const Icon = item.icon
                   const showBadge = item.badge && pendingCount > 0
                   const showLogsBadge = item.logsBadge && unreadLogsCount > 0
