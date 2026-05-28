@@ -37,19 +37,30 @@ export async function GET(request: NextRequest) {
     orderBy: { fecha: 'asc' },
   })
 
-  // Agrupar por fecha (YYYY-MM-DD) y turno
+  // Agrupar por fecha (YYYY-MM-DD) y turno. Acumulamos importe y cubiertos
+  // por turno: el gráfico puede mostrar ventas ($) o cubiertos (cantidad).
   const dayMap = new Map<
     string,
-    { ALMUERZO: number; CENA: number; OTRO: number; totalTickets: number }
+    {
+      ALMUERZO: number; CENA: number; OTRO: number
+      cubALMUERZO: number; cubCENA: number; cubOTRO: number
+      totalTickets: number
+    }
   >()
   let totals = { ALMUERZO: 0, CENA: 0, OTRO: 0 }
   let counts = { ALMUERZO: 0, CENA: 0, OTRO: 0 }
 
   for (const c of closures) {
     const key = c.fecha.toISOString().slice(0, 10)
-    const cur = dayMap.get(key) ?? { ALMUERZO: 0, CENA: 0, OTRO: 0, totalTickets: 0 }
+    const cur = dayMap.get(key) ?? {
+      ALMUERZO: 0, CENA: 0, OTRO: 0, cubALMUERZO: 0, cubCENA: 0, cubOTRO: 0, totalTickets: 0,
+    }
     const importe = Number(c.totalVentas ?? 0)
+    const cubiertos = Number(c.cantCubiertos ?? 0)
     cur[c.turnoNombre as keyof typeof totals] += importe
+    if (c.turnoNombre === 'ALMUERZO') cur.cubALMUERZO += cubiertos
+    else if (c.turnoNombre === 'CENA') cur.cubCENA += cubiertos
+    else cur.cubOTRO += cubiertos
     cur.totalTickets += c.cantTickets ?? 0
     dayMap.set(key, cur)
     totals[c.turnoNombre as keyof typeof totals] += importe
@@ -64,6 +75,9 @@ export async function GET(request: NextRequest) {
       cena: v.CENA,
       otro: v.OTRO,
       total: v.ALMUERZO + v.CENA + v.OTRO,
+      cubiertosAlmuerzo: v.cubALMUERZO,
+      cubiertosCena: v.cubCENA,
+      cubiertosOtro: v.cubOTRO,
       tickets: v.totalTickets,
     }))
 

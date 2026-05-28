@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/header'
 import { DateRange } from '@/components/sales/date-range'
 import { fmtAR, fmtNumAR, fmtFecha } from '@/components/sales/shared'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { Search, X, Package, Sun, Moon, ChevronDown, ChevronUp, Calendar, SlidersHorizontal } from 'lucide-react'
 import {
   BarChart,
@@ -35,6 +36,8 @@ interface RubroItem {
   importe: number
   participacionRubro: number
 }
+
+type DisplayItem = RubroItem & { rubroNombre?: string | null }
 
 interface RubroBlock {
   rubroCodigo: string | null
@@ -96,29 +99,65 @@ function InformeVentasContent() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [expandedRubro, setExpandedRubro] = useState<string | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  // Toggles de columnas. Persistimos en localStorage para que el usuario no
-  // tenga que reactivar lo suyo cada vez que abre el informe desde el mail.
+  const [mobileTab, setMobileTab] = useState<'resumen' | 'detalle'>('resumen')
+
+  // Toggles de "Mostrar". Persisten en localStorage para no reactivar cada vez
+  // que se abre el informe (típicamente desde el link del mail).
+  const [showImporte, setShowImporte] = useState(true)
+  const [showCantidades, setShowCantidades] = useState(false)
   const [showTurnos, setShowTurnos] = useState(true)
-  const [showUnidades, setShowUnidades] = useState(true)
-  const [showPctRubro, setShowPctRubro] = useState(false)
+  const [groupByRubro, setGroupByRubro] = useState(true)
+
+  // Detección de viewport mobile: en mobile Importe y Cantidades son
+  // mutuamente excluyentes (no entra todo). En desktop pueden convivir.
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem('informe-ventas:cols')
       if (raw) {
-        const cfg = JSON.parse(raw) as { turnos?: boolean; unidades?: boolean; pct?: boolean }
+        const cfg = JSON.parse(raw) as { importe?: boolean; cantidades?: boolean; turnos?: boolean; group?: boolean }
+        if (typeof cfg.importe === 'boolean') setShowImporte(cfg.importe)
+        if (typeof cfg.cantidades === 'boolean') setShowCantidades(cfg.cantidades)
         if (typeof cfg.turnos === 'boolean') setShowTurnos(cfg.turnos)
-        if (typeof cfg.unidades === 'boolean') setShowUnidades(cfg.unidades)
-        if (typeof cfg.pct === 'boolean') setShowPctRubro(cfg.pct)
+        if (typeof cfg.group === 'boolean') setGroupByRubro(cfg.group)
       }
     } catch { /* localStorage puede fallar en modo privado */ }
   }, [])
   useEffect(() => {
     try {
       localStorage.setItem('informe-ventas:cols', JSON.stringify({
-        turnos: showTurnos, unidades: showUnidades, pct: showPctRubro,
+        importe: showImporte, cantidades: showCantidades, turnos: showTurnos, group: groupByRubro,
       }))
     } catch { /* ignore */ }
-  }, [showTurnos, showUnidades, showPctRubro])
+  }, [showImporte, showCantidades, showTurnos, groupByRubro])
+
+  // En mobile no pueden estar los dos prendidos: priorizamos importe. También
+  // garantizamos que al menos uno quede activo.
+  useEffect(() => {
+    if (isMobile && showImporte && showCantidades) setShowCantidades(false)
+    if (!showImporte && !showCantidades) setShowImporte(true)
+  }, [isMobile, showImporte, showCantidades])
+
+  function pickImporte() {
+    if (isMobile) { setShowImporte(true); setShowCantidades(false); return }
+    setShowImporte((prev) => (prev && !showCantidades ? prev : !prev))
+  }
+  function pickCantidades() {
+    if (isMobile) { setShowCantidades(true); setShowImporte(false); return }
+    setShowCantidades((prev) => (prev && !showImporte ? prev : !prev))
+  }
+
+  // El "modo valor" define el ranking de la lista plana y qué muestra el
+  // gráfico: cantidad solo cuando es lo único activo.
+  const valueIsCantidad = showCantidades && !showImporte
 
   // Debounce de búsqueda (client-side: el filtro corre tanto en el server
   // como localmente para resaltar; mandamos al server para sumar bien
@@ -157,6 +196,18 @@ function InformeVentasContent() {
 
   const isMultiDay = from !== to
 
+  // Lista plana ordenada por ranking (cuando no se agrupa por rubro).
+  const flat = useMemo<DisplayItem[]>(() => {
+    if (!data) return []
+    const all: DisplayItem[] = data.rubros.flatMap((r) =>
+      r.items.map((it) => ({ ...it, rubroNombre: r.rubroNombre }))
+    )
+    all.sort((a, b) => (valueIsCantidad ? b.unidades - a.unidades : b.importe - a.importe))
+    return all
+  }, [data, valueIsCantidad])
+  const flatTop = flat.slice(0, 50)
+  const flatRest = flat.length - flatTop.length
+
   // Atajos de frecuencia: ajustan from/to.
   function applyFrec(f: Frec) {
     const now = new Date()
@@ -193,6 +244,84 @@ function InformeVentasContent() {
       </>
     )
   }
+  const hl = (t: string) => highlight(t, debouncedSearch)
+
+  const hasData = data && data.rubros.length > 0
+
+  // Bloque "Resumen": KPIs + gráfico. En mobile solo visible en su tab.
+  const resumenBlock = data && (
+    <div className={cn(mobileTab === 'resumen' ? 'block' : 'hidden', 'md:block space-y-5')}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
+        <KPI label="Ventas totales" value={fmtAR(data.totales.importe)} accent />
+        <KPI label="Tickets" value={fmtNumAR(data.totales.tickets)} />
+        <KPI label="Mediodía" value={fmtAR(data.totales.almuerzo)} icon={<Sun className="h-4 w-4 text-amber-500" />} />
+        <KPI label="Noche" value={fmtAR(data.totales.cena)} icon={<Moon className="h-4 w-4 text-indigo-500" />} />
+        <KPI label="Días" value={fmtNumAR(data.rango.dias)} icon={<Calendar className="h-4 w-4 text-slate-400" />} />
+      </div>
+      {isMultiDay && (
+        <DiarioChart from={from} to={to} sucursal={sucursal || null} mode={valueIsCantidad ? 'cantidades' : 'importe'} />
+      )}
+    </div>
+  )
+
+  // Bloque "Detalle": lista (agrupada por rubro o plana rankeada).
+  const detalleBlock = (
+    <div className={cn(mobileTab === 'detalle' ? 'block' : 'hidden', 'md:block')}>
+      {isLoading ? (
+        <div className="p-12 text-center text-slate-400">Cargando...</div>
+      ) : !hasData ? (
+        <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
+          <Package className="h-10 w-10 mx-auto text-slate-300 mb-3" />
+          <p className="text-slate-500 font-medium">
+            {debouncedSearch ? `Sin resultados para "${debouncedSearch}"` : 'Sin datos en este rango'}
+          </p>
+        </div>
+      ) : groupByRubro ? (
+        <div className="space-y-3">
+          {data!.rubros.map((rubro) => {
+            const key = rubro.rubroCodigo ?? '__null__'
+            const expanded = expandedRubro === key
+            return (
+              <RubroCard
+                key={key}
+                rubro={rubro}
+                highlight={hl}
+                expanded={expanded}
+                onToggle={() => setExpandedRubro(expanded ? null : key)}
+                showTurnos={showTurnos}
+                showImporte={showImporte}
+                showCantidades={showCantidades}
+              />
+            )
+          })}
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+            Top {flatTop.length} productos por {valueIsCantidad ? 'cantidad' : 'importe'}
+          </div>
+          <ProductTable
+            items={flatTop}
+            note={flatRest > 0 ? `+ ${fmtNumAR(flatRest)} productos más` : null}
+            highlight={hl}
+            showTurnos={showTurnos}
+            showImporte={showImporte}
+            showCantidades={showCantidades}
+            showRubro
+          />
+          <ProductCards
+            items={flatTop}
+            note={flatRest > 0 ? `+ ${fmtNumAR(flatRest)} productos más` : null}
+            highlight={hl}
+            showTurnos={showTurnos}
+            showImporte={showImporte}
+            showCantidades={showCantidades}
+            showRubro
+          />
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <DashboardLayout>
@@ -285,74 +414,37 @@ function InformeVentasContent() {
           </div>
         </div>
 
-        {/* KPIs — 2 cols en mobile (4 mas grandes priorizadas) */}
-        {data && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
-            <KPI label="Ventas totales" value={fmtAR(data.totales.importe)} accent />
-            <KPI label="Tickets" value={fmtNumAR(data.totales.tickets)} />
-            <KPI
-              label="Mediodía"
-              value={fmtAR(data.totales.almuerzo)}
-              icon={<Sun className="h-4 w-4 text-amber-500" />}
-            />
-            <KPI
-              label="Noche"
-              value={fmtAR(data.totales.cena)}
-              icon={<Moon className="h-4 w-4 text-indigo-500" />}
-            />
-            <KPI
-              label="Días"
-              value={fmtNumAR(data.rango.dias)}
-              icon={<Calendar className="h-4 w-4 text-slate-400" />}
-            />
-          </div>
-        )}
-
-        {/* Gráfico por día (solo si rango > 1 día) */}
-        {data && isMultiDay && <DiarioChart from={from} to={to} sucursal={sucursal || null} />}
-
-        {/* Toggles de columnas — solo afectan render, no la query. */}
-        {data && data.rubros.length > 0 && (
+        {/* Toggles "Mostrar" — arriba para que afecten tanto el gráfico (Resumen)
+            como la lista (Detalle). */}
+        {hasData && (
           <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600">
             <span className="text-slate-400">Mostrar:</span>
+            <ColToggle active={showImporte} onClick={pickImporte}>Importe</ColToggle>
+            <ColToggle active={showCantidades} onClick={pickCantidades}>Cantidades</ColToggle>
             <ColToggle active={showTurnos} onClick={() => setShowTurnos((v) => !v)}>Por turno</ColToggle>
-            <ColToggle active={showUnidades} onClick={() => setShowUnidades((v) => !v)}>Cantidades</ColToggle>
-            <ColToggle active={showPctRubro} onClick={() => setShowPctRubro((v) => !v)}>% rubro</ColToggle>
+            <ColToggle active={groupByRubro} onClick={() => setGroupByRubro((v) => !v)}>Rubro</ColToggle>
           </div>
         )}
 
-        {/* Lista de rubros */}
-        {isLoading ? (
-          <div className="p-12 text-center text-slate-400">Cargando...</div>
-        ) : !data || data.rubros.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
-            <Package className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-            <p className="text-slate-500 font-medium">
-              {debouncedSearch
-                ? `Sin resultados para "${debouncedSearch}"`
-                : 'Sin datos en este rango'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {data.rubros.map((rubro) => {
-              const key = rubro.rubroCodigo ?? '__null__'
-              const expanded = expandedRubro === key
-              return (
-                <RubroCard
-                  key={key}
-                  rubro={rubro}
-                  highlight={(t) => highlight(t, debouncedSearch)}
-                  expanded={expanded}
-                  onToggle={() => setExpandedRubro(expanded ? null : key)}
-                  showTurnos={showTurnos}
-                  showUnidades={showUnidades}
-                  showPctRubro={showPctRubro}
-                />
-              )
-            })}
+        {/* Tabs solo en mobile: Resumen (KPIs + gráfico) / Detalle (lista). */}
+        {data && (
+          <div className="md:hidden inline-flex bg-slate-100 rounded-md p-0.5">
+            {(['resumen', 'detalle'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setMobileTab(t)}
+                className={`px-4 py-1.5 text-xs font-medium rounded capitalize ${
+                  mobileTab === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
           </div>
         )}
+
+        {resumenBlock}
+        {detalleBlock}
       </div>
     </DashboardLayout>
   )
@@ -406,33 +498,144 @@ function ColToggle({
   )
 }
 
+// Texto de celda por turno según qué se muestra (importe, cantidad o ambos).
+function turnoText(u: number, i: number, showImporte: boolean, showCantidades: boolean): string {
+  if (u === 0 && i === 0) return '—'
+  const parts: string[] = []
+  if (showCantidades) parts.push(`${fmtNumAR(u)}u`)
+  if (showImporte) parts.push(fmtAR(i))
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+interface ProductListProps {
+  items: DisplayItem[]
+  note: string | null
+  highlight: (s: string) => React.ReactNode
+  showTurnos: boolean
+  showImporte: boolean
+  showCantidades: boolean
+  showRubro?: boolean
+}
+
+function ProductTable({ items, note, highlight, showTurnos, showImporte, showCantidades, showRubro }: ProductListProps) {
+  const colCount =
+    1 + (showRubro ? 1 : 0) + (showTurnos ? 2 : 0) + (showCantidades ? 1 : 0) + (showImporte ? 1 : 0)
+  return (
+    <table className="w-full text-sm hidden md:table">
+      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th className="text-left px-4 py-2 font-medium">Producto</th>
+          {showRubro && <th className="text-left px-4 py-2 font-medium">Rubro</th>}
+          {showTurnos && <th className="text-right px-4 py-2 font-medium text-amber-700">Mediodía</th>}
+          {showTurnos && <th className="text-right px-4 py-2 font-medium text-indigo-700">Noche</th>}
+          {showCantidades && <th className="text-right px-4 py-2 font-medium">Unidades</th>}
+          {showImporte && <th className="text-right px-4 py-2 font-medium">Importe</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((it) => (
+          <tr key={`${it.codigo}|${it.nombre}`} className="border-t border-slate-100">
+            <td className="px-4 py-2 text-slate-700">
+              {highlight(it.nombre)}
+              {it.codigo !== '****' && <span className="text-xs text-slate-400 ml-1.5">({it.codigo})</span>}
+            </td>
+            {showRubro && (
+              <td className="px-4 py-2 text-xs text-slate-500">{it.rubroNombre ?? '(Sin rubro)'}</td>
+            )}
+            {showTurnos && (
+              <td className="px-4 py-2 text-right text-amber-700 tabular-nums whitespace-nowrap">
+                {turnoText(it.almuerzo_u, it.almuerzo_i, showImporte, showCantidades)}
+              </td>
+            )}
+            {showTurnos && (
+              <td className="px-4 py-2 text-right text-indigo-700 tabular-nums whitespace-nowrap">
+                {turnoText(it.cena_u, it.cena_i, showImporte, showCantidades)}
+              </td>
+            )}
+            {showCantidades && (
+              <td className="px-4 py-2 text-right text-slate-700 tabular-nums">{fmtNumAR(it.unidades)}</td>
+            )}
+            {showImporte && (
+              <td className="px-4 py-2 text-right font-semibold text-slate-800 tabular-nums">{fmtAR(it.importe)}</td>
+            )}
+          </tr>
+        ))}
+        {note && (
+          <tr className="border-t border-slate-100 bg-slate-50">
+            <td colSpan={colCount} className="px-4 py-2 text-xs text-slate-500 italic text-center">
+              {note}
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  )
+}
+
+function ProductCards({ items, note, highlight, showTurnos, showImporte, showCantidades, showRubro }: ProductListProps) {
+  return (
+    <div className="md:hidden divide-y divide-slate-100">
+      {items.map((it) => (
+        <div key={`${it.codigo}|${it.nombre}`} className="px-4 py-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-slate-800 font-medium">
+                {highlight(it.nombre)}
+                {it.codigo !== '****' && <span className="text-xs text-slate-400 ml-1.5">({it.codigo})</span>}
+              </p>
+              {showRubro && it.rubroNombre && (
+                <p className="text-[11px] text-slate-400 mt-0.5">{it.rubroNombre}</p>
+              )}
+            </div>
+            <p className="text-sm font-semibold text-slate-900 tabular-nums whitespace-nowrap">
+              {showImporte ? fmtAR(it.importe) : `${fmtNumAR(it.unidades)} u`}
+            </p>
+          </div>
+          {showTurnos && (
+            <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded bg-amber-50 px-2 py-1 text-amber-800">
+                <span className="text-[10px] uppercase tracking-wide text-amber-700/70">Mediodía</span>
+                <div className="tabular-nums">{turnoText(it.almuerzo_u, it.almuerzo_i, showImporte, showCantidades)}</div>
+              </div>
+              <div className="rounded bg-indigo-50 px-2 py-1 text-indigo-800">
+                <span className="text-[10px] uppercase tracking-wide text-indigo-700/70">Noche</span>
+                <div className="tabular-nums">{turnoText(it.cena_u, it.cena_i, showImporte, showCantidades)}</div>
+              </div>
+            </div>
+          )}
+          {showImporte && showCantidades && (
+            <div className="mt-1.5 text-[11px] text-slate-500">{fmtNumAR(it.unidades)} unid.</div>
+          )}
+        </div>
+      ))}
+      {note && (
+        <div className="px-4 py-2 text-xs text-slate-500 italic text-center bg-slate-50">{note}</div>
+      )}
+    </div>
+  )
+}
+
 function RubroCard({
   rubro,
   highlight,
   expanded,
   onToggle,
   showTurnos,
-  showUnidades,
-  showPctRubro,
+  showImporte,
+  showCantidades,
 }: {
   rubro: RubroBlock
   highlight: (s: string) => React.ReactNode
   expanded: boolean
   onToggle: () => void
   showTurnos: boolean
-  showUnidades: boolean
-  showPctRubro: boolean
+  showImporte: boolean
+  showCantidades: boolean
 }) {
-  // Formato de celda M/N: dependiendo de qué quiere ver el usuario.
-  // - showUnidades + importes (default): "12u · $1.234"
-  // - solo unidades: "12u"
-  // - solo importes: "$1.234"
-  function turnoCell(u: number, i: number): string {
-    if (u === 0) return '—'
-    if (showUnidades) return `${fmtNumAR(u)}u · ${fmtAR(i)}`
-    return fmtAR(i)
-  }
-  const colCount = 2 + (showTurnos ? 2 : 0) + (showUnidades ? 1 : 0) + (showPctRubro ? 1 : 0)
+  const note =
+    rubro.itemsRestantes > 0
+      ? `+ ${rubro.itemsRestantes} producto${rubro.itemsRestantes === 1 ? '' : 's'} más por debajo del top 200`
+      : null
   return (
     <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
       <button
@@ -460,126 +663,50 @@ function RubroCard({
       </button>
       {expanded && (
         <div className="border-t border-slate-200">
-          {/* Tabla en md+ */}
-          <table className="w-full text-sm hidden md:table">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Producto</th>
-                {showTurnos && (
-                  <th className="text-right px-4 py-2 font-medium text-amber-700">
-                    Mediodía{showUnidades ? ' (u · $)' : ''}
-                  </th>
-                )}
-                {showTurnos && (
-                  <th className="text-right px-4 py-2 font-medium text-indigo-700">
-                    Noche{showUnidades ? ' (u · $)' : ''}
-                  </th>
-                )}
-                {showUnidades && <th className="text-right px-4 py-2 font-medium">Total unid.</th>}
-                <th className="text-right px-4 py-2 font-medium">Total $</th>
-                {showPctRubro && <th className="text-right px-4 py-2 font-medium w-20">% rubro</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {rubro.items.map((it) => (
-                <tr key={`${it.codigo}|${it.nombre}`} className="border-t border-slate-100">
-                  <td className="px-4 py-2 text-slate-700">
-                    {highlight(it.nombre)}
-                    {it.codigo !== '****' && (
-                      <span className="text-xs text-slate-400 ml-1.5">({it.codigo})</span>
-                    )}
-                  </td>
-                  {showTurnos && (
-                    <td className="px-4 py-2 text-right text-amber-700 tabular-nums whitespace-nowrap">
-                      {turnoCell(it.almuerzo_u, it.almuerzo_i)}
-                    </td>
-                  )}
-                  {showTurnos && (
-                    <td className="px-4 py-2 text-right text-indigo-700 tabular-nums whitespace-nowrap">
-                      {turnoCell(it.cena_u, it.cena_i)}
-                    </td>
-                  )}
-                  {showUnidades && (
-                    <td className="px-4 py-2 text-right text-slate-700 tabular-nums">
-                      {fmtNumAR(it.unidades)}
-                    </td>
-                  )}
-                  <td className="px-4 py-2 text-right font-semibold text-slate-800 tabular-nums">
-                    {fmtAR(it.importe)}
-                  </td>
-                  {showPctRubro && (
-                    <td className="px-4 py-2 text-right text-slate-500 tabular-nums">
-                      {(it.participacionRubro * 100).toFixed(1)}%
-                    </td>
-                  )}
-                </tr>
-              ))}
-              {rubro.itemsRestantes > 0 && (
-                <tr className="border-t border-slate-100 bg-slate-50">
-                  <td colSpan={colCount} className="px-4 py-2 text-xs text-slate-500 italic text-center">
-                    + {rubro.itemsRestantes} producto{rubro.itemsRestantes === 1 ? '' : 's'} más por debajo del top 200
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* Cards apiladas en mobile */}
-          <div className="md:hidden divide-y divide-slate-100">
-            {rubro.items.map((it) => (
-              <div key={`${it.codigo}|${it.nombre}`} className="px-4 py-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="text-sm text-slate-800 font-medium flex-1 min-w-0">
-                    {highlight(it.nombre)}
-                    {it.codigo !== '****' && (
-                      <span className="text-xs text-slate-400 ml-1.5">({it.codigo})</span>
-                    )}
-                  </p>
-                  <p className="text-sm font-semibold text-slate-900 tabular-nums whitespace-nowrap">
-                    {fmtAR(it.importe)}
-                  </p>
-                </div>
-                {showTurnos && (
-                  <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded bg-amber-50 px-2 py-1 text-amber-800">
-                      <span className="text-[10px] uppercase tracking-wide text-amber-700/70">Mediodía</span>
-                      <div className="tabular-nums">{turnoCell(it.almuerzo_u, it.almuerzo_i)}</div>
-                    </div>
-                    <div className="rounded bg-indigo-50 px-2 py-1 text-indigo-800">
-                      <span className="text-[10px] uppercase tracking-wide text-indigo-700/70">Noche</span>
-                      <div className="tabular-nums">{turnoCell(it.cena_u, it.cena_i)}</div>
-                    </div>
-                  </div>
-                )}
-                {(showUnidades || showPctRubro) && (
-                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
-                    {showUnidades ? <span>{fmtNumAR(it.unidades)} unid.</span> : <span />}
-                    {showPctRubro ? <span>{(it.participacionRubro * 100).toFixed(1)}% del rubro</span> : <span />}
-                  </div>
-                )}
-              </div>
-            ))}
-            {rubro.itemsRestantes > 0 && (
-              <div className="px-4 py-2 text-xs text-slate-500 italic text-center bg-slate-50">
-                + {rubro.itemsRestantes} producto{rubro.itemsRestantes === 1 ? '' : 's'} más
-              </div>
-            )}
-          </div>
+          <ProductTable
+            items={rubro.items}
+            note={note}
+            highlight={highlight}
+            showTurnos={showTurnos}
+            showImporte={showImporte}
+            showCantidades={showCantidades}
+          />
+          <ProductCards
+            items={rubro.items}
+            note={note}
+            highlight={highlight}
+            showTurnos={showTurnos}
+            showImporte={showImporte}
+            showCantidades={showCantidades}
+          />
         </div>
       )}
     </div>
   )
 }
 
-// Series diarias separadas por turno para el gráfico (rango > 1 día).
+interface ShiftPoint {
+  fecha: string
+  almuerzo: number
+  cena: number
+  cubiertosAlmuerzo: number
+  cubiertosCena: number
+  total: number
+  tickets: number
+}
+
+// Series diarias separadas por turno (rango > 1 día). Muestra ventas ($) o
+// cubiertos (cantidad) según el modo elegido en los toggles.
 function DiarioChart({
   from,
   to,
   sucursal,
+  mode,
 }: {
   from: string
   to: string
   sucursal: string | null
+  mode: 'importe' | 'cantidades'
 }) {
   const params = useMemo(() => {
     const p = new URLSearchParams({ from, to })
@@ -587,9 +714,7 @@ function DiarioChart({
     return p.toString()
   }, [from, to, sucursal])
 
-  const { data, isLoading } = useQuery<{
-    series: Array<{ fecha: string; almuerzo: number; cena: number; total: number; tickets: number }>
-  }>({
+  const { data, isLoading } = useQuery<{ series: ShiftPoint[] }>({
     queryKey: ['informe-by-shift', params],
     queryFn: async () => {
       const res = await fetch(`/api/sales/by-shift?${params}`)
@@ -600,22 +725,28 @@ function DiarioChart({
 
   if (isLoading || !data || data.series.length === 0) return null
 
+  const isImporte = mode === 'importe'
+  const aKey = isImporte ? 'almuerzo' : 'cubiertosAlmuerzo'
+  const cKey = isImporte ? 'cena' : 'cubiertosCena'
+  const fmt = isImporte ? fmtAR : fmtNumAR
+  const title = isImporte ? 'Ventas por día y turno' : 'Cubiertos por día y turno'
+
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-4">
-      <h3 className="text-sm font-medium text-slate-700 mb-3">Ventas por día y turno</h3>
+      <h3 className="text-sm font-medium text-slate-700 mb-3">{title}</h3>
       <div style={{ width: '100%', height: 220 }}>
         <ResponsiveContainer>
           <BarChart data={data.series}>
             <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
             <XAxis dataKey="fecha" tickFormatter={(s) => fmtFecha(s).slice(0, 5)} tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} width={56} />
+            <YAxis tick={{ fontSize: 11 }} width={56} tickFormatter={(v) => (isImporte ? fmtNumAR(Number(v)) : String(v))} />
             <Tooltip
               labelFormatter={(l) => fmtFecha(String(l))}
-              formatter={((v: number, name: string) => [fmtAR(v), name]) as never}
+              formatter={((v: number, name: string) => [fmt(v), name]) as never}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="almuerzo" name="Mediodía" stackId="t" fill="#f59e0b" />
-            <Bar dataKey="cena" name="Noche" stackId="t" fill="#6366f1" radius={[3, 3, 0, 0]} />
+            <Bar dataKey={aKey} name="Mediodía" stackId="t" fill="#f59e0b" />
+            <Bar dataKey={cKey} name="Noche" stackId="t" fill="#6366f1" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
