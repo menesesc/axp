@@ -84,6 +84,7 @@ const navigationSections: NavSection[] = [
     title: 'Informes',
     items: [
       { name: 'Resumen Ejecutivo', href: '/informes', icon: PieChart },
+      { name: 'Ventas', href: '/informes/ventas', icon: ShoppingCart },
       { name: 'Cuenta Corriente', href: '/informes/cuenta-corriente', icon: FileText },
       { name: 'Análisis de Precios', href: '/informes/precios', icon: BarChart3 },
       { name: 'Compras', href: '/informes/compras', icon: Package },

@@ -18,7 +18,9 @@ export function Header({ title, description, actions, children, className }: Hea
         className
       )}
     >
-      <div>
+      {/* pl en mobile para no quedar tapado por el botón hamburguesa fijo
+          (top-3 left-3). En lg+ el sidebar es fijo y no hace falta. */}
+      <div className="pl-11 lg:pl-0">
         <h1 className="text-xl font-semibold text-slate-900 tracking-tight">
           {title}
         </h1>
