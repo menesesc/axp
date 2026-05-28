@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendSalesReport } from '@/lib/sales/send-report'
+import { sendSalesReport, resolvePublicBaseUrl } from '@/lib/sales/send-report'
 import { computeReportRange } from '@/lib/sales/report-period'
 
 export const dynamic = 'force-dynamic'
@@ -25,12 +25,12 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date()
-  // El worker manda su SCHEDULER_API_URL en el body — esa es la URL pública
-  // que tiene que aparecer en los links del email. Si no la manda, caemos a
-  // origin (sirve para testing manual con curl).
+  // En prod el contenedor escucha en localhost:8080, así que ni el origin ni
+  // el SCHEDULER_API_URL interno sirven como link público. APP_PUBLIC_URL es
+  // la fuente de verdad; el body.baseUrl queda como hint para testing.
   let body: { baseUrl?: string } = {}
   try { body = await request.json() } catch { /* tick body opcional */ }
-  const baseUrl = body.baseUrl || request.nextUrl.origin
+  const baseUrl = resolvePublicBaseUrl({ hint: body.baseUrl, origin: request.nextUrl.origin })
 
   // Traemos todas las activas. Volumen esperado: pocas decenas.
   const subs = await prisma.sales_report_subscriptions.findMany({

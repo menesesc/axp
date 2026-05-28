@@ -17,6 +17,22 @@ export interface SendReportOptions {
   baseUrl: string
 }
 
+/**
+ * Devuelve la URL pública del web app para armar links en emails.
+ *
+ * En producción el contenedor Next escucha en localhost:8080, así que el
+ * `origin` que ve el request es interno y no sirve para mails. Si está
+ * NEXT_PUBLIC_API_URL configurada (apunta al dominio público), gana siempre.
+ * Como fallback aceptamos un hint (ej. body.baseUrl del scheduler) y por
+ * último el origin del request (útil en dev y en /test desde el navegador).
+ */
+export function resolvePublicBaseUrl(opts: { hint?: string | null | undefined; origin?: string | null | undefined }): string {
+  const env = process.env.NEXT_PUBLIC_API_URL?.trim()
+  if (env) return env.replace(/\/$/, '')
+  if (opts.hint) return opts.hint.replace(/\/$/, '')
+  return (opts.origin ?? '').replace(/\/$/, '')
+}
+
 export interface SendReportResult {
   status: 'OK' | 'SKIP' | 'FAIL'
   destinatariosCount: number

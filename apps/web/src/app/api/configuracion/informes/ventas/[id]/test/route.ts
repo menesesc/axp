@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendSalesReport } from '@/lib/sales/send-report'
+import { sendSalesReport, resolvePublicBaseUrl } from '@/lib/sales/send-report'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     throw err
   }
 
-  const baseUrl = request.nextUrl.origin
+  const baseUrl = resolvePublicBaseUrl({ origin: request.nextUrl.origin })
 
   const result = await sendSalesReport({
     subscriptionId: params.id,

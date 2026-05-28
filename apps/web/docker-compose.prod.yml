@@ -20,6 +20,7 @@ services:
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_WEBHOOK_SECRET=${RESEND_WEBHOOK_SECRET}
       - R2_UNRESOLVED_BUCKET=${R2_UNRESOLVED_BUCKET}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     ports:
       - "8080:8080"
     restart: unless-stopped

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendSalesReport } from '@/lib/sales/send-report'
+import { sendSalesReport, resolvePublicBaseUrl } from '@/lib/sales/send-report'
 import { computeReportRange } from '@/lib/sales/report-period'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,7 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
   })
   if (!sub) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
-  const baseUrl = _request.nextUrl.origin
+  const baseUrl = resolvePublicBaseUrl({ origin: _request.nextUrl.origin })
   const range = computeReportRange(sub.frecuencia, new Date())
 
   // Si ya hay un run para este período, lo dejamos correr igual (es disparo
