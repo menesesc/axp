@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/header'
 import { DateRange } from '@/components/sales/date-range'
 import { fmtAR, fmtNumAR, fmtFecha } from '@/components/sales/shared'
 import { Input } from '@/components/ui/input'
-import { Search, X, Package, Sun, Moon, ChevronDown, ChevronUp, Calendar } from 'lucide-react'
+import { Search, X, Package, Sun, Moon, ChevronDown, ChevronUp, Calendar, SlidersHorizontal } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -95,6 +95,30 @@ function InformeVentasContent() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [expandedRubro, setExpandedRubro] = useState<string | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  // Toggles de columnas. Persistimos en localStorage para que el usuario no
+  // tenga que reactivar lo suyo cada vez que abre el informe desde el mail.
+  const [showTurnos, setShowTurnos] = useState(true)
+  const [showUnidades, setShowUnidades] = useState(true)
+  const [showPctRubro, setShowPctRubro] = useState(false)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('informe-ventas:cols')
+      if (raw) {
+        const cfg = JSON.parse(raw) as { turnos?: boolean; unidades?: boolean; pct?: boolean }
+        if (typeof cfg.turnos === 'boolean') setShowTurnos(cfg.turnos)
+        if (typeof cfg.unidades === 'boolean') setShowUnidades(cfg.unidades)
+        if (typeof cfg.pct === 'boolean') setShowPctRubro(cfg.pct)
+      }
+    } catch { /* localStorage puede fallar en modo privado */ }
+  }, [])
+  useEffect(() => {
+    try {
+      localStorage.setItem('informe-ventas:cols', JSON.stringify({
+        turnos: showTurnos, unidades: showUnidades, pct: showPctRubro,
+      }))
+    } catch { /* ignore */ }
+  }, [showTurnos, showUnidades, showPctRubro])
 
   // Debounce de búsqueda (client-side: el filtro corre tanto en el server
   // como localmente para resaltar; mandamos al server para sumar bien
@@ -182,45 +206,64 @@ function InformeVentasContent() {
           }
         />
 
-        {/* Filtros */}
+        {/* Filtros — en mobile arrancan colapsados detrás del botón "Filtros".
+            En md+ siempre visibles. La búsqueda queda afuera del colapsable
+            porque es la acción más usada cuando entrás desde el mail. */}
         <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-              {(['DIARIA', 'SEMANAL', 'MENSUAL'] as const).map((f) => (
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-md"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Filtros
+              {filtersOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+            <span className="text-xs text-slate-500 truncate">
+              {frec === 'DIARIA' ? 'Diario' : frec === 'SEMANAL' ? 'Semanal' : frec === 'MENSUAL' ? 'Mensual' : 'Personalizado'}
+              {sucursal && ` · ${sucursal}`}
+            </span>
+          </div>
+          <div className={`${filtersOpen ? 'block' : 'hidden'} md:block`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                {(['DIARIA', 'SEMANAL', 'MENSUAL'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => applyFrec(f)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded ${
+                      frec === f ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                    }`}
+                  >
+                    {f === 'DIARIA' ? 'Diario' : f === 'SEMANAL' ? 'Semanal' : 'Mensual'}
+                  </button>
+                ))}
                 <button
-                  key={f}
-                  onClick={() => applyFrec(f)}
+                  onClick={() => setFrec('CUSTOM')}
                   className={`px-3 py-1.5 text-xs font-medium rounded ${
-                    frec === f ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
+                    frec === 'CUSTOM' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
                   }`}
                 >
-                  {f === 'DIARIA' ? 'Diario' : f === 'SEMANAL' ? 'Semanal' : 'Mensual'}
+                  Personalizado
                 </button>
-              ))}
-              <button
-                onClick={() => setFrec('CUSTOM')}
-                className={`px-3 py-1.5 text-xs font-medium rounded ${
-                  frec === 'CUSTOM' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'
-                }`}
-              >
-                Personalizado
-              </button>
+              </div>
+              <DateRange
+                from={from}
+                to={to}
+                onChange={(r) => {
+                  setFrom(r.from)
+                  setTo(r.to)
+                  setFrec('CUSTOM')
+                }}
+              />
+              <Input
+                placeholder="Sucursal (vacío = todas)"
+                value={sucursal}
+                onChange={(e) => setSucursal(e.target.value)}
+                className="w-44 h-9 text-sm"
+              />
             </div>
-            <DateRange
-              from={from}
-              to={to}
-              onChange={(r) => {
-                setFrom(r.from)
-                setTo(r.to)
-                setFrec('CUSTOM')
-              }}
-            />
-            <Input
-              placeholder="Sucursal (vacío = todas)"
-              value={sucursal}
-              onChange={(e) => setSucursal(e.target.value)}
-              className="w-44 h-9 text-sm"
-            />
           </div>
           <div className="relative max-w-md">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -268,6 +311,16 @@ function InformeVentasContent() {
         {/* Gráfico por día (solo si rango > 1 día) */}
         {data && isMultiDay && <DiarioChart from={from} to={to} sucursal={sucursal || null} />}
 
+        {/* Toggles de columnas — solo afectan render, no la query. */}
+        {data && data.rubros.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600">
+            <span className="text-slate-400">Mostrar:</span>
+            <ColToggle active={showTurnos} onClick={() => setShowTurnos((v) => !v)}>Por turno</ColToggle>
+            <ColToggle active={showUnidades} onClick={() => setShowUnidades((v) => !v)}>Cantidades</ColToggle>
+            <ColToggle active={showPctRubro} onClick={() => setShowPctRubro((v) => !v)}>% rubro</ColToggle>
+          </div>
+        )}
+
         {/* Lista de rubros */}
         {isLoading ? (
           <div className="p-12 text-center text-slate-400">Cargando...</div>
@@ -292,6 +345,9 @@ function InformeVentasContent() {
                   highlight={(t) => highlight(t, debouncedSearch)}
                   expanded={expanded}
                   onToggle={() => setExpandedRubro(expanded ? null : key)}
+                  showTurnos={showTurnos}
+                  showUnidades={showUnidades}
+                  showPctRubro={showPctRubro}
                 />
               )
             })}
@@ -326,17 +382,57 @@ function KPI({
   )
 }
 
+function ColToggle({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
+        active
+          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+          : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 function RubroCard({
   rubro,
   highlight,
   expanded,
   onToggle,
+  showTurnos,
+  showUnidades,
+  showPctRubro,
 }: {
   rubro: RubroBlock
   highlight: (s: string) => React.ReactNode
   expanded: boolean
   onToggle: () => void
+  showTurnos: boolean
+  showUnidades: boolean
+  showPctRubro: boolean
 }) {
+  // Formato de celda M/N: dependiendo de qué quiere ver el usuario.
+  // - showUnidades + importes (default): "12u · $1.234"
+  // - solo unidades: "12u"
+  // - solo importes: "$1.234"
+  function turnoCell(u: number, i: number): string {
+    if (u === 0) return '—'
+    if (showUnidades) return `${fmtNumAR(u)}u · ${fmtAR(i)}`
+    return fmtAR(i)
+  }
+  const colCount = 2 + (showTurnos ? 2 : 0) + (showUnidades ? 1 : 0) + (showPctRubro ? 1 : 0)
   return (
     <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
       <button
@@ -369,11 +465,19 @@ function RubroCard({
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Producto</th>
-                <th className="text-right px-4 py-2 font-medium text-amber-700">Mediodía (u · $)</th>
-                <th className="text-right px-4 py-2 font-medium text-indigo-700">Noche (u · $)</th>
-                <th className="text-right px-4 py-2 font-medium">Total unid.</th>
+                {showTurnos && (
+                  <th className="text-right px-4 py-2 font-medium text-amber-700">
+                    Mediodía{showUnidades ? ' (u · $)' : ''}
+                  </th>
+                )}
+                {showTurnos && (
+                  <th className="text-right px-4 py-2 font-medium text-indigo-700">
+                    Noche{showUnidades ? ' (u · $)' : ''}
+                  </th>
+                )}
+                {showUnidades && <th className="text-right px-4 py-2 font-medium">Total unid.</th>}
                 <th className="text-right px-4 py-2 font-medium">Total $</th>
-                <th className="text-right px-4 py-2 font-medium w-20">% rubro</th>
+                {showPctRubro && <th className="text-right px-4 py-2 font-medium w-20">% rubro</th>}
               </tr>
             </thead>
             <tbody>
@@ -385,26 +489,34 @@ function RubroCard({
                       <span className="text-xs text-slate-400 ml-1.5">({it.codigo})</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-right text-amber-700 tabular-nums whitespace-nowrap">
-                    {it.almuerzo_u > 0 ? `${fmtNumAR(it.almuerzo_u)} · ${fmtAR(it.almuerzo_i)}` : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right text-indigo-700 tabular-nums whitespace-nowrap">
-                    {it.cena_u > 0 ? `${fmtNumAR(it.cena_u)} · ${fmtAR(it.cena_i)}` : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right text-slate-700 tabular-nums">
-                    {fmtNumAR(it.unidades)}
-                  </td>
+                  {showTurnos && (
+                    <td className="px-4 py-2 text-right text-amber-700 tabular-nums whitespace-nowrap">
+                      {turnoCell(it.almuerzo_u, it.almuerzo_i)}
+                    </td>
+                  )}
+                  {showTurnos && (
+                    <td className="px-4 py-2 text-right text-indigo-700 tabular-nums whitespace-nowrap">
+                      {turnoCell(it.cena_u, it.cena_i)}
+                    </td>
+                  )}
+                  {showUnidades && (
+                    <td className="px-4 py-2 text-right text-slate-700 tabular-nums">
+                      {fmtNumAR(it.unidades)}
+                    </td>
+                  )}
                   <td className="px-4 py-2 text-right font-semibold text-slate-800 tabular-nums">
                     {fmtAR(it.importe)}
                   </td>
-                  <td className="px-4 py-2 text-right text-slate-500 tabular-nums">
-                    {(it.participacionRubro * 100).toFixed(1)}%
-                  </td>
+                  {showPctRubro && (
+                    <td className="px-4 py-2 text-right text-slate-500 tabular-nums">
+                      {(it.participacionRubro * 100).toFixed(1)}%
+                    </td>
+                  )}
                 </tr>
               ))}
               {rubro.itemsRestantes > 0 && (
                 <tr className="border-t border-slate-100 bg-slate-50">
-                  <td colSpan={6} className="px-4 py-2 text-xs text-slate-500 italic text-center">
+                  <td colSpan={colCount} className="px-4 py-2 text-xs text-slate-500 italic text-center">
                     + {rubro.itemsRestantes} producto{rubro.itemsRestantes === 1 ? '' : 's'} más por debajo del top 200
                   </td>
                 </tr>
@@ -427,24 +539,24 @@ function RubroCard({
                     {fmtAR(it.importe)}
                   </p>
                 </div>
-                <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded bg-amber-50 px-2 py-1 text-amber-800">
-                    <span className="text-[10px] uppercase tracking-wide text-amber-700/70">Mediodía</span>
-                    <div className="tabular-nums">
-                      {it.almuerzo_u > 0 ? `${fmtNumAR(it.almuerzo_u)}u · ${fmtAR(it.almuerzo_i)}` : '—'}
+                {showTurnos && (
+                  <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded bg-amber-50 px-2 py-1 text-amber-800">
+                      <span className="text-[10px] uppercase tracking-wide text-amber-700/70">Mediodía</span>
+                      <div className="tabular-nums">{turnoCell(it.almuerzo_u, it.almuerzo_i)}</div>
+                    </div>
+                    <div className="rounded bg-indigo-50 px-2 py-1 text-indigo-800">
+                      <span className="text-[10px] uppercase tracking-wide text-indigo-700/70">Noche</span>
+                      <div className="tabular-nums">{turnoCell(it.cena_u, it.cena_i)}</div>
                     </div>
                   </div>
-                  <div className="rounded bg-indigo-50 px-2 py-1 text-indigo-800">
-                    <span className="text-[10px] uppercase tracking-wide text-indigo-700/70">Noche</span>
-                    <div className="tabular-nums">
-                      {it.cena_u > 0 ? `${fmtNumAR(it.cena_u)}u · ${fmtAR(it.cena_i)}` : '—'}
-                    </div>
+                )}
+                {(showUnidades || showPctRubro) && (
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
+                    {showUnidades ? <span>{fmtNumAR(it.unidades)} unid.</span> : <span />}
+                    {showPctRubro ? <span>{(it.participacionRubro * 100).toFixed(1)}% del rubro</span> : <span />}
                   </div>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>{fmtNumAR(it.unidades)} unid.</span>
-                  <span>{(it.participacionRubro * 100).toFixed(1)}% del rubro</span>
-                </div>
+                )}
               </div>
             ))}
             {rubro.itemsRestantes > 0 && (
