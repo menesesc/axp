@@ -26,14 +26,19 @@ export const subscriptionPayloadSchema = z.object({
 
 export type SubscriptionPayload = z.infer<typeof subscriptionPayloadSchema>
 
-export function validatePayloadShape(payload: SubscriptionPayload): string | null {
-  if (payload.frecuencia === 'SEMANAL' && !payload.diaSemana) {
-    return 'Frecuencia SEMANAL requiere diaSemana (1-7)'
-  }
-  if (payload.frecuencia === 'MENSUAL' && !payload.diaMes) {
-    return 'Frecuencia MENSUAL requiere diaMes (1-31)'
-  }
-  return null
+/**
+ * Día de disparo según frecuencia. No es configurable: el informe cubre el
+ * período cerrado anterior, así que debe dispararse apenas cierra.
+ *   SEMANAL → lunes (diaSemana=1): cubre la semana lun-dom recién cerrada.
+ *   MENSUAL → día 1 (diaMes=1): cubre el mes anterior completo.
+ *   DIARIA  → sin día fijo (corre todos los días).
+ */
+export function scheduleDaysFor(
+  frecuencia: 'DIARIA' | 'SEMANAL' | 'MENSUAL'
+): { diaSemana: number | null; diaMes: number | null } {
+  if (frecuencia === 'SEMANAL') return { diaSemana: 1, diaMes: null }
+  if (frecuencia === 'MENSUAL') return { diaSemana: null, diaMes: 1 }
+  return { diaSemana: null, diaMes: null }
 }
 
 /**

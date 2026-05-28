@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import {
   subscriptionPayloadSchema,
-  validatePayloadShape,
+  scheduleDaysFor,
   resolveOrInviteRecipient,
 } from '@/lib/sales/report-subscriptions'
 
@@ -38,10 +38,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     throw err
   }
 
-  const shapeError = validatePayloadShape(payload)
-  if (shapeError) {
-    return NextResponse.json({ error: shapeError }, { status: 400 })
-  }
+  const dias = scheduleDaysFor(payload.frecuencia)
 
   // Resolver/invitar destinatarios nuevos antes de tocar la DB.
   const resolved: Array<{ email: string; nombre: string | null; usuarioId: string | null }> = []
@@ -66,8 +63,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       data: {
         nombre: payload.nombre,
         frecuencia: payload.frecuencia,
-        diaSemana: payload.diaSemana ?? null,
-        diaMes: payload.diaMes ?? null,
+        diaSemana: dias.diaSemana,
+        diaMes: dias.diaMes,
         hora: payload.hora,
         tz: payload.tz,
         sucursal: payload.sucursal ?? null,

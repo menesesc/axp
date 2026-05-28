@@ -53,8 +53,6 @@ interface Subscription {
   lastRun: { ejecutadoEn: string; status: 'OK' | 'FAIL' | 'SKIP' } | null
 }
 
-const DOW_LABELS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-
 export default function InformesConfigPage() {
   const { isAdmin } = useUser()
   const queryClient = useQueryClient()
@@ -201,8 +199,8 @@ function SubscriptionCard({
     sub.frecuencia === 'DIARIA'
       ? 'Diario'
       : sub.frecuencia === 'SEMANAL'
-      ? `Semanal · ${DOW_LABELS[(sub.diaSemana ?? 1) - 1] ?? '?'}`
-      : `Mensual · día ${sub.diaMes ?? '?'}`
+      ? 'Semanal · lunes'
+      : 'Mensual · día 1'
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-4">
@@ -290,8 +288,6 @@ function SubscriptionDialog({
   const isEdit = !!initial
   const [nombre, setNombre] = useState(initial?.nombre ?? '')
   const [frecuencia, setFrecuencia] = useState<Frecuencia>(initial?.frecuencia ?? 'DIARIA')
-  const [diaSemana, setDiaSemana] = useState<number>(initial?.diaSemana ?? 1)
-  const [diaMes, setDiaMes] = useState<number>(initial?.diaMes ?? 1)
   const [hora, setHora] = useState(initial?.hora ?? '07:00')
   const [sucursal, setSucursal] = useState(initial?.sucursal ?? '')
   const [topN, setTopN] = useState<number>(initial?.topN ?? 10)
@@ -333,8 +329,6 @@ function SubscriptionDialog({
       const payload = {
         nombre: nombre.trim(),
         frecuencia,
-        diaSemana: frecuencia === 'SEMANAL' ? diaSemana : null,
-        diaMes: frecuencia === 'MENSUAL' ? diaMes : null,
         hora,
         tz: 'America/Argentina/Buenos_Aires',
         sucursal: sucursal.trim() || null,
@@ -406,41 +400,12 @@ function SubscriptionDialog({
             </div>
             <p className="text-xs text-slate-500 mt-1">
               {frecuencia === 'DIARIA' && 'Cada día se envía el informe del día anterior.'}
-              {frecuencia === 'SEMANAL' && 'Cada semana se envía el informe de la semana anterior (lun-dom).'}
-              {frecuencia === 'MENSUAL' && 'Cada mes se envía el informe del mes anterior completo.'}
+              {frecuencia === 'SEMANAL' && 'Se envía los lunes con el informe de la semana anterior (lun-dom).'}
+              {frecuencia === 'MENSUAL' && 'Se envía el día 1 con el informe del mes anterior completo.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {frecuencia === 'SEMANAL' && (
-              <div>
-                <Label>Día de envío</Label>
-                <select
-                  value={diaSemana}
-                  onChange={(e) => setDiaSemana(parseInt(e.target.value, 10))}
-                  className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm bg-white"
-                >
-                  {DOW_LABELS.map((l, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {frecuencia === 'MENSUAL' && (
-              <div>
-                <Label>Día del mes</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={28}
-                  value={diaMes}
-                  onChange={(e) => setDiaMes(parseInt(e.target.value, 10) || 1)}
-                />
-                <p className="text-[11px] text-slate-400 mt-1">Si pasa de 28, se ajusta al último día del mes.</p>
-              </div>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label>Hora</Label>
               <Input

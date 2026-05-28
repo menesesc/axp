@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import {
   subscriptionPayloadSchema,
-  validatePayloadShape,
+  scheduleDaysFor,
   resolveOrInviteRecipient,
   fetchSubscriptionsForCliente,
 } from '@/lib/sales/report-subscriptions'
@@ -39,10 +39,7 @@ export async function POST(request: NextRequest) {
     throw err
   }
 
-  const shapeError = validatePayloadShape(payload)
-  if (shapeError) {
-    return NextResponse.json({ error: shapeError }, { status: 400 })
-  }
+  const dias = scheduleDaysFor(payload.frecuencia)
 
   // Resolver/invitar destinatarios antes de crear la subscripción. Si alguno
   // falla, no se crea nada (mejor error claro que subscripción a medias).
@@ -65,8 +62,8 @@ export async function POST(request: NextRequest) {
       clienteId: user.clienteId,
       nombre: payload.nombre,
       frecuencia: payload.frecuencia,
-      diaSemana: payload.diaSemana ?? null,
-      diaMes: payload.diaMes ?? null,
+      diaSemana: dias.diaSemana,
+      diaMes: dias.diaMes,
       hora: payload.hora,
       tz: payload.tz,
       sucursal: payload.sucursal ?? null,
