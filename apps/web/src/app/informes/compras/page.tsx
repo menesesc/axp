@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { ReportLayout } from '@/components/informes/report-layout'
 import { useUser } from '@/hooks/use-user'
@@ -68,6 +69,17 @@ export default function ComprasPage() {
     staleTime: 60000,
   })
 
+  // Enlace a los documentos del proveedor en el período seleccionado
+  const proveedorHref = (proveedorId: string) => {
+    const params = new URLSearchParams({ proveedorId })
+    if (filters.desde) params.set('desde', filters.desde)
+    if (filters.hasta) params.set('hasta', filters.hasta)
+    return `/documentos?${params.toString()}`
+  }
+
+  // Enlace al detalle del item (todas sus compras + historial de precios)
+  const itemHref = (descripcion: string) => `/items?q=${encodeURIComponent(descripcion)}`
+
   return (
     <ReportLayout
       title="Compras por Proveedor"
@@ -133,7 +145,15 @@ export default function ComprasPage() {
                 {data.ranking.map((r: any, i: number) => (
                   <tr key={r.proveedor_id} className="border-b last:border-0 hover:bg-slate-50">
                     <td className="px-5 py-3 text-slate-400">{i + 1}</td>
-                    <td className="px-5 py-3 font-medium">{r.razon_social}</td>
+                    <td className="px-5 py-3 font-medium">
+                      <Link
+                        href={proveedorHref(r.proveedor_id)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                        title="Ver documentos del proveedor"
+                      >
+                        {r.razon_social}
+                      </Link>
+                    </td>
                     <td className="px-5 py-3 text-right font-medium">{formatCurrency(r.total)}</td>
                     <td className="px-5 py-3 text-right text-slate-500">
                       <div className="flex items-center justify-end gap-2">
@@ -182,9 +202,27 @@ export default function ComprasPage() {
                   {data.topItems.map((item: any, i: number) => (
                     <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
                       <td className="px-5 py-2.5 font-medium max-w-[250px] truncate" title={item.descripcion}>
-                        {item.descripcion}
+                        <Link
+                          href={itemHref(item.descripcion)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                          title="Ver detalle y compras del item"
+                        >
+                          {item.descripcion}
+                        </Link>
                       </td>
-                      <td className="px-5 py-2.5 text-slate-600">{item.proveedor}</td>
+                      <td className="px-5 py-2.5 text-slate-600">
+                        {item.proveedor_id ? (
+                          <Link
+                            href={proveedorHref(item.proveedor_id)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                            title="Ver documentos del proveedor"
+                          >
+                            {item.proveedor}
+                          </Link>
+                        ) : (
+                          item.proveedor
+                        )}
+                      </td>
                       <td className="px-5 py-2.5 text-right">{item.cantidad_total.toLocaleString()}</td>
                       <td className="px-5 py-2.5 text-right font-medium">{formatCurrency(item.subtotal_total)}</td>
                       <td className="px-5 py-2.5 text-right text-slate-500">{item.compras}</td>

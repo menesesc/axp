@@ -670,7 +670,17 @@ function ItemsPageContent() {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-slate-600 max-w-[150px] truncate">
-                          {item.proveedor?.razonSocial || '-'}
+                          {item.proveedor ? (
+                            <Link
+                              href={`/documentos?proveedorId=${item.proveedor.id}`}
+                              className="text-blue-600 hover:text-blue-800 hover:underline"
+                              title="Ver documentos del proveedor"
+                            >
+                              {item.proveedor.razonSocial}
+                            </Link>
+                          ) : (
+                            '-'
+                          )}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {item.cantidad?.toLocaleString() || '-'}
@@ -740,7 +750,17 @@ function ItemsPageContent() {
                 return (
                   <div key={prov.proveedorId || i} className="py-2 border-b last:border-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="text-sm font-medium truncate flex-1">{prov.proveedor}</p>
+                      {prov.proveedorId ? (
+                        <Link
+                          href={`/documentos?proveedorId=${prov.proveedorId}`}
+                          className="text-sm font-medium truncate flex-1 text-blue-600 hover:text-blue-800 hover:underline"
+                          title="Ver documentos del proveedor"
+                        >
+                          {prov.proveedor}
+                        </Link>
+                      ) : (
+                        <p className="text-sm font-medium truncate flex-1">{prov.proveedor}</p>
+                      )}
                       <p className="text-sm font-medium text-emerald-600 shrink-0">
                         {formatCurrency(prov.totalSubtotal)}
                       </p>

@@ -386,9 +386,13 @@ export default function PagoDetailPage() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="space-y-2">
-                <p className="text-lg font-semibold text-slate-900">
+                <Link
+                  href={`/documentos?proveedorId=${pago.proveedor.id}`}
+                  className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                  title="Ver documentos del proveedor"
+                >
                   {pago.proveedor.razonSocial}
-                </p>
+                </Link>
                 {pago.proveedor.cuit && (
                   <p className="text-sm text-slate-500">
                     CUIT: {pago.proveedor.cuit}

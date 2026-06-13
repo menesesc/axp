@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { DocumentFilters } from '@/components/documents/document-filters'
@@ -54,24 +54,38 @@ interface DocumentosResponse {
 }
 
 export default function DocumentosPage() {
+  return (
+    <Suspense>
+      <DocumentosPageContent />
+    </Suspense>
+  )
+}
+
+function DocumentosPageContent() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { clienteId, isAdmin } = useUser()
+  const urlParams = useSearchParams()
 
   // Realtime: actualizar lista cuando el worker procesa documentos nuevos
   useRealtimeDocumentos(clienteId || '')
 
+  // Filtros iniciales desde la URL (al navegar desde compras/items/proveedor)
+  const urlProveedorId = urlParams.get('proveedorId') || ''
+  const urlDesde = urlParams.get('desde') || ''
+  const urlHasta = urlParams.get('hasta') || ''
+  const hasUrlFilters = !!(urlProveedorId || urlDesde || urlHasta)
   const initialFilterSet = useRef(false)
 
   // Filters state
   const [search, setSearch] = useState('')
   const [estado, setEstado] = useState('')
   const [confidenceFilter, setConfidenceFilter] = useState('')
-  const [proveedorFilter, setProveedorFilter] = useState('')
+  const [proveedorFilter, setProveedorFilter] = useState(urlProveedorId)
   const [sinItems, setSinItems] = useState(false)
   const [conAnotaciones, setConAnotaciones] = useState(false)
-  const [dateFrom, setDateFrom] = useState<Date | undefined>()
-  const [dateTo, setDateTo] = useState<Date | undefined>()
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(urlDesde ? new Date(`${urlDesde}T00:00:00`) : undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(urlHasta ? new Date(`${urlHasta}T23:59:59`) : undefined)
   const [quickDateFilter, setQuickDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth'>('all')
   const [page, setPage] = useState(1)
   const pageSize = 25
@@ -131,11 +145,12 @@ export default function DocumentosPage() {
   useEffect(() => {
     if (!initialFilterSet.current && pendingCheck !== undefined) {
       initialFilterSet.current = true
-      if (pendingCheck && pendingCheck.pagination.total > 0) {
+      // No forzar PENDIENTE si llegamos con filtros en la URL (ej: documentos de un proveedor)
+      if (!hasUrlFilters && pendingCheck && pendingCheck.pagination.total > 0) {
         setEstado('PENDIENTE')
       }
     }
-  }, [pendingCheck])
+  }, [pendingCheck, hasUrlFilters])
 
   const { data: proveedoresData } = useQuery({
     queryKey: ['proveedores', clienteId],

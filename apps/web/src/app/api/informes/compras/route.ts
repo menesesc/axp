@@ -121,6 +121,7 @@ export async function GET(request: NextRequest) {
       prisma.$queryRaw<Array<{
         descripcion: string
         proveedor: string
+        proveedor_id: string
         cantidad_total: number
         subtotal_total: number
         compras: number
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest) {
         SELECT
           di.descripcion,
           p."razonSocial" as proveedor,
+          d."proveedorId" as proveedor_id,
           COALESCE(SUM(di.cantidad), 0)::float as cantidad_total,
           COALESCE(SUM(di.subtotal), 0)::float as subtotal_total,
           COUNT(*)::int as compras
@@ -139,7 +141,7 @@ export async function GET(request: NextRequest) {
           AND d."fechaEmision" <= ${fechaHasta}
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
           ${proveedorFilter}
-        GROUP BY di.descripcion, p."razonSocial"
+        GROUP BY di.descripcion, p."razonSocial", d."proveedorId"
         ORDER BY subtotal_total DESC
         LIMIT 30
       `,
