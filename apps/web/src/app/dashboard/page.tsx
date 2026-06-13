@@ -14,8 +14,11 @@ import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-char
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
 import { PurchasingTabContent } from '@/components/dashboard/purchasing-tab'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Calendar } from 'lucide-react'
 import { toast } from 'sonner'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
 import { UploadDropzone } from '@/components/documents/upload-dropzone'
 import {
@@ -25,9 +28,53 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+type ComprasQuickFilter = 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom'
+
+function getComprasDateRange(filter: ComprasQuickFilter): { desde: string; hasta: string } {
+  const today = new Date()
+  const fmt = (d: Date) => d.toISOString().split('T')[0]!
+  switch (filter) {
+    case 'month': {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1)
+      return { desde: fmt(start), hasta: fmt(today) }
+    }
+    case 'lastMonth': {
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const end = new Date(today.getFullYear(), today.getMonth(), 0)
+      return { desde: fmt(start), hasta: fmt(end) }
+    }
+    case 'quarter': {
+      const quarterMonth = Math.floor(today.getMonth() / 3) * 3
+      const start = new Date(today.getFullYear(), quarterMonth, 1)
+      return { desde: fmt(start), hasta: fmt(today) }
+    }
+    case 'year': {
+      const start = new Date(today.getFullYear(), 0, 1)
+      return { desde: fmt(start), hasta: fmt(today) }
+    }
+    default:
+      return { desde: '', hasta: '' }
+  }
+}
+
 export default function Home() {
   const { clienteId, user, clienteNombre } = useUser()
   const [uploadOpen, setUploadOpen] = useState(false)
+
+  // Filtro de fechas del tab Compras (por defecto: mes actual)
+  const [comprasFilter, setComprasFilter] = useState<ComprasQuickFilter>('month')
+  const initialComprasRange = getComprasDateRange('month')
+  const [comprasDesde, setComprasDesde] = useState(initialComprasRange.desde)
+  const [comprasHasta, setComprasHasta] = useState(initialComprasRange.hasta)
+
+  const applyComprasFilter = (filter: ComprasQuickFilter) => {
+    setComprasFilter(filter)
+    if (filter !== 'custom') {
+      const { desde, hasta } = getComprasDateRange(filter)
+      setComprasDesde(desde)
+      setComprasHasta(hasta)
+    }
+  }
 
   // Realtime: actualizar stats cuando el worker procesa documentos nuevos
   useRealtimeDocumentos(clienteId || '')
@@ -78,10 +125,17 @@ export default function Home() {
     enabled: !!clienteId,
   })
 
+  const comprasStatsQuery = useMemo(() => {
+    const params = new URLSearchParams()
+    if (comprasDesde) params.set('fechaDesde', comprasDesde)
+    if (comprasHasta) params.set('fechaHasta', comprasHasta)
+    return params.toString()
+  }, [comprasDesde, comprasHasta])
+
   const { data: itemStats, isLoading: itemsLoading } = useQuery({
-    queryKey: ['item-stats', clienteId],
+    queryKey: ['item-stats', clienteId, comprasStatsQuery],
     queryFn: async () => {
-      const res = await fetch('/api/items/stats')
+      const res = await fetch(`/api/items/stats?${comprasStatsQuery}`)
       if (!res.ok) return { topItems: [], byProvider: [], priceVariation: [], monthlyTrend: [] }
       return res.json()
     },
@@ -114,12 +168,21 @@ export default function Home() {
   const documentosMesLimite = stats?.documentosMesLimite ?? null
   const montoPendiente = paymentStats?.montoPendiente || 0
 
-  // Items data
-  const monthlyTrend = itemStats?.monthlyTrend || []
-  const currentMonth = new Date().toISOString().slice(0, 7)
-  const compradoEsteMes = monthlyTrend.find((m: any) => m.mes === currentMonth)?.totalSubtotal || 0
+  // Items data — total comprado en el período seleccionado
+  // (monthlyTrend no tiene LIMIT, a diferencia de byProvider, así que da el total real)
+  const compradoEnPeriodo = (itemStats?.monthlyTrend || []).reduce(
+    (sum: number, m: any) => sum + (m.totalSubtotal || 0),
+    0
+  )
   const itemsActivos = itemStats?.topItems?.length || 0
   const alertasPrecios = itemStats?.priceVariation?.length || 0
+  const comprasFilterLabel: Record<ComprasQuickFilter, string> = {
+    month: 'Este mes',
+    lastMonth: 'Mes anterior',
+    quarter: 'Trimestre',
+    year: 'Año',
+    custom: 'Período',
+  }
 
   const handleUpload = () => {
     setUploadOpen(true)
@@ -229,10 +292,58 @@ export default function Home() {
           {/* ─── Tab Compras ─── */}
           <TabsContent value="compras">
             <div className="space-y-4">
+              {/* Filtro de fechas */}
+              <div className="bg-white border rounded-lg p-4 space-y-3">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-sm text-slate-500 flex items-center gap-1 mr-2">
+                    <Calendar className="h-4 w-4" />
+                    Período:
+                  </span>
+                  {([
+                    { value: 'month' as const, label: 'Mes actual' },
+                    { value: 'lastMonth' as const, label: 'Mes anterior' },
+                    { value: 'quarter' as const, label: 'Trimestre' },
+                    { value: 'year' as const, label: 'Año' },
+                    { value: 'custom' as const, label: 'Personalizado' },
+                  ]).map((opt) => (
+                    <Button
+                      key={opt.value}
+                      variant={comprasFilter === opt.value ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => applyComprasFilter(opt.value)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+
+                {comprasFilter === 'custom' && (
+                  <div className="flex gap-3 items-end">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 mb-1 block">Desde</label>
+                      <Input
+                        type="date"
+                        value={comprasDesde}
+                        onChange={(e) => setComprasDesde(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 mb-1 block">Hasta</label>
+                      <Input
+                        type="date"
+                        value={comprasHasta}
+                        onChange={(e) => setComprasHasta(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <PurchasingKpis
-                compradoEsteMes={compradoEsteMes}
+                compradoEsteMes={compradoEnPeriodo}
                 itemsActivos={itemsActivos}
                 alertasPrecios={alertasPrecios}
+                periodoLabel={comprasFilterLabel[comprasFilter]}
                 isLoading={itemsLoading}
               />
 

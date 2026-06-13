@@ -203,6 +203,7 @@ interface PurchasingKpisProps {
   compradoEsteMes: number
   itemsActivos: number
   alertasPrecios: number
+  periodoLabel?: string
   isLoading?: boolean
 }
 
@@ -210,12 +211,13 @@ export function PurchasingKpis({
   compradoEsteMes,
   itemsActivos,
   alertasPrecios,
+  periodoLabel = 'Este mes',
   isLoading,
 }: PurchasingKpisProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <KpiCard
-        label="Comprado este mes"
+        label={`Comprado · ${periodoLabel}`}
         value={formatCurrency(compradoEsteMes)}
         subtitle="Total facturado"
         icon={ShoppingCart}
