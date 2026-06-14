@@ -27,6 +27,7 @@ model clientes {
   sales_closures        sales_closures[]
   sales_product_master  sales_product_master[]
   sales_report_subscriptions sales_report_subscriptions[]
+  insumos          insumos[]
   ventas           ventas[]
 }
 
@@ -594,6 +595,7 @@ model sales_recipes {
 model sales_recipe_items {
   id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   recipeId          String          @db.Uuid
+  insumoId          String?         @db.Uuid
   itemDescripcion   String          @db.VarChar(255)
   itemCompraId      String?         @db.Uuid
   cantidad          Decimal         @db.Decimal(14, 4)
@@ -601,8 +603,44 @@ model sales_recipe_items {
   mermaPct          Decimal         @default(0) @db.Decimal(5, 2)
   notas             String?         @db.Text
   recipe            sales_recipes   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  insumo            insumos?        @relation(fields: [insumoId], references: [id], onDelete: SetNull)
 
   @@index([recipeId])
+  @@index([insumoId])
+}
+
+model insumos {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId  String   @db.Uuid
+  nombre     String   @db.VarChar(255)
+  unidadBase String   @db.VarChar(10)
+  categoria  String?  @db.VarChar(100)
+  activo     Boolean  @default(true)
+  notas      String?  @db.Text
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  clientes    clientes             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  alias       insumo_alias[]
+  recipeItems sales_recipe_items[]
+
+  @@unique([clienteId, nombre])
+  @@index([clienteId])
+  @@index([clienteId, activo])
+}
+
+model insumo_alias {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId     String   @db.Uuid
+  patron       String   @db.VarChar(255)
+  factorBase   Decimal  @default(1) @db.Decimal(14, 4)
+  unidadOrigen String?  @db.VarChar(20)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  insumo insumos @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([insumoId, patron])
+  @@index([insumoId])
 }
 
 model sales_report_subscriptions {
