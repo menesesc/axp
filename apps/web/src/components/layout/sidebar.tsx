@@ -25,6 +25,9 @@ import {
   Sparkles,
   PieChart,
   ShoppingCart,
+  Carrot,
+  BookOpen,
+  ClipboardCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -70,6 +73,14 @@ const navigationSections: NavSection[] = [
     title: 'Ventas',
     items: [
       { name: 'Ventas', href: '/ventas', icon: ShoppingCart },
+    ],
+  },
+  {
+    title: 'Conciliación',
+    items: [
+      { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot, viewerHidden: true },
+      { name: 'Recetas', href: '/conciliacion/recetas', icon: BookOpen, viewerHidden: true },
+      { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
     ],
   },
   {

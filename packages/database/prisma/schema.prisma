@@ -9,25 +9,26 @@ datasource db {
 }
 
 model clientes {
-  id              String            @id @db.Uuid
-  razonSocial     String            @db.VarChar(255)
-  cuit            String            @unique @db.VarChar(11)
-  r2Prefix        String            @db.VarChar(50)
-  activo          Boolean           @default(true)
-  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime          @db.Timestamptz(3)
-  documentos      documentos[]
-  ingest_queue    ingest_queue[]
-  pagos           pagos[]
-  proveedores     proveedores[]
-  usuarios        usuarios[]
-  processing_logs  processing_logs[]
-  email_templates  email_templates[]
-  ventas           ventas[]
-  ai_usage_logs    ai_usage_logs[]
-  sales_closures        sales_closures[]
-  sales_product_master  sales_product_master[]
+  id                         String                       @id @db.Uuid
+  razonSocial                String                       @db.VarChar(255)
+  cuit                       String                       @unique @db.VarChar(11)
+  r2Prefix                   String                       @db.VarChar(50)
+  activo                     Boolean                      @default(true)
+  createdAt                  DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime                     @db.Timestamptz(3)
+  documentos                 documentos[]
+  ingest_queue               ingest_queue[]
+  pagos                      pagos[]
+  proveedores                proveedores[]
+  usuarios                   usuarios[]
+  processing_logs            processing_logs[]
+  email_templates            email_templates[]
+  ventas                     ventas[]
+  ai_usage_logs              ai_usage_logs[]
+  sales_closures             sales_closures[]
+  sales_product_master       sales_product_master[]
   sales_report_subscriptions sales_report_subscriptions[]
+  insumos                    insumos[]
 }
 
 model documento_items {
@@ -76,36 +77,36 @@ model documento_revisiones {
 }
 
 model documentos {
-  id                   String                 @id @db.Uuid
-  clienteId            String                 @db.Uuid
-  proveedorId          String?                @db.Uuid
-  tipo                 TipoDocumento
-  letra                LetraFactura?
-  puntoVenta           String?                @db.VarChar(10)
-  numero               String?                @db.VarChar(20)
-  numeroCompleto       String?                @db.VarChar(50)
-  fechaEmision         DateTime?              @db.Date
-  fechaVencimiento     DateTime?              @db.Date
-  moneda               String                 @default("ARS") @db.VarChar(3)
-  subtotal             Decimal?               @db.Decimal(14, 2)
-  iva                  Decimal?               @db.Decimal(14, 2)
-  total                Decimal?               @db.Decimal(14, 2)
-  confidenceScore      Int?
-  estadoRevision       EstadoRevision         @default(PENDIENTE)
-  missingFields        Json                   @default("[]")
-  jsonNormalizado      Json                   @default("{}")
-  source               SourceDocumento
-  hashSha256           String                 @db.VarChar(64)
-  pdfRawKey            String                 @db.VarChar(500)
-  pdfFinalKey          String?                @db.VarChar(500)
-  textractRawKey       String?                @db.VarChar(500)
-  createdAt            DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime               @db.Timestamptz(3)
+  id                    String                  @id @db.Uuid
+  clienteId             String                  @db.Uuid
+  proveedorId           String?                 @db.Uuid
+  tipo                  TipoDocumento
+  letra                 LetraFactura?
+  puntoVenta            String?                 @db.VarChar(10)
+  numero                String?                 @db.VarChar(20)
+  numeroCompleto        String?                 @db.VarChar(50)
+  fechaEmision          DateTime?               @db.Date
+  fechaVencimiento      DateTime?               @db.Date
+  moneda                String                  @default("ARS") @db.VarChar(3)
+  subtotal              Decimal?                @db.Decimal(14, 2)
+  iva                   Decimal?                @db.Decimal(14, 2)
+  total                 Decimal?                @db.Decimal(14, 2)
+  confidenceScore       Int?
+  estadoRevision        EstadoRevision          @default(PENDIENTE)
+  missingFields         Json                    @default("[]")
+  jsonNormalizado       Json                    @default("{}")
+  source                SourceDocumento
+  hashSha256            String                  @db.VarChar(64)
+  pdfRawKey             String                  @db.VarChar(500)
+  pdfFinalKey           String?                 @db.VarChar(500)
+  textractRawKey        String?                 @db.VarChar(500)
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                @db.Timestamptz(3)
   documento_anotaciones documento_anotaciones[]
   documento_items       documento_items[]
   documento_revisiones  documento_revisiones[]
-  clientes              clientes               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  proveedores           proveedores?           @relation(fields: [proveedorId], references: [id])
+  clientes              clientes                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  proveedores           proveedores?            @relation(fields: [proveedorId], references: [id])
   pago_documentos       pago_documentos[]
   processing_logs       processing_logs[]
   ai_usage_logs         ai_usage_logs[]
@@ -224,16 +225,16 @@ model usuarios {
 }
 
 model processing_logs {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cliente_id   String    @db.Uuid
-  level        String    @db.Text
-  source       String    @db.Text
-  message      String    @db.Text
-  details      Json      @default("{}")
-  documento_id String?   @db.Uuid
-  filename     String?   @db.Text
-  read         Boolean   @default(false)
-  created_at   DateTime  @default(now()) @db.Timestamptz(3)
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id   String   @db.Uuid
+  level        String   @db.Text
+  source       String   @db.Text
+  message      String   @db.Text
+  details      Json     @default("{}")
+  documento_id String?  @db.Uuid
+  filename     String?  @db.Text
+  read         Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(3)
 
   clientes   clientes    @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   documentos documentos? @relation(fields: [documento_id], references: [id], onDelete: SetNull)
@@ -245,25 +246,25 @@ model processing_logs {
 }
 
 model ai_usage_logs {
-  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentoId      String      @db.Uuid
-  clienteId        String      @db.Uuid
-  usuarioId        String?     @db.Uuid
-  modelo           String      @db.VarChar(100)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentoId      String   @db.Uuid
+  clienteId        String   @db.Uuid
+  usuarioId        String?  @db.Uuid
+  modelo           String   @db.VarChar(100)
   inputTokens      Int
   outputTokens     Int
-  costoEstimado    Decimal     @db.Decimal(10, 6)
-  camposCorregidos Json        @default("[]")
-  camposSugeridos  Json        @default("{}")
-  aceptado         Boolean     @default(false)
+  costoEstimado    Decimal  @db.Decimal(10, 6)
+  camposCorregidos Json     @default("[]")
+  camposSugeridos  Json     @default("{}")
+  aceptado         Boolean  @default(false)
   durationMs       Int?
-  errorMessage     String?     @db.Text
-  source           String      @default("MANUAL") @db.VarChar(20)
-  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  errorMessage     String?  @db.Text
+  source           String   @default("MANUAL") @db.VarChar(20)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
 
-  documentos documentos  @relation(fields: [documentoId], references: [id], onDelete: Cascade)
-  clientes   clientes    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  usuarios   usuarios?   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  documentos documentos @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  clientes   clientes   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuarios   usuarios?  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([clienteId, createdAt(sort: Desc)])
   @@index([documentoId])
@@ -404,57 +405,57 @@ enum MovimientoTipo {
 // Cierre maestro de caja Maxirest (un cierre por turno, por dia, por sucursal).
 // Idempotente por (clienteId, fecha, nroCierre): reenviar el mismo PDF lo actualiza.
 model sales_closures {
-  id                  String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  clienteId           String      @db.Uuid
-  fecha               DateTime    @db.Date
-  nroCierre           Int
-  turnoNombre         TurnoNombre @default(OTRO)
-  turnoNumero         Int?
-  sucursal            String?     @db.VarChar(100)
-  empresaNombre       String?     @db.VarChar(255)
-  cuit                String?     @db.VarChar(11)
-  domicilio           String?     @db.VarChar(255)
-  usuarioApertura     String?     @db.VarChar(50)
-  horaApertura        String?     @db.VarChar(8)
-  usuarioCierre       String?     @db.VarChar(50)
-  horaCierre          String?     @db.VarChar(8)
-  totalIngresos       Decimal?    @db.Decimal(14, 2)
-  totalEgresos        Decimal?    @db.Decimal(14, 2)
-  saldoCaja           Decimal?    @db.Decimal(14, 2)
-  totalVentas         Decimal?    @db.Decimal(14, 2)
-  cantTickets         Int?
-  efectivo            Decimal?    @db.Decimal(14, 2)
-  ctaCte              Decimal?    @db.Decimal(14, 2)
-  tarjetas            Decimal?    @db.Decimal(14, 2)
-  facturaAElectronica     Decimal? @db.Decimal(14, 2)
-  cantFacturaAElectronica Int?
-  facturaBElectronica     Decimal? @db.Decimal(14, 2)
-  cantFacturaBElectronica Int?
-  facturaB                Decimal? @db.Decimal(14, 2)
-  cantFacturaB            Int?
-  notaCreditoAElectronica     Decimal? @db.Decimal(14, 2)
+  id                          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId                   String      @db.Uuid
+  fecha                       DateTime    @db.Date
+  nroCierre                   Int
+  turnoNombre                 TurnoNombre @default(OTRO)
+  turnoNumero                 Int?
+  sucursal                    String?     @db.VarChar(100)
+  empresaNombre               String?     @db.VarChar(255)
+  cuit                        String?     @db.VarChar(11)
+  domicilio                   String?     @db.VarChar(255)
+  usuarioApertura             String?     @db.VarChar(50)
+  horaApertura                String?     @db.VarChar(8)
+  usuarioCierre               String?     @db.VarChar(50)
+  horaCierre                  String?     @db.VarChar(8)
+  totalIngresos               Decimal?    @db.Decimal(14, 2)
+  totalEgresos                Decimal?    @db.Decimal(14, 2)
+  saldoCaja                   Decimal?    @db.Decimal(14, 2)
+  totalVentas                 Decimal?    @db.Decimal(14, 2)
+  cantTickets                 Int?
+  efectivo                    Decimal?    @db.Decimal(14, 2)
+  ctaCte                      Decimal?    @db.Decimal(14, 2)
+  tarjetas                    Decimal?    @db.Decimal(14, 2)
+  facturaAElectronica         Decimal?    @db.Decimal(14, 2)
+  cantFacturaAElectronica     Int?
+  facturaBElectronica         Decimal?    @db.Decimal(14, 2)
+  cantFacturaBElectronica     Int?
+  facturaB                    Decimal?    @db.Decimal(14, 2)
+  cantFacturaB                Int?
+  notaCreditoAElectronica     Decimal?    @db.Decimal(14, 2)
   cantNotaCreditoAElectronica Int?
-  notaCreditoBElectronica     Decimal? @db.Decimal(14, 2)
+  notaCreditoBElectronica     Decimal?    @db.Decimal(14, 2)
   cantNotaCreditoBElectronica Int?
-  notaCreditoB                Decimal? @db.Decimal(14, 2)
+  notaCreditoB                Decimal?    @db.Decimal(14, 2)
   cantNotaCreditoB            Int?
-  descuentoTotal      Decimal?    @db.Decimal(14, 2)
-  cantCubiertos       Decimal?    @db.Decimal(10, 2)
-  promedioCubierto    Decimal?    @db.Decimal(14, 2)
-  netoGravado         Decimal?    @db.Decimal(14, 2)
-  ivaTotal            Decimal?    @db.Decimal(14, 2)
-  pdfR2Key            String?     @db.VarChar(500)
-  rawText             String?     @db.Text
-  source              String      @default("EMAIL") @db.VarChar(20) // EMAIL | MANUAL | OTRO
-  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+  descuentoTotal              Decimal?    @db.Decimal(14, 2)
+  cantCubiertos               Decimal?    @db.Decimal(10, 2)
+  promedioCubierto            Decimal?    @db.Decimal(14, 2)
+  netoGravado                 Decimal?    @db.Decimal(14, 2)
+  ivaTotal                    Decimal?    @db.Decimal(14, 2)
+  pdfR2Key                    String?     @db.VarChar(500)
+  rawText                     String?     @db.Text
+  source                      String      @default("EMAIL") @db.VarChar(20) // EMAIL | MANUAL | OTRO
+  createdAt                   DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime    @updatedAt @db.Timestamptz(3)
 
-  clientes            clientes                  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  payments            sales_closure_payments[]
-  items               sales_closure_items[]
-  waiters             sales_closure_waiters[]
-  movements           sales_closure_movements[]
-  auditEvents         sales_closure_audit_events[]
+  clientes    clientes                     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  payments    sales_closure_payments[]
+  items       sales_closure_items[]
+  waiters     sales_closure_waiters[]
+  movements   sales_closure_movements[]
+  auditEvents sales_closure_audit_events[]
 
   @@unique([clienteId, fecha, nroCierre])
   @@index([clienteId, fecha])
@@ -471,32 +472,32 @@ enum AuditFuente {
 
 // Tipo de evento en la auditoria.
 enum AuditTipo {
-  EMISION         // "Emision de control de mesa N..." (cierre del ticket)
-  DESCUENTO       // "FCB X-Y con descuento, Z%, $..."
-  ELIMINACION     // "DEL: 1 ESPINACA A LA CREMA" (item borrado del ticket)
-  ESPECIFICACION  // "Especif.Manual de X: ..." (modificacion al pedido)
+  EMISION // "Emision de control de mesa N..." (cierre del ticket)
+  DESCUENTO // "FCB X-Y con descuento, Z%, $..."
+  ELIMINACION // "DEL: 1 ESPINACA A LA CREMA" (item borrado del ticket)
+  ESPECIFICACION // "Especif.Manual de X: ..." (modificacion al pedido)
   OTRO
 }
 
 // Cada fila = un evento de auditoria. Permite agregar/filtrar por mozo, tipo, fecha.
 // Datos no normalizados a proposito (mesa, mozo, comprobante) para evitar joins en reportes.
 model sales_closure_audit_events {
-  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  closureId       String         @db.Uuid
-  fuente          AuditFuente
-  tipo            AuditTipo
-  mesa            String?        @db.VarChar(20)  // numero/codigo de mesa, ej "4", "2003"
-  mozo            String?        @db.VarChar(20)  // codigo del mozo
-  comprobante     String?        @db.VarChar(50)  // "FCB 0003-00013946"
-  importeMesa     Decimal?       @db.Decimal(14, 2)  // total de la mesa
-  horaApertura    String?        @db.VarChar(8)
-  hora            String?        @db.VarChar(8)   // hora del evento (HH:MM)
-  detalle         String         @db.Text
-  monto           Decimal?       @db.Decimal(14, 2)  // ej. importe del descuento
-  porcentaje      Decimal?       @db.Decimal(5, 2)   // ej. 30.00 (descuentos)
-  productoCodigo  String?        @db.VarChar(20)     // para ELIMINACION/ESPECIFICACION
-  productoNombre  String?        @db.VarChar(255)
-  closure         sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId      String         @db.Uuid
+  fuente         AuditFuente
+  tipo           AuditTipo
+  mesa           String?        @db.VarChar(20) // numero/codigo de mesa, ej "4", "2003"
+  mozo           String?        @db.VarChar(20) // codigo del mozo
+  comprobante    String?        @db.VarChar(50) // "FCB 0003-00013946"
+  importeMesa    Decimal?       @db.Decimal(14, 2) // total de la mesa
+  horaApertura   String?        @db.VarChar(8)
+  hora           String?        @db.VarChar(8) // hora del evento (HH:MM)
+  detalle        String         @db.Text
+  monto          Decimal?       @db.Decimal(14, 2) // ej. importe del descuento
+  porcentaje     Decimal?       @db.Decimal(5, 2) // ej. 30.00 (descuentos)
+  productoCodigo String?        @db.VarChar(20) // para ELIMINACION/ESPECIFICACION
+  productoNombre String?        @db.VarChar(255)
+  closure        sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
 
   @@index([closureId])
   @@index([closureId, tipo])
@@ -506,13 +507,13 @@ model sales_closure_audit_events {
 
 // Forma de cobro de un cierre (Efectivo, Visa, MP, Amex, etc.)
 model sales_closure_payments {
-  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  closureId   String          @db.Uuid
-  formaCobro  String          @db.VarChar(100)
-  sigla       String?         @db.VarChar(10)
-  total       Decimal         @db.Decimal(14, 2)
-  cantidad    Int             @default(0)
-  closure     sales_closures  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId  String         @db.Uuid
+  formaCobro String         @db.VarChar(100)
+  sigla      String?        @db.VarChar(10)
+  total      Decimal        @db.Decimal(14, 2)
+  cantidad   Int            @default(0)
+  closure    sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
 
   @@index([closureId])
   @@index([formaCobro])
@@ -541,14 +542,14 @@ model sales_closure_items {
 
 // Ventas por mozo/empleado en un cierre.
 model sales_closure_waiters {
-  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  closureId     String          @db.Uuid
-  codigo        String          @db.VarChar(20)
-  nombre        String          @db.VarChar(150)
-  importe       Decimal         @db.Decimal(14, 2)
-  cantVentas    Int             @default(0)
-  cantCubiertos Int             @default(0)
-  closure       sales_closures  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId     String         @db.Uuid
+  codigo        String         @db.VarChar(20)
+  nombre        String         @db.VarChar(150)
+  importe       Decimal        @db.Decimal(14, 2)
+  cantVentas    Int            @default(0)
+  cantCubiertos Int            @default(0)
+  closure       sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
 
   @@index([closureId])
   @@index([codigo])
@@ -556,13 +557,13 @@ model sales_closure_waiters {
 
 // Movimientos de caja (ingresos/egresos del cierre: propinas, saldos, etc.)
 model sales_closure_movements {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  closureId       String          @db.Uuid
-  tipo            MovimientoTipo
-  conceptoCodigo  String          @db.VarChar(50)
-  detalle         String          @db.VarChar(255)
-  total           Decimal         @db.Decimal(14, 2)
-  closure         sales_closures  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  closureId      String         @db.Uuid
+  tipo           MovimientoTipo
+  conceptoCodigo String         @db.VarChar(50)
+  detalle        String         @db.VarChar(255)
+  total          Decimal        @db.Decimal(14, 2)
+  closure        sales_closures @relation(fields: [closureId], references: [id], onDelete: Cascade)
 
   @@index([closureId])
 }
@@ -570,20 +571,20 @@ model sales_closure_movements {
 // Catalogo unico de productos vendidos por cliente. Se pobla solo durante el ingest
 // (find-or-create por codigo). Soporta recetas a futuro (Fase 7).
 model sales_product_master {
-  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  clienteId       String                  @db.Uuid
-  codigoMaxirest  String                  @db.VarChar(20)
-  nombre          String                  @db.VarChar(255)
-  rubroCodigo     String?                 @db.VarChar(10)
-  rubroNombre     String?                 @db.VarChar(100)
-  activo          Boolean                 @default(true)
-  lastSeenAt      DateTime?               @db.Timestamptz(3)
-  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId      String    @db.Uuid
+  codigoMaxirest String    @db.VarChar(20)
+  nombre         String    @db.VarChar(255)
+  rubroCodigo    String?   @db.VarChar(10)
+  rubroNombre    String?   @db.VarChar(100)
+  activo         Boolean   @default(true)
+  lastSeenAt     DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
 
-  clientes        clientes                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  closureItems    sales_closure_items[]
-  recipes         sales_recipes[]
+  clientes     clientes              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  closureItems sales_closure_items[]
+  recipes      sales_recipes[]
 
   @@unique([clienteId, codigoMaxirest])
   @@index([clienteId])
@@ -593,16 +594,16 @@ model sales_product_master {
 // Receta de un producto vendido. Versionada por si se cambia composicion sin perder historico.
 // Solo una receta activa por producto a la vez (validado en logica de app).
 model sales_recipes {
-  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productMasterId String                  @db.Uuid
-  version         Int                     @default(1)
-  activa          Boolean                 @default(true)
-  notas           String?                 @db.Text
-  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productMasterId String   @db.Uuid
+  version         Int      @default(1)
+  activa          Boolean  @default(true)
+  notas           String?  @db.Text
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 
-  productMaster   sales_product_master    @relation(fields: [productMasterId], references: [id], onDelete: Cascade)
-  ingredients     sales_recipe_items[]
+  productMaster sales_product_master @relation(fields: [productMasterId], references: [id], onDelete: Cascade)
+  ingredients   sales_recipe_items[]
 
   @@unique([productMasterId, version])
   @@index([productMasterId, activa])
@@ -611,53 +612,102 @@ model sales_recipes {
 // Ingredientes de una receta. Por ahora itemDescripcion es texto libre (ej "Lomo").
 // Cuando exista catalogo unificado de items de compra, se agrega FK opcional itemId.
 model sales_recipe_items {
-  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  recipeId          String          @db.Uuid
-  itemDescripcion   String          @db.VarChar(255)
-  itemCompraId      String?         @db.Uuid  // FK futura al catálogo de items de compra
-  cantidad          Decimal         @db.Decimal(14, 4)
-  unidad            String          @db.VarChar(10) // g, kg, ml, l, u
-  mermaPct          Decimal         @default(0) @db.Decimal(5, 2)
-  notas             String?         @db.Text
-  recipe            sales_recipes   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId        String        @db.Uuid
+  insumoId        String?       @db.Uuid // FK al catálogo de insumos. null = ingrediente sin mapear aún
+  itemDescripcion String        @db.VarChar(255)
+  itemCompraId    String?       @db.Uuid // DEPRECATED: reemplazado por insumoId. Se mantiene por compatibilidad.
+  cantidad        Decimal       @db.Decimal(14, 4)
+  unidad          String        @db.VarChar(10) // g, kg, ml, l, u
+  mermaPct        Decimal       @default(0) @db.Decimal(5, 2)
+  notas           String?       @db.Text
+  recipe          sales_recipes @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  insumo          insumos?      @relation(fields: [insumoId], references: [id], onDelete: SetNull)
 
   @@index([recipeId])
+  @@index([insumoId])
+}
+
+// =====================================================
+// MÓDULO: CONCILIACIÓN COMPRA-VENTA (insumos / BOM)
+// =====================================================
+
+// Insumo canónico: el ingrediente comprable (ej "Lomo", "Vino Malbec", "Sprite").
+// Las líneas de factura (documento_items, texto libre) se agrupan bajo un insumo
+// vía alias. unidadBase + el factorBase de cada alias normalizan cantidades
+// heterogéneas de factura a una unidad común, comparable con el consumo teórico.
+model insumos {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId  String   @db.Uuid
+  nombre     String   @db.VarChar(255)
+  unidadBase String   @db.VarChar(10) // g, kg, ml, l, u
+  categoria  String?  @db.VarChar(100)
+  activo     Boolean  @default(true)
+  notas      String?  @db.Text
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  clientes    clientes             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  alias       insumo_alias[]
+  recipeItems sales_recipe_items[]
+
+  @@unique([clienteId, nombre])
+  @@index([clienteId])
+  @@index([clienteId, activo])
+}
+
+// Patrón de texto que matchea descripciones de documento_items contra un insumo.
+// Se aplica como ILIKE %patron% (alineado con /api/items). factorBase convierte
+// la cantidad de la factura a la unidadBase del insumo: "cajón x12" -> 12,
+// "caja vino x6" -> 6, "kg" -> 1, "bolsa 25kg" -> 25000 si la base es g.
+model insumo_alias {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId     String   @db.Uuid
+  patron       String   @db.VarChar(255)
+  factorBase   Decimal  @default(1) @db.Decimal(14, 4)
+  unidadOrigen String?  @db.VarChar(20) // unidad esperada en la factura (informativo/validación)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  insumo insumos @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([insumoId, patron])
+  @@index([insumoId])
 }
 
 // Subscripciones de informes recurrentes (ventas, etc.) por email.
 // Una subscripción por cliente define frecuencia, hora, sucursal y destinatarios.
 model sales_report_subscriptions {
-  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  clienteId   String                @db.Uuid
-  nombre      String                @db.VarChar(120)
-  frecuencia  FrecuenciaInforme
-  diaSemana   Int?                  // 1-7 (lunes a domingo), solo SEMANAL
-  diaMes      Int?                  // 1-31, solo MENSUAL
-  hora        String                @default("07:00") @db.VarChar(5)
-  tz          String                @default("America/Argentina/Buenos_Aires") @db.VarChar(64)
-  sucursal    String?               @db.VarChar(100)  // null = todas
-  topN        Int                   @default(10)
-  activo      Boolean               @default(true)
-  createdAt   DateTime              @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime              @updatedAt @db.Timestamptz(3)
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId  String            @db.Uuid
+  nombre     String            @db.VarChar(120)
+  frecuencia FrecuenciaInforme
+  diaSemana  Int? // 1-7 (lunes a domingo), solo SEMANAL
+  diaMes     Int? // 1-31, solo MENSUAL
+  hora       String            @default("07:00") @db.VarChar(5)
+  tz         String            @default("America/Argentina/Buenos_Aires") @db.VarChar(64)
+  sucursal   String?           @db.VarChar(100) // null = todas
+  topN       Int               @default(10)
+  activo     Boolean           @default(true)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(3)
 
-  clientes    clientes              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  recipients  sales_report_subscription_recipients[]
-  runs        sales_report_runs[]
+  clientes   clientes                               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  recipients sales_report_subscription_recipients[]
+  runs       sales_report_runs[]
 
   @@index([clienteId])
   @@index([activo, frecuencia])
 }
 
 model sales_report_subscription_recipients {
-  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  subscriptionId  String                     @db.Uuid
-  email           String                     @db.VarChar(255)
-  nombre          String?                    @db.VarChar(255)
-  usuarioId       String?                    @db.Uuid
-  createdAt       DateTime                   @default(now()) @db.Timestamptz(3)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId String   @db.Uuid
+  email          String   @db.VarChar(255)
+  nombre         String?  @db.VarChar(255)
+  usuarioId      String?  @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
-  subscription    sales_report_subscriptions @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscription sales_report_subscriptions @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@unique([subscriptionId, email])
   @@index([subscriptionId])
@@ -667,17 +717,17 @@ model sales_report_subscription_recipients {
 // idempotencia: si el worker reinicia, no se duplican mails para el mismo
 // período de la misma subscripción.
 model sales_report_runs {
-  id                  String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  subscriptionId      String                     @db.Uuid
-  fechaInformeDesde   DateTime                   @db.Date
-  fechaInformeHasta   DateTime                   @db.Date
-  ejecutadoEn         DateTime                   @default(now()) @db.Timestamptz(3)
-  status              StatusInformeRun
-  destinatariosCount  Int                        @default(0)
-  resendMessageIds    Json                       @default("[]")
-  error               String?                    @db.Text
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId     String           @db.Uuid
+  fechaInformeDesde  DateTime         @db.Date
+  fechaInformeHasta  DateTime         @db.Date
+  ejecutadoEn        DateTime         @default(now()) @db.Timestamptz(3)
+  status             StatusInformeRun
+  destinatariosCount Int              @default(0)
+  resendMessageIds   Json             @default("[]")
+  error              String?          @db.Text
 
-  subscription        sales_report_subscriptions @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscription sales_report_subscriptions @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@unique([subscriptionId, fechaInformeDesde])
   @@index([subscriptionId, ejecutadoEn(sort: Desc)])
