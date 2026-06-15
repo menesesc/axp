@@ -35,8 +35,8 @@ export function ConciliacionTable({ items }: { items: ConciliacionItem[] }) {
             <th className="text-left px-4 py-2.5 font-medium">Insumo</th>
             <th className="text-right px-4 py-2.5 font-medium">Consumo teórico</th>
             <th className="text-right px-4 py-2.5 font-medium">Comprado</th>
-            <th className="text-right px-4 py-2.5 font-medium">Diferencia</th>
-            <th className="text-right px-4 py-2.5 font-medium">Dif. %</th>
+            <th className="text-right px-4 py-2.5 font-medium" title="Compras − consumo del período. Es la variación de stock, no la merma.">Variación stock</th>
+            <th className="text-right px-4 py-2.5 font-medium">Var. %</th>
             <th className="text-right px-4 py-2.5 font-medium" title="Días que cubre lo comprado al ritmo de consumo del período">Cobertura</th>
             <th className="text-right px-4 py-2.5 font-medium">$ comprado</th>
           </tr>
