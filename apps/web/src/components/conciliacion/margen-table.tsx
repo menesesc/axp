@@ -1,7 +1,8 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import { fmtAR, fmtNumAR } from '@/components/sales/shared'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react'
 
 export interface MargenProducto {
   productMasterId: string
@@ -17,6 +18,8 @@ export interface MargenProducto {
   costoIncompleto: boolean
 }
 
+type SortKey = 'nombre' | 'unidadesVendidas' | 'precioVenta' | 'costoReceta' | 'foodCostPct' | 'margenUnitario' | 'margenTotal'
+
 function foodCostColor(pct: number | null): string {
   if (pct == null) return 'text-slate-300'
   if (pct <= 30) return 'text-emerald-600'
@@ -24,7 +27,38 @@ function foodCostColor(pct: number | null): string {
   return 'text-red-600'
 }
 
+const COLS: Array<{ key: SortKey; label: string; align: 'left' | 'right'; title?: string }> = [
+  { key: 'nombre', label: 'Producto', align: 'left' },
+  { key: 'unidadesVendidas', label: 'Vendidas', align: 'right' },
+  { key: 'precioVenta', label: 'Precio neto', align: 'right', title: 'Precio de venta neto (sin IVA), comparable al costo' },
+  { key: 'costoReceta', label: 'Costo receta', align: 'right' },
+  { key: 'foodCostPct', label: 'Costo %', align: 'right', title: 'Costo de receta sobre precio neto (incluye comida y bebida)' },
+  { key: 'margenUnitario', label: 'Margen u.', align: 'right' },
+  { key: 'margenTotal', label: 'Margen total', align: 'right' },
+]
+
 export function MargenTable({ productos }: { productos: MargenProducto[] }) {
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'margenTotal', dir: 'desc' })
+
+  const sorted = useMemo(() => {
+    const arr = [...productos]
+    arr.sort((a, b) => {
+      const va = a[sort.key]
+      const vb = b[sort.key]
+      // Nulos siempre al final, sin importar la dirección.
+      if (va == null && vb == null) return 0
+      if (va == null) return 1
+      if (vb == null) return -1
+      const cmp = typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number)
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [productos, sort])
+
+  function toggle(key: SortKey) {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'nombre' ? 'asc' : 'desc' }))
+  }
+
   if (productos.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-12 text-center text-slate-400 text-sm">
@@ -38,17 +72,28 @@ export function MargenTable({ productos }: { productos: MargenProducto[] }) {
       <table className="w-full text-sm">
         <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
           <tr>
-            <th className="text-left px-4 py-2.5 font-medium">Producto</th>
-            <th className="text-right px-4 py-2.5 font-medium">Vendidas</th>
-            <th className="text-right px-4 py-2.5 font-medium" title="Precio de venta neto (sin IVA), comparable al costo">Precio neto</th>
-            <th className="text-right px-4 py-2.5 font-medium">Costo receta</th>
-            <th className="text-right px-4 py-2.5 font-medium" title="Costo de receta sobre precio neto (incluye comida y bebida)">Costo %</th>
-            <th className="text-right px-4 py-2.5 font-medium">Margen u.</th>
-            <th className="text-right px-4 py-2.5 font-medium">Margen total</th>
+            {COLS.map((c) => {
+              const active = sort.key === c.key
+              return (
+                <th key={c.key} className={`px-4 py-2.5 font-medium ${c.align === 'left' ? 'text-left' : 'text-right'}`} title={c.title}>
+                  <button
+                    onClick={() => toggle(c.key)}
+                    className={`group inline-flex items-center gap-1 hover:text-slate-700 transition ${c.align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-slate-700' : ''}`}
+                  >
+                    {c.label}
+                    {active ? (
+                      sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3 opacity-0 group-hover:opacity-40" />
+                    )}
+                  </button>
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
-          {productos.map((p) => (
+          {sorted.map((p) => (
             <tr key={p.productMasterId} className="border-b border-slate-100">
               <td className="px-4 py-2.5">
                 <span className="text-slate-800">{p.nombre}</span>
