@@ -7,7 +7,9 @@ import { Header } from '@/components/layout/header'
 import { useUser } from '@/hooks/use-user'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { InsumoAliasPanel } from '@/components/conciliacion/insumo-alias-panel'
+import { InsumoDetalle } from '@/components/conciliacion/insumo-detalle'
+import { DateRange } from '@/components/sales/date-range'
+import { defaultRange } from '@/components/sales/shared'
 import { UNIDADES } from '@/lib/conciliacion/units'
 import { Carrot, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
@@ -31,6 +33,7 @@ export default function InsumosPage() {
   const [showForm, setShowForm] = useState(false)
   const [nombre, setNombre] = useState('')
   const [unidadBase, setUnidadBase] = useState('u')
+  const [{ from, to }, setRange] = useState(defaultRange())
 
   const { data, isLoading: loadingInsumos } = useQuery({
     queryKey: ['conciliacion-insumos'],
@@ -112,7 +115,7 @@ export default function InsumosPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 items-start">
         {/* Lista */}
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="p-3 border-b border-slate-100">
@@ -129,7 +132,7 @@ export default function InsumosPage() {
               <p className="text-slate-500 text-sm">{search ? 'Sin resultados' : 'No hay insumos todavía'}</p>
             </div>
           ) : (
-            <ul className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
+            <ul className="divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
               {insumos.map((i) => (
                 <li key={i.id}>
                   <button
@@ -153,13 +156,18 @@ export default function InsumosPage() {
           )}
         </div>
 
-        {/* Panel de alias */}
+        {/* Detalle del insumo */}
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           {selected ? (
-            <InsumoAliasPanel insumo={selected} canEdit={isAdmin} />
+            <>
+              <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+                <DateRange from={from} to={to} onChange={setRange} />
+              </div>
+              <InsumoDetalle insumo={selected} canEdit={isAdmin} from={from} to={to} />
+            </>
           ) : (
             <div className="h-full flex items-center justify-center text-center text-slate-400 text-sm py-16">
-              Seleccioná un insumo para ver y gestionar sus alias.
+              Seleccioná un insumo para ver su conciliación, compras y recetas.
             </div>
           )}
         </div>

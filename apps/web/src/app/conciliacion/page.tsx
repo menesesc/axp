@@ -8,6 +8,7 @@ import { useUser } from '@/hooks/use-user'
 import { DateRange } from '@/components/sales/date-range'
 import { defaultRange } from '@/components/sales/shared'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { HelpCircle } from 'lucide-react'
 import { CoberturaCard } from '@/components/conciliacion/cobertura-card'
 import { ConciliacionTable, type ConciliacionItem } from '@/components/conciliacion/conciliacion-table'
 import { MargenTable, type MargenProducto } from '@/components/conciliacion/margen-table'
@@ -30,14 +31,12 @@ export default function ConciliacionPage() {
   const [{ from, to }, setRange] = useState(defaultRange())
   const [sucursal, setSucursal] = useState('')
   const [umbral, setUmbral] = useState('15')
-  const [soloConfirmados, setSoloConfirmados] = useState(true)
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ from, to, umbralPct: umbral })
     if (sucursal) p.set('sucursal', sucursal)
-    p.set('estados', soloConfirmados ? 'CONFIRMADO' : 'CONFIRMADO,PENDIENTE')
     return p.toString()
-  }, [from, to, sucursal, umbral, soloConfirmados])
+  }, [from, to, sucursal, umbral])
 
   const { data, isLoading: loadingConc, isFetching } = useQuery({
     queryKey: ['conciliacion', params],
@@ -53,9 +52,8 @@ export default function ConciliacionPage() {
   const margenParams = useMemo(() => {
     const p = new URLSearchParams({ from, to })
     if (sucursal) p.set('sucursal', sucursal)
-    p.set('estados', soloConfirmados ? 'CONFIRMADO' : 'CONFIRMADO,PENDIENTE')
     return p.toString()
-  }, [from, to, sucursal, soloConfirmados])
+  }, [from, to, sucursal])
 
   const { data: margenData, isLoading: loadingMargen } = useQuery({
     queryKey: ['conciliacion-margen', margenParams],
@@ -76,7 +74,7 @@ export default function ConciliacionPage() {
     <DashboardLayout>
       <Header
         title="Conciliación compra-venta"
-        description="Compara el consumo teórico (ventas × receta) contra lo comprado por período, y detecta diferencias e incidencias."
+        description="Compara el consumo teórico (ventas × receta) contra lo comprado por período, y detecta diferencias e incidencias. Las compras se cuentan sobre facturas confirmadas o pagadas."
       />
 
       {/* Controles */}
@@ -89,27 +87,20 @@ export default function ConciliacionPage() {
           sucursal={sucursal}
           onSucursalChange={setSucursal}
         />
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-sm text-slate-600">
-            Umbral incidencia
-            <input
-              type="number"
-              value={umbral}
-              onChange={(e) => setUmbral(e.target.value)}
-              className="w-16 border border-slate-200 rounded-md px-2 py-1.5 text-sm"
-            />
-            %
-          </label>
-          <label className="flex items-center gap-1.5 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={soloConfirmados}
-              onChange={(e) => setSoloConfirmados(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Solo facturas confirmadas
-          </label>
-        </div>
+        <label
+          className="flex items-center gap-1.5 text-sm text-slate-600"
+          title="Diferencia % entre lo comprado y el consumo teórico a partir de la cual una fila se marca como incidencia (posible merma, robo, error de receta o de carga). Ej: 15% = se resaltan los insumos que difieren más de un 15%."
+        >
+          Umbral incidencia
+          <input
+            type="number"
+            value={umbral}
+            onChange={(e) => setUmbral(e.target.value)}
+            className="w-16 border border-slate-200 rounded-md px-2 py-1.5 text-sm"
+          />
+          %
+          <HelpCircle className="h-3.5 w-3.5 text-slate-400" />
+        </label>
       </div>
 
       <Tabs defaultValue="insumos">

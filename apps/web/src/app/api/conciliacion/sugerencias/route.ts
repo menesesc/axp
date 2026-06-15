@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireClienteId } from '@/lib/auth'
+import { ESTADOS_COMPRA } from '../_range'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,10 +28,10 @@ export async function GET(request: NextRequest) {
   })
   const aliasLike = aliases.map((a) => `%${a.patron}%`)
 
-  const params: any[] = [clienteId, `%${q}%`]
+  const params: any[] = [clienteId, `%${q}%`, [...ESTADOS_COMPRA]]
   let exclude = ''
   if (aliasLike.length > 0) {
-    exclude = ` AND NOT (di.descripcion ILIKE ANY($3::text[]))`
+    exclude = ` AND NOT (di.descripcion ILIKE ANY($4::text[]))`
     params.push(aliasLike)
   }
 
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
     FROM documento_items di
     JOIN documentos d ON d.id = di."documentoId"
     WHERE d."clienteId" = $1::uuid
-      AND d."estadoRevision" = 'CONFIRMADO'
+      AND d."estadoRevision"::text = ANY($3::text[])
       AND di.descripcion ILIKE $2
       ${exclude}
     GROUP BY di.descripcion

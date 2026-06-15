@@ -2,18 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireClienteId } from '@/lib/auth'
 import { convert } from '@/lib/conciliacion/units'
-import { defaultRange } from './_range'
+import { defaultRange, ESTADOS_COMPRA } from './_range'
 
 export const dynamic = 'force-dynamic'
-
-const ESTADOS_VALIDOS = ['PENDIENTE', 'CONFIRMADO', 'ERROR', 'DUPLICADO']
 
 /**
  * Informe de conciliación compra-venta por insumo en un período.
  * Compara el consumo teórico (ventas × receta + merma) contra lo comprado
  * (líneas de factura agrupadas por alias × factorBase), y reporta cobertura.
+ * Las compras se cuentan sobre facturas confirmadas o pagadas (ESTADOS_COMPRA).
  *
- * Query: ?from=&to=&sucursal=&umbralPct=&estados=CONFIRMADO,...
+ * Query: ?from=&to=&sucursal=&umbralPct=
  */
 export async function GET(request: NextRequest) {
   const { clienteId, error } = await requireClienteId()
@@ -25,11 +24,7 @@ export async function GET(request: NextRequest) {
   const to = sp.get('to') || def.to
   const sucursal = sp.get('sucursal') || null
   const umbralPct = Number(sp.get('umbralPct') || '15')
-  const estados = (sp.get('estados') || 'CONFIRMADO')
-    .split(',')
-    .map((e) => e.trim().toUpperCase())
-    .filter((e) => ESTADOS_VALIDOS.includes(e))
-  const estadosFinal = estados.length ? estados : ['CONFIRMADO']
+  const estadosFinal = [...ESTADOS_COMPRA]
 
   // Catálogo de insumos del cliente (id → nombre, unidadBase).
   const insumos = await prisma.insumos.findMany({
@@ -86,7 +81,7 @@ export async function GET(request: NextRequest) {
     JOIN insumos i ON i.id = a."insumoId"
     WHERE d."clienteId" = $1::uuid AND i."clienteId" = $1::uuid
       AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
-      AND d."estadoRevision" = ANY($4::text[])
+      AND d."estadoRevision"::text = ANY($4::text[])
     GROUP BY a."insumoId"
   `, clienteId, from, to, estadosFinal)
 

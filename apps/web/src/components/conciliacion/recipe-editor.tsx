@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { UNIDADES, sameDimension } from '@/lib/conciliacion/units'
-import { Plus, Trash2, Save, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, Save, AlertTriangle, Info } from 'lucide-react'
 import { toast } from 'sonner'
+import { fmtNumAR } from '@/components/sales/shared'
 
 interface Insumo { id: string; nombre: string; unidadBase: string }
 interface RecetaItem {
@@ -145,6 +146,17 @@ export function RecipeEditor({ productMasterId, canEdit }: { productMasterId: st
         )}
       </div>
 
+      {items.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md bg-indigo-50/70 border border-indigo-100 px-3 py-2 text-[12px] text-slate-600">
+          <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
+          <p>
+            <span className="font-medium text-slate-700">Cantidad</span> = lo que realmente lleva 1 unidad del plato (neto, ya servido).{' '}
+            <span className="font-medium text-slate-700">Merma %</span> = desperdicio adicional (recortes, cocción, hueso) que se compra de más.
+            El consumo teórico se calcula como <span className="font-mono text-slate-700">cantidad × (1 + merma%)</span>.
+          </p>
+        </div>
+      )}
+
       {items.length === 0 && (
         <p className="text-sm text-slate-400">Sin ingredientes. Agregá uno para empezar la receta.</p>
       )}
@@ -153,80 +165,94 @@ export function RecipeEditor({ productMasterId, canEdit }: { productMasterId: st
         {items.map((it, idx) => {
           const ins = it.insumoId ? insumoById.get(it.insumoId) : null
           const dimWarn = ins ? !sameDimension(it.unidad, ins.unidadBase) : false
+          const cant = Number(it.cantidad)
+          const merma = Number(it.mermaPct)
+          const bruto = Number.isFinite(cant) && Number.isFinite(merma) ? cant * (1 + merma / 100) : null
           return (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-end bg-slate-50 rounded-md p-2.5">
-              <div className="col-span-12 sm:col-span-4">
-                <label className="text-[11px] text-slate-500">Insumo</label>
-                <select
-                  value={it.insumoId ?? ''}
-                  onChange={(e) => pickInsumo(idx, e.target.value)}
-                  disabled={!canEdit}
-                  className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-white"
-                >
-                  <option value="">— sin vincular —</option>
-                  {insumos.map((i) => (
-                    <option key={i.id} value={i.id}>{i.nombre} ({i.unidadBase})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-span-12 sm:col-span-3">
-                <label className="text-[11px] text-slate-500">Descripción</label>
-                <Input
-                  value={it.itemDescripcion}
-                  onChange={(e) => updateItem(idx, { itemDescripcion: e.target.value })}
-                  disabled={!canEdit}
-                  placeholder="ej. Lomo"
-                  className="text-sm"
-                />
-              </div>
-              <div className="col-span-4 sm:col-span-2">
-                <label className="text-[11px] text-slate-500">Cantidad</label>
-                <Input
-                  type="number"
-                  step="any"
-                  value={it.cantidad}
-                  onChange={(e) => updateItem(idx, { cantidad: e.target.value })}
-                  disabled={!canEdit}
-                  className="text-sm"
-                />
-              </div>
-              <div className="col-span-4 sm:col-span-1">
-                <label className="text-[11px] text-slate-500">Unidad</label>
-                <select
-                  value={it.unidad}
-                  onChange={(e) => updateItem(idx, { unidad: e.target.value })}
-                  disabled={!canEdit}
-                  className={`w-full border rounded-md px-1 py-1.5 text-sm bg-white ${dimWarn ? 'border-amber-400' : 'border-slate-200'}`}
-                >
-                  {UNIDADES.map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-span-3 sm:col-span-1">
-                <label className="text-[11px] text-slate-500">Merma %</label>
-                <Input
-                  type="number"
-                  step="any"
-                  value={it.mermaPct}
-                  onChange={(e) => updateItem(idx, { mermaPct: e.target.value })}
-                  disabled={!canEdit}
-                  className="text-sm"
-                />
-              </div>
-              {canEdit && (
-                <div className="col-span-1 flex justify-end">
-                  <button
-                    onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                    className="text-slate-400 hover:text-red-500 p-1.5"
-                    title="Quitar ingrediente"
+            <div key={idx} className="bg-slate-50 rounded-md p-2.5 space-y-2">
+              <div className="grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-12 sm:col-span-4">
+                  <label className="text-[11px] text-slate-500">Insumo</label>
+                  <select
+                    value={it.insumoId ?? ''}
+                    onChange={(e) => pickInsumo(idx, e.target.value)}
+                    disabled={!canEdit}
+                    className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-white"
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                    <option value="">— sin vincular —</option>
+                    {insumos.map((i) => (
+                      <option key={i.id} value={i.id}>{i.nombre} ({i.unidadBase})</option>
+                    ))}
+                  </select>
                 </div>
-              )}
+                <div className="col-span-5 sm:col-span-2">
+                  <label className="text-[11px] text-slate-500">Cantidad <span className="text-slate-400">(neto)</span></label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={it.cantidad}
+                    onChange={(e) => updateItem(idx, { cantidad: e.target.value })}
+                    disabled={!canEdit}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="col-span-3 sm:col-span-1">
+                  <label className="text-[11px] text-slate-500">Unidad</label>
+                  <select
+                    value={it.unidad}
+                    onChange={(e) => updateItem(idx, { unidad: e.target.value })}
+                    disabled={!canEdit}
+                    className={`w-full border rounded-md px-1 py-1.5 text-sm bg-white ${dimWarn ? 'border-amber-400' : 'border-slate-200'}`}
+                  >
+                    {UNIDADES.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-4 sm:col-span-2">
+                  <label className="text-[11px] text-slate-500">Merma %</label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={it.mermaPct}
+                    onChange={(e) => updateItem(idx, { mermaPct: e.target.value })}
+                    disabled={!canEdit}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="col-span-7 sm:col-span-2">
+                  <label className="text-[11px] text-slate-500">Consumo c/merma</label>
+                  <div className="h-9 flex items-center px-2 rounded-md bg-white border border-slate-100 text-sm text-slate-600">
+                    {bruto != null && cant > 0 ? (
+                      <>{fmtNumAR(bruto, 3)} <span className="text-slate-400 text-xs ml-1">{it.unidad}</span></>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="col-span-5 sm:col-span-1 flex justify-end">
+                    <button
+                      onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-slate-400 hover:text-red-500 p-1.5"
+                      title="Quitar ingrediente"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <Input
+                value={it.itemDescripcion}
+                onChange={(e) => updateItem(idx, { itemDescripcion: e.target.value })}
+                disabled={!canEdit}
+                placeholder="Descripción / etiqueta del ingrediente (ej. Lomo)"
+                className="text-xs h-8"
+              />
+
               {dimWarn && ins && (
-                <p className="col-span-12 text-[11px] text-amber-600 flex items-center gap-1">
+                <p className="text-[11px] text-amber-600 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
                   La unidad &quot;{it.unidad}&quot; no es compatible con la base &quot;{ins.unidadBase}&quot; del insumo.
                 </p>

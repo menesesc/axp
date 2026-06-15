@@ -2,18 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireClienteId } from '@/lib/auth'
 import { convert } from '@/lib/conciliacion/units'
-import { defaultRange } from '../_range'
+import { defaultRange, ESTADOS_COMPRA } from '../_range'
 
 export const dynamic = 'force-dynamic'
-
-const ESTADOS_VALIDOS = ['PENDIENTE', 'CONFIRMADO', 'ERROR', 'DUPLICADO']
 
 /**
  * Margen / food-cost por producto de venta con receta activa.
  * costoReceta = Σ ingrediente(normalizado a unidadBase) × (1+merma) × costoUnitarioInsumo.
  * precioVenta = Σimporte / Σunidades de los cierres del período.
+ * Costos sobre facturas confirmadas o pagadas (ESTADOS_COMPRA).
  *
- * Query: ?from=&to=&sucursal=&estados=CONFIRMADO,...
+ * Query: ?from=&to=&sucursal=
  */
 export async function GET(request: NextRequest) {
   const { clienteId, error } = await requireClienteId()
@@ -24,11 +23,7 @@ export async function GET(request: NextRequest) {
   const from = sp.get('from') || def.from
   const to = sp.get('to') || def.to
   const sucursal = sp.get('sucursal') || null
-  const estados = (sp.get('estados') || 'CONFIRMADO')
-    .split(',')
-    .map((e) => e.trim().toUpperCase())
-    .filter((e) => ESTADOS_VALIDOS.includes(e))
-  const estadosFinal = estados.length ? estados : ['CONFIRMADO']
+  const estadosFinal = [...ESTADOS_COMPRA]
 
   // Costo unitario por insumo (en $/unidadBase) a partir de las compras del período.
   const compradoRows = await prisma.$queryRawUnsafe<Array<{
@@ -45,7 +40,7 @@ export async function GET(request: NextRequest) {
     JOIN insumos i ON i.id = a."insumoId"
     WHERE d."clienteId" = $1::uuid AND i."clienteId" = $1::uuid
       AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
-      AND d."estadoRevision" = ANY($4::text[])
+      AND d."estadoRevision"::text = ANY($4::text[])
     GROUP BY a."insumoId"
   `, clienteId, from, to, estadosFinal)
   const costoUnitarioByInsumo = new Map<string, number>()
