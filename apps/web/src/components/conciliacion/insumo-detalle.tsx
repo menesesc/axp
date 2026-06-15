@@ -104,6 +104,9 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
   const hayDatos = serie.length > 0
   const cobertura = stock.diasCobertura ?? (stock.consumoDiario > 0 ? resumen.compradoBase / stock.consumoDiario : null)
   const m = stock.mermaIntervalo
+  // Stock probable = lo que debería haber (inicial + comprado − consumo). Recién
+  // se vuelve merma al contrastarlo con el conteo físico de cierre.
+  const stockProbable = m ? m.stockInicial + m.comprado - m.consumoTeorico : null
 
   if (!hayDatos) {
     return (
@@ -138,27 +141,29 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
           {stock.ultimoConteoFecha && <span className="text-[11px] text-slate-400">último conteo {stock.ultimoConteoFecha}</span>}
         </div>
 
-        {m ? (
+        {m && stockProbable != null ? (
           <div className={`rounded-md px-3 py-2 mb-2 ${m.merma > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
             <p className="text-sm text-slate-700">
-              Merma real {m.desde} → {m.hasta}:{' '}
+              Merma {m.desde} → {m.hasta}:{' '}
               <span className={`font-semibold ${m.merma > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                 {m.merma > 0 ? '+' : ''}{fmtNumAR(m.merma, 2)} {u}{m.mermaPct != null ? ` (${m.merma > 0 ? '+' : ''}${fmtNumAR(m.mermaPct, 1)}%)` : ''}
               </span>
             </p>
             <p className="text-[11px] text-slate-500">
-              stock inicial {fmtNumAR(m.stockInicial, 2)} + comprado {fmtNumAR(m.comprado, 2)} − consumo {fmtNumAR(m.consumoTeorico, 2)} − stock final {fmtNumAR(m.stockFinal, 2)} {u}
+              Stock probable <span className="font-medium text-slate-600">{fmtNumAR(stockProbable, 2)} {u}</span>
+              {' '}(inicial {fmtNumAR(m.stockInicial, 2)} + comprado {fmtNumAR(m.comprado, 2)} − consumo {fmtNumAR(m.consumoTeorico, 2)})
+              {' '}· contaste <span className="font-medium text-slate-600">{fmtNumAR(m.stockFinal, 2)} {u}</span> → la diferencia es la merma.
             </p>
           </div>
         ) : (
           <p className="text-[12px] text-slate-500 mb-2">
-            Cargá conteos de stock (pestaña <span className="font-medium">Stock</span>) para medir la merma real. Mientras tanto, la cobertura indica para cuántos días alcanza.
+            Con un solo conteo se proyecta el <span className="font-medium">stock probable</span>; cargá un segundo conteo físico (pestaña <span className="font-medium">Stock</span>) para medir la merma real (stock probable − contado).
           </p>
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           {stock.stockTeoricoActual != null && (
-            <Kpi label="Stock teórico hoy" value={`${fmtNumAR(stock.stockTeoricoActual, 2)} ${u}`} sub="desde el último conteo" tone={stock.stockTeoricoActual < 0 ? 'neg' : undefined} />
+            <Kpi label="Stock probable hoy" value={`${fmtNumAR(stock.stockTeoricoActual, 2)} ${u}`} sub="proyectado desde el último conteo" tone={stock.stockTeoricoActual < 0 ? 'neg' : undefined} />
           )}
           <Kpi
             label="Cobertura"
