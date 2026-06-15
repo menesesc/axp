@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     unidad_receta: string
     qty: number
   }>>(`
-    SELECT date_trunc('week', c.fecha)::date AS semana,
+    SELECT to_char(date_trunc('week', c.fecha), 'YYYY-MM-DD') AS semana,
            ri.unidad AS unidad_receta,
            SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
     FROM sales_closure_items ci
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     qty_base: number
     costo: number | null
   }>>(`
-    SELECT date_trunc('week', d."fechaEmision")::date AS semana,
+    SELECT to_char(date_trunc('week', d."fechaEmision"), 'YYYY-MM-DD') AS semana,
            SUM(di.cantidad * a."factorBase")::numeric AS qty_base,
            SUM(di.subtotal)::numeric AS costo
     FROM documento_items di

@@ -70,9 +70,13 @@ interface DetalleResponse {
 
 function fmtSemana(s: string): string {
   // s = 'YYYY-MM-DD' (lunes de la semana)
-  const [, m, d] = s.split('-')
+  const parts = String(s).slice(0, 10).split('-')
+  if (parts.length !== 3) return String(s)
+  const [, m, d] = parts
   const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-  return `${Number(d)} ${meses[Number(m) - 1] ?? ''}`
+  const mes = meses[Number(m) - 1]
+  if (!mes || !Number.isFinite(Number(d))) return String(s)
+  return `${Number(d)} ${mes}`
 }
 
 function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'pos' | 'neg' | 'warn' }) {
@@ -191,7 +195,7 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
               <YAxis tick={{ fontSize: 11 }} width={44} />
               <Tooltip
                 labelFormatter={(l) => `Semana del ${fmtSemana(String(l))}`}
-                formatter={((v: number, n: string) => [`${fmtNumAR(v, 2)} ${u}`, n === 'consumo' ? 'Consumo teórico' : 'Comprado']) as never}
+                formatter={((v: number, n: string) => [`${fmtNumAR(v, 2)} ${u}`, n]) as never}
               />
               <Bar dataKey="consumo" name="Consumo teórico" fill="#f59e0b" radius={[2, 2, 0, 0]} />
               <Bar dataKey="comprado" name="Comprado" fill="#6366f1" radius={[2, 2, 0, 0]} />
