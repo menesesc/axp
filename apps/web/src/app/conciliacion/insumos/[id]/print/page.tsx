@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
 import { defaultRange, fmtAR, fmtNumAR } from '@/components/sales/shared'
 import { Printer } from 'lucide-react'
 
@@ -16,6 +17,7 @@ interface Detalle {
     diferenciaPct: number | null
   }
   serie: Array<{ semana: string; consumo: number; comprado: number; costoUnitario: number | null }>
+  consumoPorDia: Array<{ fecha: string; consumo: number }>
   stock: {
     conteos: Array<{ id: string; fecha: string; cantidad: number; nota: string | null }>
     stockTeoricoActual: number | null
@@ -35,6 +37,11 @@ interface MargenP {
 }
 interface Alias { id: string; patron: string; factorBase: number; unidadOrigen: string | null }
 interface RecetaProd { productMasterId: string; nombre: string; cantidad: number; unidad: string; mermaPct: number }
+interface Compra {
+  fecha: string | null; numero: string | null; proveedor: string | null; descripcion: string
+  cantidad: number | null; unidad: string | null; precioUnitario: number | null
+  subtotal: number | null; cantidadBase: number | null; precioBase: number | null
+}
 
 function fmtFecha(s: string): string {
   const p = String(s).slice(0, 10).split('-')
@@ -101,8 +108,16 @@ export default function InsumoPrintPage({
       return r.json() as Promise<{ productos: RecetaProd[] }>
     },
   })
+  const compras = useQuery({
+    queryKey: ['print-compras', id, from, to],
+    queryFn: async () => {
+      const r = await fetch(`/api/conciliacion/insumos/${id}/compras?${q}`)
+      if (!r.ok) throw new Error('Error')
+      return r.json() as Promise<{ compras: Compra[]; totales: { cantidadBase: number; costo: number } }>
+    },
+  })
 
-  const listo = detalle.isSuccess && margen.isSuccess && alias.isSuccess && recetas.isSuccess
+  const listo = detalle.isSuccess && margen.isSuccess && alias.isSuccess && recetas.isSuccess && compras.isSuccess
   const printedRef = useRef(false)
   useEffect(() => {
     if (listo && !printedRef.current) {
@@ -127,6 +142,16 @@ export default function InsumoPrintPage({
   const productos = margen.data?.productos ?? []
   const aliasList = alias.data?.alias ?? []
   const recetasList = recetas.data?.productos ?? []
+  const comprasList = compras.data?.compras ?? []
+  const comprasTot = compras.data?.totales ?? { cantidadBase: 0, costo: 0 }
+
+  // Margen promedio ponderado por ventas (neto, sin IVA).
+  const conPrecio = productos.filter((p) => p.precioVenta != null)
+  const ventasNetas = conPrecio.reduce((acc, p) => acc + (p.precioVenta! * p.unidadesVendidas), 0)
+  const costoTot = conPrecio.reduce((acc, p) => acc + (p.costoReceta * p.unidadesVendidas), 0)
+  const margenTotPeriodo = conPrecio.reduce((acc, p) => acc + (p.margenTotal ?? 0), 0)
+  const foodCostProm = ventasNetas > 0 ? (costoTot / ventasNetas) * 100 : null
+  const margenPromPct = ventasNetas > 0 ? (margenTotPeriodo / ventasNetas) * 100 : null
 
   const kpis: Array<[string, string]> = [
     ['Consumo teórico', `${fmtNumAR(r.consumoTeorico, 2)} ${u}`],
@@ -202,6 +227,22 @@ export default function InsumoPrintPage({
 
         {/* Margen por producto */}
         <Section title="Margen de los productos que usan el insumo">
+          {conPrecio.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              <div className="border border-slate-200 rounded px-2 py-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Margen promedio</p>
+                <p className="text-[13px] font-semibold text-emerald-700">{margenPromPct != null ? `${fmtNumAR(margenPromPct, 1)}%` : '—'}</p>
+              </div>
+              <div className="border border-slate-200 rounded px-2 py-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Food cost promedio</p>
+                <p className="text-[13px] font-semibold text-slate-800">{foodCostProm != null ? `${fmtNumAR(foodCostProm, 1)}%` : '—'}</p>
+              </div>
+              <div className="border border-slate-200 rounded px-2 py-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Margen total período</p>
+                <p className="text-[13px] font-semibold text-slate-800">{fmtAR(margenTotPeriodo)}</p>
+              </div>
+            </div>
+          )}
           {productos.length === 0 ? (
             <p className="text-[12px] text-slate-500">Sin productos con receta y ventas en el período.</p>
           ) : (
@@ -275,24 +316,87 @@ export default function InsumoPrintPage({
           )}
         </Section>
 
-        {/* Serie semanal */}
-        <Section title="Evolución semanal">
+        {/* Compras del período */}
+        <Section title="Compras del período">
+          {comprasList.length === 0 ? (
+            <p className="text-[12px] text-slate-500">Sin compras del insumo en el período.</p>
+          ) : (
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr>
+                  <th className={th}>Fecha</th>
+                  <th className={th}>Proveedor</th>
+                  <th className={th}>Descripción</th>
+                  <th className={thr}>Cantidad</th>
+                  <th className={thr}>Subtotal</th>
+                  <th className={thr}>$/{u}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comprasList.map((c, i) => (
+                  <tr key={i}>
+                    <td className={td}>{c.fecha ? fmtFecha(c.fecha) : '—'}</td>
+                    <td className={td}>{c.proveedor ?? '—'}</td>
+                    <td className={td}>{c.descripcion}</td>
+                    <td className={tdr}>{c.cantidad != null ? `${fmtNumAR(c.cantidad, 2)} ${c.unidad ?? ''}` : '—'}</td>
+                    <td className={tdr}>{fmtAR(c.subtotal)}</td>
+                    <td className={tdr}>{c.precioBase != null ? fmtAR(c.precioBase) : '—'}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className={td} colSpan={3}>Total ({fmtNumAR(comprasTot.cantidadBase, 2)} {u})</td>
+                  <td className={tdr}></td>
+                  <td className={tdr}>{fmtAR(comprasTot.costo)}</td>
+                  <td className={tdr}>{comprasTot.cantidadBase > 0 ? fmtAR(comprasTot.costo / comprasTot.cantidadBase) : '—'}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+          <p className="text-[10px] text-slate-400 mt-1">Importes netos (sin IVA). $/{u} = costo por unidad base normalizado por el factor del alias.</p>
+        </Section>
+
+        {/* Evolución con gráficos */}
+        <Section title="Evolución semanal — consumo vs comprado">
           {d.serie.length === 0 ? (
             <p className="text-[12px] text-slate-500">Sin movimientos en el período.</p>
           ) : (
-            <table className="w-full text-[12px]">
-              <thead><tr><th className={th}>Semana (desde)</th><th className={thr}>Consumo ({u})</th><th className={thr}>Comprado ({u})</th><th className={thr}>Costo unit.</th></tr></thead>
-              <tbody>
-                {d.serie.map((w) => (
-                  <tr key={w.semana}>
-                    <td className={td}>{fmtFecha(w.semana)}</td>
-                    <td className={tdr}>{fmtNumAR(w.consumo, 2)}</td>
-                    <td className={tdr}>{fmtNumAR(w.comprado, 2)}</td>
-                    <td className={tdr}>{w.costoUnitario != null ? fmtAR(w.costoUnitario) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <BarChart width={640} height={190} data={d.serie} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <XAxis dataKey="semana" tickFormatter={fmtFecha} tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} width={42} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="consumo" name={`Consumo (${u})`} fill="#f59e0b" />
+                <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" />
+              </BarChart>
+              <table className="w-full text-[12px] mt-2">
+                <thead><tr><th className={th}>Semana (desde)</th><th className={thr}>Consumo ({u})</th><th className={thr}>Comprado ({u})</th><th className={thr}>Costo unit.</th></tr></thead>
+                <tbody>
+                  {d.serie.map((w) => (
+                    <tr key={w.semana}>
+                      <td className={td}>{fmtFecha(w.semana)}</td>
+                      <td className={tdr}>{fmtNumAR(w.consumo, 2)}</td>
+                      <td className={tdr}>{fmtNumAR(w.comprado, 2)}</td>
+                      <td className={tdr}>{w.costoUnitario != null ? fmtAR(w.costoUnitario) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </Section>
+
+        {/* Consumo diario */}
+        <Section title="Evolución del consumo por día">
+          {d.consumoPorDia.length === 0 ? (
+            <p className="text-[12px] text-slate-500">Sin consumo en el período.</p>
+          ) : (
+            <LineChart width={640} height={170} data={d.consumoPorDia} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
+              <YAxis tick={{ fontSize: 10 }} width={42} />
+              <Line type="monotone" dataKey="consumo" name={`Consumo (${u})`} stroke="#f59e0b" strokeWidth={2} dot={false} />
+            </LineChart>
           )}
         </Section>
       </div>

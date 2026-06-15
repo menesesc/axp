@@ -146,6 +146,29 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     .map(([productMasterId, v]) => ({ productMasterId, ...v }))
     .sort((a, b) => b.consumo - a.consumo)
 
+  // Consumo teórico por día (evolución diaria, en unidadBase).
+  const consumoDiaRows = await prisma.$queryRawUnsafe<Array<{ dia: string; unidad_receta: string; qty: number }>>(`
+    SELECT to_char(c.fecha, 'YYYY-MM-DD') AS dia,
+           ri.unidad AS unidad_receta,
+           SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
+    FROM sales_closure_items ci
+    JOIN sales_closures c ON c.id = ci."closureId"
+    JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
+    JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
+    WHERE c."clienteId" = $1::uuid
+      AND c.fecha >= $2::date AND c.fecha <= $3::date
+      AND ($4::text IS NULL OR c.sucursal = $4)
+    GROUP BY dia, ri.unidad
+    ORDER BY dia
+  `, clienteId, from, to, sucursal, insumo.id)
+  const consumoDiaMap = new Map<string, number>()
+  for (const row of consumoDiaRows) {
+    let q: number
+    try { q = convert(Number(row.qty), row.unidad_receta, base) } catch { continue }
+    consumoDiaMap.set(row.dia, (consumoDiaMap.get(row.dia) ?? 0) + q)
+  }
+  const consumoPorDia = [...consumoDiaMap.entries()].sort().map(([fecha, consumo]) => ({ fecha, consumo }))
+
   // Resumen del período.
   const consumoTeorico = [...consumoByWeek.values()].reduce((s, v) => s + v, 0)
   const compradoBase = [...compradoByWeek.values()].reduce((s, v) => s + v.qty, 0)
@@ -263,6 +286,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       diferenciaPct: consumoTeorico > 0 ? (diferencia / consumoTeorico) * 100 : null,
     },
     serie,
+    consumoPorDia,
     productos,
     stock: {
       conteos: conteosOut,
