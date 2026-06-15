@@ -13,7 +13,9 @@ export interface ConciliacionItem {
   costoUnitario: number | null
   diferencia: number
   diferenciaPct: number | null
+  diasCobertura: number | null
   incidencia: boolean
+  posibleStock: boolean
 }
 
 export function ConciliacionTable({ items }: { items: ConciliacionItem[] }) {
@@ -35,6 +37,7 @@ export function ConciliacionTable({ items }: { items: ConciliacionItem[] }) {
             <th className="text-right px-4 py-2.5 font-medium">Comprado</th>
             <th className="text-right px-4 py-2.5 font-medium">Diferencia</th>
             <th className="text-right px-4 py-2.5 font-medium">Dif. %</th>
+            <th className="text-right px-4 py-2.5 font-medium" title="Días que cubre lo comprado al ritmo de consumo del período">Cobertura</th>
             <th className="text-right px-4 py-2.5 font-medium">$ comprado</th>
           </tr>
         </thead>
@@ -46,8 +49,13 @@ export function ConciliacionTable({ items }: { items: ConciliacionItem[] }) {
                 <td className="px-4 py-2.5">
                   <span className="text-slate-800">{it.nombre}</span>
                   {it.incidencia && (
-                    <span className="ml-2 text-[10px] uppercase tracking-wide bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">
-                      incidencia
+                    <span className="ml-2 text-[10px] uppercase tracking-wide bg-amber-100 text-amber-700 rounded px-1.5 py-0.5" title="Consumiste más de lo comprado: posible factura sin cargar, receta mal o fuga">
+                      faltante
+                    </span>
+                  )}
+                  {it.posibleStock && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide bg-slate-100 text-slate-500 rounded px-1.5 py-0.5" title="Compraste más de lo consumido en el período: probablemente stock, no merma">
+                      stock
                     </span>
                   )}
                 </td>
@@ -64,11 +72,14 @@ export function ConciliacionTable({ items }: { items: ConciliacionItem[] }) {
                   {it.diferenciaPct == null ? (
                     <span className="text-slate-300">—</span>
                   ) : (
-                    <span className={`inline-flex items-center gap-0.5 font-medium ${it.incidencia ? (pos ? 'text-amber-700' : 'text-red-600') : 'text-slate-500'}`}>
+                    <span className={`inline-flex items-center gap-0.5 font-medium ${it.incidencia ? 'text-red-600' : it.posibleStock ? 'text-slate-400' : 'text-slate-500'}`}>
                       {pos ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
                       {fmtNumAR(Math.abs(it.diferenciaPct), 1)}%
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-2.5 text-right text-slate-500">
+                  {it.diasCobertura == null ? <span className="text-slate-300">—</span> : `${fmtNumAR(it.diasCobertura, 0)} d`}
                 </td>
                 <td className="px-4 py-2.5 text-right text-slate-500">{fmtAR(it.costoComprado)}</td>
               </tr>

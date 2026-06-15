@@ -29,6 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const to = sp.get('to') || def.to
   const sucursal = sp.get('sucursal') || null
   const base = insumo.unidadBase
+  const insumoId = insumo.id
 
   // Consumo teórico semanal (ventas × receta + merma), por unidad de receta.
   const consumoRows = await prisma.$queryRawUnsafe<Array<{
@@ -151,6 +152,96 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const costoComprado = [...compradoByWeek.values()].reduce((s, v) => s + v.costo, 0)
   const diferencia = compradoBase - consumoTeorico
 
+  // --- Stock físico: separar merma real de la variación de inventario ---
+  // Consumo teórico (en unidadBase) entre dos fechas (d1 exclusivo, d2 inclusivo).
+  async function consumoBetween(d1: string, d2: string): Promise<number> {
+    const rows = await prisma.$queryRawUnsafe<Array<{ unidad_receta: string; qty: number }>>(`
+      SELECT ri.unidad AS unidad_receta,
+             SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
+      FROM sales_closure_items ci
+      JOIN sales_closures c ON c.id = ci."closureId"
+      JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
+      JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
+      WHERE c."clienteId" = $1::uuid AND c.fecha > $2::date AND c.fecha <= $3::date
+        AND ($4::text IS NULL OR c.sucursal = $4)
+      GROUP BY ri.unidad
+    `, clienteId, d1, d2, sucursal, insumoId)
+    let total = 0
+    for (const r of rows) { try { total += convert(Number(r.qty), r.unidad_receta, base) } catch { /* unidad legada */ } }
+    return total
+  }
+  // Comprado (en unidadBase) entre dos fechas (d1 exclusivo, d2 inclusivo).
+  async function compradoBetween(d1: string, d2: string): Promise<number> {
+    const rows = await prisma.$queryRawUnsafe<Array<{ qty: number | null }>>(`
+      SELECT SUM(di.cantidad * a."factorBase")::numeric AS qty
+      FROM documento_items di
+      JOIN documentos d ON d.id = di."documentoId"
+      JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
+      WHERE a."insumoId" = $4::uuid AND d."clienteId" = $1::uuid
+        AND d."fechaEmision" > $2::date AND d."fechaEmision" <= $3::date
+        AND d."estadoRevision"::text = ANY($5::text[])
+    `, clienteId, d1, d2, insumoId, [...ESTADOS_COMPRA])
+    return Number(rows[0]?.qty) || 0
+  }
+
+  const conteos = await prisma.insumo_stock.findMany({
+    where: { insumoId: insumo.id },
+    orderBy: { fecha: 'asc' },
+    select: { id: true, fecha: true, cantidad: true, nota: true },
+  })
+  const conteosOut = conteos.map((c) => ({
+    id: c.id,
+    fecha: c.fecha.toISOString().slice(0, 10),
+    cantidad: Number(c.cantidad),
+    nota: c.nota,
+  }))
+
+  const dias = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1)
+  const consumoDiario = consumoTeorico / dias
+
+  // Stock teórico a la fecha `to`, proyectado desde el último conteo ≤ to.
+  let stockTeoricoActual: number | null = null
+  let ultimoConteoFecha: string | null = null
+  const ultimoConteo = [...conteos].reverse().find((c) => c.fecha.toISOString().slice(0, 10) <= to)
+  if (ultimoConteo) {
+    const f = ultimoConteo.fecha.toISOString().slice(0, 10)
+    ultimoConteoFecha = f
+    const [comp, cons] = await Promise.all([compradoBetween(f, to), consumoBetween(f, to)])
+    stockTeoricoActual = Number(ultimoConteo.cantidad) + comp - cons
+  }
+  const diasCobertura =
+    consumoDiario > 0 && stockTeoricoActual != null ? stockTeoricoActual / consumoDiario : null
+
+  // Merma real del último intervalo cerrado (los dos conteos más recientes).
+  let mermaIntervalo: {
+    desde: string
+    hasta: string
+    stockInicial: number
+    comprado: number
+    consumoTeorico: number
+    stockFinal: number
+    merma: number
+    mermaPct: number | null
+  } | null = null
+  if (conteos.length >= 2) {
+    const c1 = conteos[conteos.length - 2]!
+    const c2 = conteos[conteos.length - 1]!
+    const f1 = c1.fecha.toISOString().slice(0, 10)
+    const f2 = c2.fecha.toISOString().slice(0, 10)
+    const [comp, cons] = await Promise.all([compradoBetween(f1, f2), consumoBetween(f1, f2)])
+    const merma = Number(c1.cantidad) + comp - cons - Number(c2.cantidad)
+    mermaIntervalo = {
+      desde: f1,
+      hasta: f2,
+      stockInicial: Number(c1.cantidad),
+      comprado: comp,
+      consumoTeorico: cons,
+      stockFinal: Number(c2.cantidad),
+      merma,
+      mermaPct: cons > 0 ? (merma / cons) * 100 : null,
+    }
+  }
+
   return NextResponse.json({
     insumo,
     periodo: { from, to, sucursal },
@@ -164,5 +255,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     },
     serie,
     productos,
+    stock: {
+      conteos: conteosOut,
+      ultimoConteoFecha,
+      stockTeoricoActual,
+      consumoDiario,
+      diasCobertura,
+      dias,
+      mermaIntervalo,
+    },
   })
 }

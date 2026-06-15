@@ -112,6 +112,14 @@ export default function ConciliacionPage() {
         </TabsList>
 
         <TabsContent value="insumos" className="mt-6">
+          <div className="mb-4 flex items-start gap-2 rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-[12px] text-slate-500">
+            <HelpCircle className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+            <p>
+              Compara <span className="font-medium text-slate-600">flujos</span> del período: como las compras vienen en lote,
+              un excedente (badge <span className="font-medium">stock</span>) suele ser inventario, no merma —miralo sobre un ciclo de reposición completo.
+              Un <span className="font-medium text-amber-700">faltante</span> (consumiste más de lo comprado) sí es sospechoso. Para medir merma real, cargá conteos de stock en cada insumo.
+            </p>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
             <div>
               {loadingConc || isFetching ? (

@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const sucursal = sp.get('sucursal') || null
   const umbralPct = Number(sp.get('umbralPct') || '15')
   const estadosFinal = [...ESTADOS_COMPRA]
+  const diasPeriodo = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1)
 
   // Catálogo de insumos del cliente (id → nombre, unidadBase).
   const insumos = await prisma.insumos.findMany({
@@ -102,6 +103,13 @@ export async function GET(request: NextRequest) {
     const diferencia = comprado.qty - consumoTeorico
     const diferenciaPct = consumoTeorico > 0 ? (diferencia / consumoTeorico) * 100 : null
     const costoUnitario = comprado.qty > 0 ? comprado.costo / comprado.qty : null
+    // Días que cubre lo comprado al ritmo de consumo del período (lectura de stock).
+    const consumoDiario = consumoTeorico / diasPeriodo
+    const diasCobertura = consumoDiario > 0 ? comprado.qty / consumoDiario : null
+    // Solo es incidencia un FALTANTE (consumiste más de lo que compraste): puede ser
+    // facturas sin cargar, receta mal o fuga. Un excedente suele ser stock, no merma.
+    const incidencia = diferenciaPct != null && diferenciaPct < -umbralPct
+    const posibleStock = diferenciaPct != null && diferenciaPct > umbralPct
     return {
       insumoId: id,
       nombre: ins?.nombre ?? '(insumo eliminado)',
@@ -113,11 +121,13 @@ export async function GET(request: NextRequest) {
       costoUnitario,
       diferencia,
       diferenciaPct,
-      incidencia: diferenciaPct != null && Math.abs(diferenciaPct) > umbralPct,
+      diasCobertura,
+      incidencia,
+      posibleStock,
     }
   })
   items.sort((a, b) => {
-    // Incidencias primero, luego por magnitud de diferencia %.
+    // Incidencias (faltantes) primero, luego por magnitud de diferencia %.
     if (a.incidencia !== b.incidencia) return a.incidencia ? -1 : 1
     return Math.abs(b.diferenciaPct ?? 0) - Math.abs(a.diferenciaPct ?? 0)
   })

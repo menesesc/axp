@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { fmtAR, fmtNumAR } from '@/components/sales/shared'
 import { InsumoAliasPanel } from './insumo-alias-panel'
 import { InsumoRecetasPanel } from './insumo-recetas-panel'
+import { InsumoStockPanel } from './insumo-stock-panel'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 
 interface Insumo {
@@ -46,6 +47,24 @@ interface DetalleResponse {
     difAcum: number
   }>
   productos: Array<{ productMasterId: string; nombre: string; unidades: number; consumo: number }>
+  stock: {
+    conteos: Array<{ id: string; fecha: string; cantidad: number; nota: string | null }>
+    ultimoConteoFecha: string | null
+    stockTeoricoActual: number | null
+    consumoDiario: number
+    diasCobertura: number | null
+    dias: number
+    mermaIntervalo: {
+      desde: string
+      hasta: string
+      stockInicial: number
+      comprado: number
+      consumoTeorico: number
+      stockFinal: number
+      merma: number
+      mermaPct: number | null
+    } | null
+  }
 }
 
 function fmtSemana(s: string): string {
@@ -80,9 +99,11 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
   if (isLoading) return <div className="py-12 text-center text-slate-400 text-sm">Cargando conciliación...</div>
   if (!data) return null
 
-  const { resumen, serie, productos } = data
+  const { resumen, serie, productos, stock } = data
   const u = insumo.unidadBase
   const hayDatos = serie.length > 0
+  const cobertura = stock.diasCobertura ?? (stock.consumoDiario > 0 ? resumen.compradoBase / stock.consumoDiario : null)
+  const m = stock.mermaIntervalo
 
   if (!hayDatos) {
     return (
@@ -108,6 +129,43 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
           tone={resumen.diferenciaPct != null && Math.abs(resumen.diferenciaPct) > 15 ? 'warn' : undefined}
         />
         <Kpi label="Costo unitario" value={resumen.costoUnitario != null ? `${fmtAR(resumen.costoUnitario)}/${u}` : '—'} sub="promedio comprado" />
+      </div>
+
+      {/* Stock e inventario */}
+      <div className="rounded-lg border border-slate-200 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Stock e inventario</p>
+          {stock.ultimoConteoFecha && <span className="text-[11px] text-slate-400">último conteo {stock.ultimoConteoFecha}</span>}
+        </div>
+
+        {m ? (
+          <div className={`rounded-md px-3 py-2 mb-2 ${m.merma > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+            <p className="text-sm text-slate-700">
+              Merma real {m.desde} → {m.hasta}:{' '}
+              <span className={`font-semibold ${m.merma > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                {m.merma > 0 ? '+' : ''}{fmtNumAR(m.merma, 2)} {u}{m.mermaPct != null ? ` (${m.merma > 0 ? '+' : ''}${fmtNumAR(m.mermaPct, 1)}%)` : ''}
+              </span>
+            </p>
+            <p className="text-[11px] text-slate-500">
+              stock inicial {fmtNumAR(m.stockInicial, 2)} + comprado {fmtNumAR(m.comprado, 2)} − consumo {fmtNumAR(m.consumoTeorico, 2)} − stock final {fmtNumAR(m.stockFinal, 2)} {u}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[12px] text-slate-500 mb-2">
+            Cargá conteos de stock (pestaña <span className="font-medium">Stock</span>) para medir la merma real. Mientras tanto, la cobertura indica para cuántos días alcanza.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {stock.stockTeoricoActual != null && (
+            <Kpi label="Stock teórico hoy" value={`${fmtNumAR(stock.stockTeoricoActual, 2)} ${u}`} sub="desde el último conteo" tone={stock.stockTeoricoActual < 0 ? 'neg' : undefined} />
+          )}
+          <Kpi
+            label="Cobertura"
+            value={cobertura != null ? `${fmtNumAR(cobertura, 0)} días` : '—'}
+            sub={`consumo ${fmtNumAR(stock.consumoDiario, 2)} ${u}/día`}
+          />
+        </div>
       </div>
 
       {/* Consumo vs comprado */}
@@ -229,6 +287,7 @@ export function InsumoDetalle({
           <TabsTrigger value="conciliacion">Conciliación</TabsTrigger>
           <TabsTrigger value="compras">Compras (alias)</TabsTrigger>
           <TabsTrigger value="recetas">Recetas en venta</TabsTrigger>
+          <TabsTrigger value="stock">Stock</TabsTrigger>
         </TabsList>
 
         <TabsContent value="conciliacion" className="mt-5">
@@ -241,6 +300,10 @@ export function InsumoDetalle({
 
         <TabsContent value="recetas" className="mt-5">
           <InsumoRecetasPanel insumo={insumo} canEdit={canEdit} />
+        </TabsContent>
+
+        <TabsContent value="stock" className="mt-5">
+          <InsumoStockPanel insumo={insumo} canEdit={canEdit} />
         </TabsContent>
       </Tabs>
     </div>

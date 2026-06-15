@@ -623,6 +623,7 @@ model insumos {
   clientes    clientes             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   alias       insumo_alias[]
   recipeItems sales_recipe_items[]
+  stock       insumo_stock[]
 
   @@unique([clienteId, nombre])
   @@index([clienteId])
@@ -641,6 +642,20 @@ model insumo_alias {
 
   @@unique([insumoId, patron])
   @@index([insumoId])
+}
+
+model insumo_stock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId  String   @db.Uuid
+  fecha     DateTime @db.Date
+  cantidad  Decimal  @db.Decimal(14, 4)
+  nota      String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  insumo insumos @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([insumoId, fecha])
+  @@index([insumoId, fecha])
 }
 
 model sales_report_subscriptions {
