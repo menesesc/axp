@@ -9,6 +9,7 @@ export interface MargenProducto {
   rubroNombre: string | null
   unidadesVendidas: number
   precioVenta: number | null
+  precioVentaBruto?: number | null
   costoReceta: number
   foodCostPct: number | null
   margenUnitario: number | null
@@ -39,7 +40,7 @@ export function MargenTable({ productos }: { productos: MargenProducto[] }) {
           <tr>
             <th className="text-left px-4 py-2.5 font-medium">Producto</th>
             <th className="text-right px-4 py-2.5 font-medium">Vendidas</th>
-            <th className="text-right px-4 py-2.5 font-medium">Precio</th>
+            <th className="text-right px-4 py-2.5 font-medium" title="Precio de venta neto (sin IVA), comparable al costo">Precio neto</th>
             <th className="text-right px-4 py-2.5 font-medium">Costo receta</th>
             <th className="text-right px-4 py-2.5 font-medium">Food cost</th>
             <th className="text-right px-4 py-2.5 font-medium">Margen u.</th>
@@ -59,7 +60,12 @@ export function MargenTable({ productos }: { productos: MargenProducto[] }) {
                 {p.rubroNombre && <span className="block text-[11px] text-slate-400">{p.rubroNombre}</span>}
               </td>
               <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(p.unidadesVendidas)}</td>
-              <td className="px-4 py-2.5 text-right text-slate-600">{fmtAR(p.precioVenta)}</td>
+              <td className="px-4 py-2.5 text-right text-slate-600">
+                {fmtAR(p.precioVenta)}
+                {p.precioVentaBruto != null && (
+                  <span className="block text-[11px] text-slate-400">menú {fmtAR(p.precioVentaBruto)}</span>
+                )}
+              </td>
               <td className="px-4 py-2.5 text-right text-slate-600">{fmtAR(p.costoReceta)}</td>
               <td className={`px-4 py-2.5 text-right font-medium ${foodCostColor(p.foodCostPct)}`}>
                 {p.foodCostPct == null ? '—' : `${fmtNumAR(p.foodCostPct, 1)}%`}
@@ -73,6 +79,7 @@ export function MargenTable({ productos }: { productos: MargenProducto[] }) {
       <p className="text-[11px] text-slate-400 px-4 py-2 border-t border-slate-100">
         <AlertTriangle className="h-3 w-3 text-amber-500 inline mr-1" />
         = costo incompleto (algún insumo sin compra en el período). Food cost coloreado: ≤30% verde, ≤40% ámbar, &gt;40% rojo.
+        Margen y food cost <span className="font-medium">netos (sin IVA)</span>: el precio se descuenta con el IVA de venta de los cierres; el costo de factura ya viene neto.
       </p>
     </div>
   )

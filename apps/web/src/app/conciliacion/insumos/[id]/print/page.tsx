@@ -210,7 +210,7 @@ export default function InsumoPrintPage({
                 <tr>
                   <th className={th}>Producto</th>
                   <th className={thr}>Vendidas</th>
-                  <th className={thr}>Precio</th>
+                  <th className={thr}>Precio neto</th>
                   <th className={thr}>Costo receta</th>
                   <th className={thr}>Food cost</th>
                   <th className={thr}>Margen u.</th>
@@ -232,9 +232,10 @@ export default function InsumoPrintPage({
               </tbody>
             </table>
           )}
-          {productos.some((p) => p.costoIncompleto) && (
-            <p className="text-[10px] text-slate-400 mt-1">* costo incompleto (algún insumo sin compra en el período).</p>
-          )}
+          <p className="text-[10px] text-slate-400 mt-1">
+            {productos.some((p) => p.costoIncompleto) && '* costo incompleto (algún insumo sin compra en el período). '}
+            Margen y food cost netos (sin IVA): el precio se neteó con el IVA de venta de los cierres; el costo de factura ya es neto.
+          </p>
         </Section>
 
         {/* Recetas */}

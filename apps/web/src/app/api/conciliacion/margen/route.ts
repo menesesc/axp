@@ -69,6 +69,20 @@ export async function GET(request: NextRequest) {
   `, clienteId, from, to, sucursal)
   const ventasByProducto = new Map(ventasRows.map((v) => [v.pid, { unidades: Number(v.unidades), importe: Number(v.importe) }]))
 
+  // Tasa de IVA de venta tomada de los cierres del período (ivaTotal/netoGravado).
+  // El importe de Maxirest viene CON IVA y el costo de factura está NETO, así que
+  // el margen se calcula neto contra neto: precio_neto = importe / (1 + tasa).
+  const ivaRows = await prisma.$queryRawUnsafe<Array<{ iva: number | null; neto: number | null }>>(`
+    SELECT SUM("ivaTotal")::numeric AS iva, SUM("netoGravado")::numeric AS neto
+    FROM sales_closures
+    WHERE "clienteId" = $1::uuid AND fecha >= $2::date AND fecha <= $3::date
+      AND ($4::text IS NULL OR sucursal = $4)
+  `, clienteId, from, to, sucursal)
+  const ivaNeto = Number(ivaRows[0]?.neto) || 0
+  const ivaMonto = Number(ivaRows[0]?.iva) || 0
+  const ivaVentaRate = ivaNeto > 0 ? ivaMonto / ivaNeto : 0.21
+  const netFactor = 1 / (1 + ivaVentaRate)
+
   // Recetas activas con ingredientes.
   const recetas = await prisma.sales_recipes.findMany({
     where: {
@@ -87,7 +101,9 @@ export async function GET(request: NextRequest) {
       const ventas = ventasByProducto.get(r.productMasterId)
       const unidadesVendidas = ventas?.unidades ?? 0
       const importeVendido = ventas?.importe ?? 0
-      const precioVenta = unidadesVendidas > 0 ? importeVendido / unidadesVendidas : null
+      // Precio bruto (con IVA, lo que figura en el menú) y neto (sin IVA, comparable al costo).
+      const precioVentaBruto = unidadesVendidas > 0 ? importeVendido / unidadesVendidas : null
+      const precioVenta = precioVentaBruto != null ? precioVentaBruto * netFactor : null
 
       let costoReceta = 0
       let costoIncompleto = false
@@ -118,6 +134,7 @@ export async function GET(request: NextRequest) {
         rubroNombre: r.productMaster.rubroNombre,
         unidadesVendidas,
         precioVenta,
+        precioVentaBruto,
         costoReceta,
         foodCostPct,
         margenUnitario,
@@ -127,5 +144,5 @@ export async function GET(request: NextRequest) {
     })
     .sort((a, b) => (b.margenTotal ?? -Infinity) - (a.margenTotal ?? -Infinity))
 
-  return NextResponse.json({ periodo: { from, to, sucursal }, productos })
+  return NextResponse.json({ periodo: { from, to, sucursal }, ivaVentaPct: ivaVentaRate * 100, productos })
 }
