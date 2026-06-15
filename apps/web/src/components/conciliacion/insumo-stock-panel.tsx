@@ -68,8 +68,7 @@ export function InsumoStockPanel({ insumo, canEdit }: { insumo: Insumo; canEdit:
     <div className="space-y-5">
       <p className="text-xs text-slate-500">
         Cargá el stock físico de <span className="font-medium text-slate-700">{insumo.nombre}</span> (en {insumo.unidadBase}) en cada conteo.
-        Con dos conteos, la conciliación calcula la <span className="font-medium text-slate-700">merma real</span> del período entre ambos,
-        separando lo que es inventario de lo que es pérdida.
+        Con dos conteos, la conciliación calcula el <span className="font-medium text-slate-700">desvío</span> = stock probable (compras − consumo) − lo contado.
       </p>
 
       {canEdit && (

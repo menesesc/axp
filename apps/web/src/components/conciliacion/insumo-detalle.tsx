@@ -54,6 +54,7 @@ interface DetalleResponse {
     consumoDiario: number
     diasCobertura: number | null
     dias: number
+    mermaRecetaConfigurada: boolean
     mermaIntervalo: {
       desde: string
       hasta: string
@@ -107,6 +108,7 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
   // Stock probable = lo que debería haber (inicial + comprado − consumo). Recién
   // se vuelve merma al contrastarlo con el conteo físico de cierre.
   const stockProbable = m ? m.stockInicial + m.comprado - m.consumoTeorico : null
+  const mermaConfigurada = stock.mermaRecetaConfigurada
 
   if (!hayDatos) {
     return (
@@ -144,7 +146,7 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
         {m && stockProbable != null ? (
           <div className={`rounded-md px-3 py-2 mb-2 ${m.merma > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
             <p className="text-sm text-slate-700">
-              Merma {m.desde} → {m.hasta}:{' '}
+              Desvío {m.desde} → {m.hasta}:{' '}
               <span className={`font-semibold ${m.merma > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                 {m.merma > 0 ? '+' : ''}{fmtNumAR(m.merma, 2)} {u}{m.mermaPct != null ? ` (${m.merma > 0 ? '+' : ''}${fmtNumAR(m.mermaPct, 1)}%)` : ''}
               </span>
@@ -152,8 +154,13 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
             <p className="text-[11px] text-slate-500">
               Stock probable <span className="font-medium text-slate-600">{fmtNumAR(stockProbable, 2)} {u}</span>
               {' '}(inicial {fmtNumAR(m.stockInicial, 2)} + comprado {fmtNumAR(m.comprado, 2)} − consumo {fmtNumAR(m.consumoTeorico, 2)})
-              {' '}· contaste <span className="font-medium text-slate-600">{fmtNumAR(m.stockFinal, 2)} {u}</span> → la diferencia es la merma.
+              {' '}· contaste <span className="font-medium text-slate-600">{fmtNumAR(m.stockFinal, 2)} {u}</span> → la diferencia es el desvío.
             </p>
+            {!mermaConfigurada && (
+              <p className="text-[11px] text-amber-700 mt-1">
+                La receta no tiene merma configurada, así que el consumo no descuenta recortes/cocción y el desvío sale inflado. Cargá la merma en la receta.
+              </p>
+            )}
           </div>
         ) : (
           <p className="text-[12px] text-slate-500 mb-2">

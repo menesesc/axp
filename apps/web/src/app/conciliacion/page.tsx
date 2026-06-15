@@ -117,7 +117,7 @@ export default function ConciliacionPage() {
             <p>
               Compara <span className="font-medium text-slate-600">flujos</span> del período: como las compras vienen en lote,
               un excedente (badge <span className="font-medium">stock</span>) suele ser inventario, no merma —miralo sobre un ciclo de reposición completo.
-              Un <span className="font-medium text-amber-700">faltante</span> (consumiste más de lo comprado) sí es sospechoso. Para medir merma real, cargá conteos de stock en cada insumo.
+              Un <span className="font-medium text-amber-700">faltante</span> (consumiste más de lo comprado) sí es sospechoso. Para ver el desvío contra el inventario real, cargá conteos de stock en cada insumo.
             </p>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">

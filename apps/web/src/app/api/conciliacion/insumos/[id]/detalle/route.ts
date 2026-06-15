@@ -184,6 +184,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return Number(rows[0]?.qty) || 0
   }
 
+  // ¿Las recetas activas que usan este insumo tienen merma esperada configurada?
+  // Si no, el desvío de stock incluye la merma esperada (recortes/cocción) y no
+  // es "merma real" todavía.
+  const mermaAgg = await prisma.sales_recipe_items.aggregate({
+    where: { insumoId, recipe: { activa: true, productMaster: { clienteId: clienteId! } } },
+    _max: { mermaPct: true },
+  })
+  const mermaRecetaConfigurada = Number(mermaAgg._max.mermaPct ?? 0) > 0
+
   const conteos = await prisma.insumo_stock.findMany({
     where: { insumoId: insumo.id },
     orderBy: { fecha: 'asc' },
@@ -263,6 +272,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       diasCobertura,
       dias,
       mermaIntervalo,
+      mermaRecetaConfigurada,
     },
   })
 }
