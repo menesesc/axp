@@ -50,6 +50,24 @@ export async function GET(request: NextRequest) {
     if (qty > 0 && r.costo_total != null) costoUnitarioByInsumo.set(r.insumo_id, Number(r.costo_total) / qty)
   }
 
+  // Último costo conocido por insumo (compra más reciente ≤ to): fallback cuando
+  // no hubo compras del insumo dentro del período seleccionado.
+  const lastCostRows = await prisma.$queryRawUnsafe<Array<{ insumo_id: string; costo_unit: number | null }>>(`
+    SELECT DISTINCT ON (a."insumoId") a."insumoId" AS insumo_id,
+           (di.subtotal / NULLIF(di.cantidad * a."factorBase", 0))::numeric AS costo_unit
+    FROM documento_items di
+    JOIN documentos d ON d.id = di."documentoId"
+    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
+    JOIN insumos i ON i.id = a."insumoId"
+    WHERE d."clienteId" = $1::uuid AND i."clienteId" = $1::uuid
+      AND d."fechaEmision" <= $2::date
+      AND d."estadoRevision"::text = ANY($3::text[])
+      AND di.cantidad IS NOT NULL AND di.subtotal IS NOT NULL
+    ORDER BY a."insumoId", d."fechaEmision" DESC
+  `, clienteId, to, estadosFinal)
+  const lastCostByInsumo = new Map<string, number>()
+  for (const r of lastCostRows) { if (r.costo_unit != null) lastCostByInsumo.set(r.insumo_id, Number(r.costo_unit)) }
+
   // Ventas por producto en el período (unidades + importe).
   const ventasRows = await prisma.$queryRawUnsafe<Array<{
     pid: string
@@ -108,7 +126,9 @@ export async function GET(request: NextRequest) {
       let costoReceta = 0
       let costoIncompleto = false
       for (const ing of r.ingredients) {
-        const costoUnit = ing.insumoId ? costoUnitarioByInsumo.get(ing.insumoId) : undefined
+        const costoUnit = ing.insumoId
+          ? (costoUnitarioByInsumo.get(ing.insumoId) ?? lastCostByInsumo.get(ing.insumoId))
+          : undefined
         if (!ing.insumoId || ing.insumo == null || costoUnit == null) {
           costoIncompleto = true
           continue

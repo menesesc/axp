@@ -110,10 +110,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
   })
 
-  // Costo unitario rellenado con el último conocido (y el primero hacia atrás)
-  // para que el gráfico nunca quede vacío en semanas sin compra.
-  const primerCosto = serie.find((w) => w.costoUnitario != null)?.costoUnitario ?? null
-  let ultimoCosto: number | null = primerCosto
+  // Último costo conocido ANTES del período (para sembrar el relleno cuando no
+  // hubo compras dentro del rango seleccionado).
+  const costoPrevioRows = await prisma.$queryRawUnsafe<Array<{ costo_unit: number | null }>>(`
+    SELECT (di.subtotal / NULLIF(di.cantidad * a."factorBase", 0))::numeric AS costo_unit
+    FROM documento_items di
+    JOIN documentos d ON d.id = di."documentoId"
+    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
+    WHERE a."insumoId" = $4::uuid AND d."clienteId" = $1::uuid
+      AND d."fechaEmision" < $2::date
+      AND d."estadoRevision"::text = ANY($3::text[])
+      AND di.cantidad IS NOT NULL AND di.subtotal IS NOT NULL
+    ORDER BY d."fechaEmision" DESC
+    LIMIT 1
+  `, clienteId, from, [...ESTADOS_COMPRA], insumoId)
+  const costoPrevio = costoPrevioRows[0]?.costo_unit != null ? Number(costoPrevioRows[0].costo_unit) : null
+
+  // Costo unitario rellenado con el último conocido (semilla = costo previo al
+  // período) para que el gráfico nunca quede vacío en semanas sin compra.
+  let ultimoCosto: number | null = costoPrevio
   for (const w of serie) {
     if (w.costoUnitario != null) ultimoCosto = w.costoUnitario
     w.costoUnitarioFill = ultimoCosto
@@ -360,7 +375,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       consumoTeorico,
       compradoBase,
       costoComprado,
-      costoUnitario: compradoBase > 0 ? costoComprado / compradoBase : null,
+      costoUnitario: compradoBase > 0 ? costoComprado / compradoBase : costoPrevio,
       diferencia,
       diferenciaPct: consumoTeorico > 0 ? (diferencia / consumoTeorico) * 100 : null,
     },
