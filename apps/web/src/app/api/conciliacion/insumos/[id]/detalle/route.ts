@@ -286,38 +286,55 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // el stock real coincide con el teórico en cada fecha. El conteo es a la mañana,
   // así que el stock teórico de un día no incluye el consumo de ese mismo día.
   const countByDate = new Map(conteosOut.map((c) => [c.fecha, c.cantidad]))
-  // Ancla: el conteo más reciente ≤ from (o el primero del rango). Desde el ancla
-  // se proyecta el stock teórico hacia adelante Y hacia atrás (movimientos en
-  // reversa), para que la línea cubra todo el rango aunque el conteo sea reciente.
-  let anchorDate: string | null = null
-  let anchorVal = 0
-  for (const c of conteosOut) { if (c.fecha <= from) { anchorDate = c.fecha; anchorVal = c.cantidad } }
-  if (!anchorDate && conteosOut.length > 0) { anchorDate = conteosOut[0]!.fecha; anchorVal = conteosOut[0]!.cantidad }
   const dayMov = (dd: string) => (compradoDiaMap.get(dd) ?? 0) - (consumoDiaMap.get(dd) ?? 0)
+  // Stock teórico por día: cada conteo físico RE-ANCLA la línea (la realidad pisa
+  // al teórico), así la proyección reinicia en cada conteo y no arrastra el desvío
+  // anterior. Antes del primer conteo se proyecta hacia atrás.
   const teoricoByDay = new Map<string, number>()
-  if (anchorDate) {
-    // Hacia adelante desde el ancla (stock a la mañana de cada día).
-    let st = anchorVal
-    let cur = anchorDate
-    while (cur <= to) {
-      if (cur >= from) teoricoByDay.set(cur, st)
-      st += dayMov(cur)
-      cur = addDays(cur, 1)
-    }
-    // Hacia atrás: stockMañana(prev) = stockMañana(cur) − movimiento(prev).
-    st = anchorVal
-    cur = anchorDate
+  if (conteosOut.length > 0) {
+    // Hacia atrás desde el primer conteo.
+    let st = conteosOut[0]!.cantidad
+    let cur = conteosOut[0]!.fecha
     while (cur > from) {
       const prev = addDays(cur, -1)
       st -= dayMov(prev)
       if (prev >= from) teoricoByDay.set(prev, st)
       cur = prev
     }
+    // Hacia adelante, re-anclando en el valor real de cada conteo.
+    for (let i = 0; i < conteosOut.length; i++) {
+      const c = conteosOut[i]!
+      const endExcl = i + 1 < conteosOut.length ? conteosOut[i + 1]!.fecha : addDays(to, 1)
+      let s = c.cantidad
+      let d = c.fecha
+      while (d < endExcl && d <= to) {
+        if (d >= from) teoricoByDay.set(d, s)
+        s += dayMov(d)
+        d = addDays(d, 1)
+      }
+    }
+  }
+  // Desvío de cada conteo = real vs proyección desde el conteo anterior (el primero
+  // no tiene con qué comparar). Define el color del punto (verde OK / rojo desvío).
+  const countOkByDate = new Map<string, boolean | null>()
+  const desvioByDate = new Map<string, number>()
+  for (let i = 0; i < conteosOut.length; i++) {
+    if (i === 0) { countOkByDate.set(conteosOut[0]!.fecha, null); continue }
+    const prev = conteosOut[i - 1]!
+    const c = conteosOut[i]!
+    let proj = prev.cantidad
+    let d = prev.fecha
+    while (d < c.fecha) { proj += dayMov(d); d = addDays(d, 1) }
+    const desvio = proj - c.cantidad // proyectado − real
+    desvioByDate.set(c.fecha, Number(desvio.toFixed(4)))
+    countOkByDate.set(c.fecha, Math.abs(desvio) <= Math.max(0.5, Math.abs(proj) * 0.05))
   }
   const stockSerie = listDays(from, to).map((dd) => ({
     fecha: dd,
     teorico: teoricoByDay.has(dd) ? Number(teoricoByDay.get(dd)!.toFixed(4)) : null,
     conteo: countByDate.has(dd) ? countByDate.get(dd)! : null,
+    conteoOk: countByDate.has(dd) ? (countOkByDate.get(dd) ?? null) : null,
+    desvio: countByDate.has(dd) ? (desvioByDate.get(dd) ?? null) : null,
   }))
 
   const dias = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1)

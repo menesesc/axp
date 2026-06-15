@@ -9,6 +9,7 @@ import {
   Line,
   AreaChart,
   Area,
+  ComposedChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -59,7 +60,7 @@ interface DetalleResponse {
     diasCobertura: number | null
     dias: number
     mermaRecetaConfigurada: boolean
-    stockSerie: Array<{ fecha: string; teorico: number | null; conteo: number | null }>
+    stockSerie: Array<{ fecha: string; teorico: number | null; conteo: number | null; conteoOk: boolean | null; desvio: number | null }>
     mermaIntervalo: {
       desde: string
       hasta: string
@@ -129,11 +130,10 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
   const stockProbable = m ? m.stockInicial + m.comprado - m.consumoTeorico : null
   const mermaConfigurada = stock.mermaRecetaConfigurada
   const hayStockSerie = stock.stockSerie.some((p) => p.teorico != null)
-  const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; teorico: number | null } }) => {
+  const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; conteoOk: boolean | null } }) => {
     const { cx, cy, index, payload } = props
     if (payload?.conteo == null || cx == null || cy == null) return <g key={`e${index}`} />
-    const teo = payload.teorico
-    const ok = teo != null && Math.abs(payload.conteo - teo) <= Math.max(0.5, Math.abs(teo) * 0.05)
+    const ok = payload.conteoOk !== false
     return <circle key={`d${index}`} cx={cx} cy={cy} r={4} fill={ok ? '#10b981' : '#ef4444'} stroke="#ffffff" strokeWidth={1} />
   }
   // Granularidad: semanal si el rango > 2 semanas, si no diario (evita gráficos inútiles).
@@ -263,7 +263,7 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
           <div className="h-48">
             <ResponsiveContainer>
               {hayStockSerie ? (
-                <LineChart data={stock.stockSerie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
+                <ComposedChart data={stock.stockSerie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
                   <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
                   <XAxis dataKey="fecha" tickFormatter={fmtSemana} tick={{ fontSize: 11 }} minTickGap={24} />
                   <YAxis tick={{ fontSize: 11 }} width={44} />
@@ -271,9 +271,10 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
                     labelFormatter={(l) => fmtSemana(String(l))}
                     formatter={((v: number, n: string) => [`${fmtNumAR(v, 2)} ${u}`, n]) as never}
                   />
+                  <Bar dataKey="desvio" name="Desvío" fill="#ef4444" barSize={12} />
                   <Line type="monotone" dataKey="teorico" name="Stock teórico" stroke="#6366f1" strokeWidth={2} dot={false} connectNulls />
                   <Line dataKey="conteo" name="Conteo real" stroke="transparent" isAnimationActive={false} dot={renderConteoDot as never} />
-                </LineChart>
+                </ComposedChart>
               ) : (
                 <AreaChart data={serie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
                   <defs>

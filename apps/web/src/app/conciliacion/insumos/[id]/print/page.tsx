@@ -25,7 +25,7 @@ interface Detalle {
     consumoDiario: number
     diasCobertura: number | null
     mermaRecetaConfigurada: boolean
-    stockSerie: Array<{ fecha: string; teorico: number | null; conteo: number | null }>
+    stockSerie: Array<{ fecha: string; teorico: number | null; conteo: number | null; conteoOk: boolean | null; desvio: number | null }>
     mermaIntervalo: {
       desde: string; hasta: string; stockInicial: number; comprado: number
       consumoTeorico: number; stockFinal: number; merma: number; mermaPct: number | null
@@ -124,7 +124,10 @@ export default function InsumoPrintPage({
   useEffect(() => {
     if (listo && !printedRef.current) {
       printedRef.current = true
-      const t = setTimeout(() => window.print(), 500)
+      // Esperar a que los gráficos terminen de pintar antes de abrir el diálogo.
+      const t = setTimeout(() => {
+        requestAnimationFrame(() => requestAnimationFrame(() => window.print()))
+      }, 900)
       return () => clearTimeout(t)
     }
     return undefined
@@ -175,11 +178,10 @@ export default function InsumoPrintPage({
     : daily.map((x) => ({ label: x.fecha, consumo: x.consumo, comprado: x.comprado }))
   const hayStockSerie = s.stockSerie.some((p) => p.teorico != null)
   // Punto de conteo real: verde si coincide con el teórico (±5%), rojo si hay desvío.
-  const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; teorico: number | null } }) => {
+  const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; conteoOk: boolean | null } }) => {
     const { cx, cy, index, payload } = props
     if (payload?.conteo == null || cx == null || cy == null) return <g key={`e${index}`} />
-    const teorico = payload.teorico
-    const ok = teorico != null && Math.abs(payload.conteo - teorico) <= Math.max(0.5, Math.abs(teorico) * 0.05)
+    const ok = payload.conteoOk !== false
     return <circle key={`d${index}`} cx={cx} cy={cy} r={4} fill={ok ? '#10b981' : '#ef4444'} stroke="#ffffff" strokeWidth={1} />
   }
 
@@ -235,8 +237,8 @@ export default function InsumoPrintPage({
               <XAxis dataKey="label" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
               <YAxis tick={{ fontSize: 10 }} width={42} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" barSize={weekly ? 18 : 10} />
-              <Line type="monotone" dataKey="consumo" name={`Consumo (${u})`} stroke="#f59e0b" strokeWidth={2} dot={false} />
+              <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" barSize={weekly ? 18 : 10} isAnimationActive={false} />
+              <Line type="monotone" dataKey="consumo" name={`Consumo (${u})`} stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
             </ComposedChart>
           )}
         </Section>
@@ -274,7 +276,8 @@ export default function InsumoPrintPage({
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
                 <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
                 <YAxis tick={{ fontSize: 10 }} width={42} />
-                <Line type="monotone" dataKey="teorico" name={`Stock teórico (${u})`} stroke="#6366f1" strokeWidth={2} dot={false} connectNulls />
+                <Bar dataKey="desvio" name={`Desvío (${u})`} fill="#ef4444" barSize={12} isAnimationActive={false} />
+                <Line type="monotone" dataKey="teorico" name={`Stock teórico (${u})`} stroke="#6366f1" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 <Line dataKey="conteo" name="Conteo real" stroke="transparent" isAnimationActive={false} dot={renderConteoDot as never} legendType="circle" />
               </ComposedChart>
             </div>
