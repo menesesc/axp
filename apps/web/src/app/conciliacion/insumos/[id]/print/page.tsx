@@ -167,6 +167,12 @@ export default function InsumoPrintPage({
     consumo: consumoByDay.get(p.fecha) ?? 0,
     comprado: compradoByDay.get(p.fecha) ?? 0,
   }))
+  // Granularidad del gráfico de evolución: semanal si el rango > 2 semanas, si no diario.
+  const totalDias = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1
+  const weekly = totalDias > 14
+  const evolData = weekly
+    ? d.serie.map((w) => ({ label: w.semana, consumo: w.consumo, comprado: w.comprado }))
+    : daily.map((x) => ({ label: x.fecha, consumo: x.consumo, comprado: x.comprado }))
   const hayStockSerie = s.stockSerie.some((p) => p.teorico != null)
   // Punto de conteo real: verde si coincide con el teórico (±5%), rojo si hay desvío.
   const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; teorico: number | null } }) => {
@@ -219,17 +225,17 @@ export default function InsumoPrintPage({
           </div>
         </div>
 
-        {/* Gráfico principal (página 1): consumo y compras por día */}
-        <Section title="Consumo y compras por día">
-          {daily.length === 0 ? (
+        {/* Gráfico principal (página 1): consumo y compras por día/semana */}
+        <Section title={`Consumo y compras por ${weekly ? 'semana' : 'día'}`}>
+          {evolData.length === 0 ? (
             <p className="text-[12px] text-slate-500">Sin movimientos en el período.</p>
           ) : (
-            <ComposedChart width={640} height={200} data={daily} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+            <ComposedChart width={640} height={200} data={evolData} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-              <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
+              <XAxis dataKey="label" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
               <YAxis tick={{ fontSize: 10 }} width={42} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" barSize={10} />
+              <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" barSize={weekly ? 18 : 10} />
               <Line type="monotone" dataKey="consumo" name={`Consumo (${u})`} stroke="#f59e0b" strokeWidth={2} dot={false} />
             </ComposedChart>
           )}

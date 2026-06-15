@@ -45,8 +45,11 @@ interface DetalleResponse {
     comprado: number
     costo: number
     costoUnitario: number | null
+    costoUnitarioFill: number | null
     difAcum: number
   }>
+  consumoPorDia: Array<{ fecha: string; consumo: number }>
+  compradoPorDia: Array<{ fecha: string; comprado: number }>
   productos: Array<{ productMasterId: string; nombre: string; unidades: number; consumo: number }>
   stock: {
     conteos: Array<{ id: string; fecha: string; cantidad: number; nota: string | null }>
@@ -133,6 +136,13 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
     const ok = teo != null && Math.abs(payload.conteo - teo) <= Math.max(0.5, Math.abs(teo) * 0.05)
     return <circle key={`d${index}`} cx={cx} cy={cy} r={4} fill={ok ? '#10b981' : '#ef4444'} stroke="#ffffff" strokeWidth={1} />
   }
+  // Granularidad: semanal si el rango > 2 semanas, si no diario (evita gráficos inútiles).
+  const weekly = stock.dias > 14
+  const consumoByDay = new Map(data.consumoPorDia.map((x) => [x.fecha, x.consumo]))
+  const compradoByDay = new Map(data.compradoPorDia.map((x) => [x.fecha, x.comprado]))
+  const evolData = weekly
+    ? serie.map((w) => ({ label: w.semana, consumo: w.consumo, comprado: w.comprado }))
+    : stock.stockSerie.map((p) => ({ label: p.fecha, consumo: consumoByDay.get(p.fecha) ?? 0, comprado: compradoByDay.get(p.fecha) ?? 0 }))
 
   if (!hayDatos) {
     return (
@@ -206,15 +216,15 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
 
       {/* Consumo vs comprado */}
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">Consumo teórico vs comprado ({u}/semana)</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">Consumo teórico vs comprado ({u}/{weekly ? 'semana' : 'día'})</p>
         <div className="h-56">
           <ResponsiveContainer>
-            <BarChart data={serie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
+            <BarChart data={evolData} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
               <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-              <XAxis dataKey="semana" tickFormatter={fmtSemana} tick={{ fontSize: 11 }} />
+              <XAxis dataKey="label" tickFormatter={fmtSemana} tick={{ fontSize: 11 }} minTickGap={20} />
               <YAxis tick={{ fontSize: 11 }} width={44} />
               <Tooltip
-                labelFormatter={(l) => `Semana del ${fmtSemana(String(l))}`}
+                labelFormatter={(l) => (weekly ? `Semana del ${fmtSemana(String(l))}` : fmtSemana(String(l)))}
                 formatter={((v: number, n: string) => [`${fmtNumAR(v, 2)} ${u}`, n]) as never}
               />
               <Bar dataKey="consumo" name="Consumo teórico" fill="#f59e0b" radius={[2, 2, 0, 0]} />
@@ -238,7 +248,7 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
                   labelFormatter={(l) => `Semana del ${fmtSemana(String(l))}`}
                   formatter={((v: number) => [v != null ? `${fmtAR(v)}/${u}` : '—', 'Costo unitario']) as never}
                 />
-                <Line type="monotone" dataKey="costoUnitario" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                <Line type="monotone" dataKey="costoUnitarioFill" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>

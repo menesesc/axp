@@ -103,11 +103,21 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       comprado: compra.qty,
       costo: compra.costo,
       costoUnitario: compra.qty > 0 ? compra.costo / compra.qty : null,
+      costoUnitarioFill: null as number | null,
       difAcum: compradoAcum - consumoAcum,
       consumoAcum,
       compradoAcum,
     }
   })
+
+  // Costo unitario rellenado con el último conocido (y el primero hacia atrás)
+  // para que el gráfico nunca quede vacío en semanas sin compra.
+  const primerCosto = serie.find((w) => w.costoUnitario != null)?.costoUnitario ?? null
+  let ultimoCosto: number | null = primerCosto
+  for (const w of serie) {
+    if (w.costoUnitario != null) ultimoCosto = w.costoUnitario
+    w.costoUnitarioFill = ultimoCosto
+  }
 
   // Ranking de productos que más consumen el insumo en el período.
   const prodRows = await prisma.$queryRawUnsafe<Array<{
@@ -261,24 +271,39 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // el stock real coincide con el teórico en cada fecha. El conteo es a la mañana,
   // así que el stock teórico de un día no incluye el consumo de ese mismo día.
   const countByDate = new Map(conteosOut.map((c) => [c.fecha, c.cantidad]))
+  // Ancla: el conteo más reciente ≤ from (o el primero del rango). Desde el ancla
+  // se proyecta el stock teórico hacia adelante Y hacia atrás (movimientos en
+  // reversa), para que la línea cubra todo el rango aunque el conteo sea reciente.
   let anchorDate: string | null = null
   let anchorVal = 0
   for (const c of conteosOut) { if (c.fecha <= from) { anchorDate = c.fecha; anchorVal = c.cantidad } }
   if (!anchorDate && conteosOut.length > 0) { anchorDate = conteosOut[0]!.fecha; anchorVal = conteosOut[0]!.cantidad }
   const dayMov = (dd: string) => (compradoDiaMap.get(dd) ?? 0) - (consumoDiaMap.get(dd) ?? 0)
-  let stockRun: number | null = null
-  if (anchorDate && anchorDate <= from) {
-    stockRun = anchorVal
+  const teoricoByDay = new Map<string, number>()
+  if (anchorDate) {
+    // Hacia adelante desde el ancla (stock a la mañana de cada día).
+    let st = anchorVal
     let cur = anchorDate
-    while (cur < from) { stockRun += dayMov(cur); cur = addDays(cur, 1) }
+    while (cur <= to) {
+      if (cur >= from) teoricoByDay.set(cur, st)
+      st += dayMov(cur)
+      cur = addDays(cur, 1)
+    }
+    // Hacia atrás: stockMañana(prev) = stockMañana(cur) − movimiento(prev).
+    st = anchorVal
+    cur = anchorDate
+    while (cur > from) {
+      const prev = addDays(cur, -1)
+      st -= dayMov(prev)
+      if (prev >= from) teoricoByDay.set(prev, st)
+      cur = prev
+    }
   }
-  const stockSerie = listDays(from, to).map((dd) => {
-    if (anchorDate && anchorDate > from && dd === anchorDate) stockRun = anchorVal
-    const teorico = stockRun != null ? Number(stockRun.toFixed(4)) : null
-    const conteo = countByDate.has(dd) ? countByDate.get(dd)! : null
-    if (stockRun != null) stockRun += dayMov(dd)
-    return { fecha: dd, teorico, conteo }
-  })
+  const stockSerie = listDays(from, to).map((dd) => ({
+    fecha: dd,
+    teorico: teoricoByDay.has(dd) ? Number(teoricoByDay.get(dd)!.toFixed(4)) : null,
+    conteo: countByDate.has(dd) ? countByDate.get(dd)! : null,
+  }))
 
   const dias = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1)
   const consumoDiario = consumoTeorico / dias
