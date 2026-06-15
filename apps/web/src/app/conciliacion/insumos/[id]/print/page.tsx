@@ -143,7 +143,7 @@ export default function InsumoPrintPage({
   const s = d.stock
   const m = s.mermaIntervalo
   const stockProbable = m ? m.stockInicial + m.comprado - m.consumoTeorico : null
-  const cobertura = s.diasCobertura ?? (s.consumoDiario > 0 ? r.compradoBase / s.consumoDiario : null)
+  const cobertura = s.diasCobertura
   const productos = margen.data?.productos ?? []
   const aliasList = alias.data?.alias ?? []
   const recetasList = recetas.data?.productos ?? []
@@ -276,7 +276,6 @@ export default function InsumoPrintPage({
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
                 <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
                 <YAxis tick={{ fontSize: 10 }} width={42} />
-                <Bar dataKey="desvio" name={`Desvío (${u})`} fill="#ef4444" barSize={12} isAnimationActive={false} />
                 <Line type="monotone" dataKey="teorico" name={`Stock teórico (${u})`} stroke="#6366f1" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 <Line dataKey="conteo" name="Conteo real" stroke="transparent" isAnimationActive={false} dot={renderConteoDot as never} legendType="circle" />
               </ComposedChart>

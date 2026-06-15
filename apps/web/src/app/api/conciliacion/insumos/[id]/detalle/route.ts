@@ -292,25 +292,29 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // anterior. Antes del primer conteo se proyecta hacia atrás.
   const teoricoByDay = new Map<string, number>()
   if (conteosOut.length > 0) {
-    // Hacia atrás desde el primer conteo.
-    let st = conteosOut[0]!.cantidad
-    let cur = conteosOut[0]!.fecha
+    const first = conteosOut[0]!
+    // El primer conteo es valor real (no tiene desvío previo).
+    if (first.fecha >= from && first.fecha <= to) teoricoByDay.set(first.fecha, first.cantidad)
+    // Hacia atrás antes del primer conteo.
+    let st = first.cantidad
+    let cur = first.fecha
     while (cur > from) {
       const prev = addDays(cur, -1)
       st -= dayMov(prev)
       if (prev >= from) teoricoByDay.set(prev, st)
       cur = prev
     }
-    // Hacia adelante, re-anclando en el valor real de cada conteo.
+    // Hacia adelante: cada conteo ancla los días POSTERIORES; su propia fecha
+    // muestra la proyección del conteo anterior (para que se vea el gap con el real).
     for (let i = 0; i < conteosOut.length; i++) {
       const c = conteosOut[i]!
-      const endExcl = i + 1 < conteosOut.length ? conteosOut[i + 1]!.fecha : addDays(to, 1)
+      const nextDate = i + 1 < conteosOut.length ? conteosOut[i + 1]!.fecha : addDays(to, 1)
       let s = c.cantidad
       let d = c.fecha
-      while (d < endExcl && d <= to) {
-        if (d >= from) teoricoByDay.set(d, s)
+      while (d < nextDate && d < addDays(to, 1)) {
         s += dayMov(d)
         d = addDays(d, 1)
+        if (d >= from && d <= to && d <= nextDate) teoricoByDay.set(d, Number(s.toFixed(4)))
       }
     }
   }
@@ -352,8 +356,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const [comp, cons] = await Promise.all([compradoBetween(f, toExcl), consumoBetween(f, toExcl)])
     stockTeoricoActual = Number(ultimoConteo.cantidad) + comp - cons
   }
+  // Stock estimado para "días de stock": el proyectado desde el último conteo si
+  // hay conteo; si no, la variación del período (comprado − consumo), que es lo
+  // que aproximadamente quedó. Nunca lo comprado total (eso es otra métrica).
+  const stockEstimado = stockTeoricoActual != null ? stockTeoricoActual : (diferencia > 0 ? diferencia : null)
   const diasCobertura =
-    consumoDiario > 0 && stockTeoricoActual != null ? stockTeoricoActual / consumoDiario : null
+    consumoDiario > 0 && stockEstimado != null ? stockEstimado / consumoDiario : null
 
   // Merma real del último intervalo cerrado (los dos conteos más recientes).
   let mermaIntervalo: {
