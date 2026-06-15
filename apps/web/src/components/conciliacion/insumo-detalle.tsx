@@ -207,9 +207,9 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
             <Kpi label="Stock probable hoy" value={`${fmtNumAR(stock.stockTeoricoActual, 2)} ${u}`} sub="proyectado desde el último conteo" tone={stock.stockTeoricoActual < 0 ? 'neg' : undefined} />
           )}
           <Kpi
-            label="Cobertura"
+            label="Días de stock"
             value={cobertura != null ? `${fmtNumAR(cobertura, 0)} días` : '—'}
-            sub={`consumo ${fmtNumAR(stock.consumoDiario, 2)} ${u}/día`}
+            sub={`lo que dura el stock a ${fmtNumAR(stock.consumoDiario, 2)} ${u}/día`}
           />
         </div>
       </div>

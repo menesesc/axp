@@ -189,7 +189,7 @@ export default function InsumoPrintPage({
     ['Costo comprado', fmtAR(r.costoComprado)],
     ['Costo unitario', r.costoUnitario != null ? `${fmtAR(r.costoUnitario)}/${u}` : '—'],
     ['Variación de stock', `${r.diferencia >= 0 ? '+' : ''}${fmtNumAR(r.diferencia, 2)} ${u}${r.diferenciaPct != null ? ` (${r.diferenciaPct >= 0 ? '+' : ''}${fmtNumAR(r.diferenciaPct, 1)}%)` : ''}`],
-    ['Cobertura', cobertura != null ? `${fmtNumAR(cobertura, 0)} días` : '—'],
+    ['Días de stock', cobertura != null ? `${fmtNumAR(cobertura, 0)} días` : '—'],
     ['Stock probable hoy', s.stockTeoricoActual != null ? `${fmtNumAR(s.stockTeoricoActual, 2)} ${u}` : '— (sin conteo)'],
   ]
 
