@@ -169,6 +169,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
   const consumoPorDia = [...consumoDiaMap.entries()].sort().map(([fecha, consumo]) => ({ fecha, consumo }))
 
+  // Comprado por día (en unidadBase), para el gráfico combinado y la serie de stock.
+  const compradoDiaRows = await prisma.$queryRawUnsafe<Array<{ dia: string; qty: number | null }>>(`
+    SELECT to_char(d."fechaEmision", 'YYYY-MM-DD') AS dia,
+           SUM(di.cantidad * a."factorBase")::numeric AS qty
+    FROM documento_items di
+    JOIN documentos d ON d.id = di."documentoId"
+    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
+    WHERE a."insumoId" = $5::uuid AND d."clienteId" = $1::uuid
+      AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
+      AND d."estadoRevision"::text = ANY($4::text[])
+    GROUP BY dia
+    ORDER BY dia
+  `, clienteId, from, to, [...ESTADOS_COMPRA], insumo.id)
+  const compradoDiaMap = new Map<string, number>()
+  for (const row of compradoDiaRows) compradoDiaMap.set(row.dia, Number(row.qty) || 0)
+  const compradoPorDia = [...compradoDiaMap.entries()].sort().map(([fecha, comprado]) => ({ fecha, comprado }))
+
   // Resumen del período.
   const consumoTeorico = [...consumoByWeek.values()].reduce((s, v) => s + v, 0)
   const compradoBase = [...compradoByWeek.values()].reduce((s, v) => s + v.qty, 0)
@@ -176,7 +193,18 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const diferencia = compradoBase - consumoTeorico
 
   // --- Stock físico: separar merma real de la variación de inventario ---
-  // Consumo teórico (en unidadBase) entre dos fechas (d1 exclusivo, d2 inclusivo).
+  // Helpers de fecha (strings 'YYYY-MM-DD').
+  const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10)
+  const listDays = (a: string, b: string) => {
+    const out: string[] = []
+    let c = a
+    while (c <= b) { out.push(c); c = addDays(c, 1) }
+    return out
+  }
+
+  // Conteo de stock = a la mañana (antes del consumo del día), así que el intervalo
+  // [d1, d2) cuenta los movimientos de los días d1..d2-1 inclusive.
+  // Consumo teórico (en unidadBase) en [d1, d2).
   async function consumoBetween(d1: string, d2: string): Promise<number> {
     const rows = await prisma.$queryRawUnsafe<Array<{ unidad_receta: string; qty: number }>>(`
       SELECT ri.unidad AS unidad_receta,
@@ -185,7 +213,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       JOIN sales_closures c ON c.id = ci."closureId"
       JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
       JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
-      WHERE c."clienteId" = $1::uuid AND c.fecha > $2::date AND c.fecha <= $3::date
+      WHERE c."clienteId" = $1::uuid AND c.fecha >= $2::date AND c.fecha < $3::date
         AND ($4::text IS NULL OR c.sucursal = $4)
       GROUP BY ri.unidad
     `, clienteId, d1, d2, sucursal, insumoId)
@@ -201,7 +229,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       JOIN documentos d ON d.id = di."documentoId"
       JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
       WHERE a."insumoId" = $4::uuid AND d."clienteId" = $1::uuid
-        AND d."fechaEmision" > $2::date AND d."fechaEmision" <= $3::date
+        AND d."fechaEmision" >= $2::date AND d."fechaEmision" < $3::date
         AND d."estadoRevision"::text = ANY($5::text[])
     `, clienteId, d1, d2, insumoId, [...ESTADOS_COMPRA])
     return Number(rows[0]?.qty) || 0
@@ -228,6 +256,30 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     nota: c.nota,
   }))
 
+  // Serie diaria de stock teórico, anclada al conteo más reciente ≤ from (o al
+  // primer conteo del rango), más los conteos reales — para ver de un vistazo si
+  // el stock real coincide con el teórico en cada fecha. El conteo es a la mañana,
+  // así que el stock teórico de un día no incluye el consumo de ese mismo día.
+  const countByDate = new Map(conteosOut.map((c) => [c.fecha, c.cantidad]))
+  let anchorDate: string | null = null
+  let anchorVal = 0
+  for (const c of conteosOut) { if (c.fecha <= from) { anchorDate = c.fecha; anchorVal = c.cantidad } }
+  if (!anchorDate && conteosOut.length > 0) { anchorDate = conteosOut[0]!.fecha; anchorVal = conteosOut[0]!.cantidad }
+  const dayMov = (dd: string) => (compradoDiaMap.get(dd) ?? 0) - (consumoDiaMap.get(dd) ?? 0)
+  let stockRun: number | null = null
+  if (anchorDate && anchorDate <= from) {
+    stockRun = anchorVal
+    let cur = anchorDate
+    while (cur < from) { stockRun += dayMov(cur); cur = addDays(cur, 1) }
+  }
+  const stockSerie = listDays(from, to).map((dd) => {
+    if (anchorDate && anchorDate > from && dd === anchorDate) stockRun = anchorVal
+    const teorico = stockRun != null ? Number(stockRun.toFixed(4)) : null
+    const conteo = countByDate.has(dd) ? countByDate.get(dd)! : null
+    if (stockRun != null) stockRun += dayMov(dd)
+    return { fecha: dd, teorico, conteo }
+  })
+
   const dias = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1)
   const consumoDiario = consumoTeorico / dias
 
@@ -238,7 +290,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (ultimoConteo) {
     const f = ultimoConteo.fecha.toISOString().slice(0, 10)
     ultimoConteoFecha = f
-    const [comp, cons] = await Promise.all([compradoBetween(f, to), consumoBetween(f, to)])
+    // Movimientos [f, to] inclusive (to+1 exclusivo).
+    const toExcl = addDays(to, 1)
+    const [comp, cons] = await Promise.all([compradoBetween(f, toExcl), consumoBetween(f, toExcl)])
     stockTeoricoActual = Number(ultimoConteo.cantidad) + comp - cons
   }
   const diasCobertura =
@@ -287,6 +341,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     },
     serie,
     consumoPorDia,
+    compradoPorDia,
     productos,
     stock: {
       conteos: conteosOut,
@@ -297,6 +352,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       dias,
       mermaIntervalo,
       mermaRecetaConfigurada,
+      stockSerie,
     },
   })
 }

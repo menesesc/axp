@@ -42,7 +42,7 @@ export function MargenTable({ productos }: { productos: MargenProducto[] }) {
             <th className="text-right px-4 py-2.5 font-medium">Vendidas</th>
             <th className="text-right px-4 py-2.5 font-medium" title="Precio de venta neto (sin IVA), comparable al costo">Precio neto</th>
             <th className="text-right px-4 py-2.5 font-medium">Costo receta</th>
-            <th className="text-right px-4 py-2.5 font-medium">Food cost</th>
+            <th className="text-right px-4 py-2.5 font-medium" title="Costo de receta sobre precio neto (incluye comida y bebida)">Costo %</th>
             <th className="text-right px-4 py-2.5 font-medium">Margen u.</th>
             <th className="text-right px-4 py-2.5 font-medium">Margen total</th>
           </tr>
@@ -78,8 +78,8 @@ export function MargenTable({ productos }: { productos: MargenProducto[] }) {
       </table>
       <p className="text-[11px] text-slate-400 px-4 py-2 border-t border-slate-100">
         <AlertTriangle className="h-3 w-3 text-amber-500 inline mr-1" />
-        = costo incompleto (algún insumo sin compra en el período). Food cost coloreado: ≤30% verde, ≤40% ámbar, &gt;40% rojo.
-        Margen y food cost <span className="font-medium">netos (sin IVA)</span>: el precio se descuenta con el IVA de venta de los cierres; el costo de factura ya viene neto.
+        = costo incompleto (algún insumo sin compra en el período). Costo % coloreado: ≤30% verde, ≤40% ámbar, &gt;40% rojo.
+        Margen y costo % <span className="font-medium">netos (sin IVA)</span>: el precio se descuenta con el IVA de venta de los cierres; el costo de factura ya viene neto.
       </p>
     </div>
   )

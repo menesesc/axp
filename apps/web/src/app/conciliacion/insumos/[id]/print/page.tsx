@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
 import { defaultRange, fmtAR, fmtNumAR } from '@/components/sales/shared'
 import { Printer } from 'lucide-react'
 
@@ -18,12 +18,14 @@ interface Detalle {
   }
   serie: Array<{ semana: string; consumo: number; comprado: number; costoUnitario: number | null }>
   consumoPorDia: Array<{ fecha: string; consumo: number }>
+  compradoPorDia: Array<{ fecha: string; comprado: number }>
   stock: {
     conteos: Array<{ id: string; fecha: string; cantidad: number; nota: string | null }>
     stockTeoricoActual: number | null
     consumoDiario: number
     diasCobertura: number | null
     mermaRecetaConfigurada: boolean
+    stockSerie: Array<{ fecha: string; teorico: number | null; conteo: number | null }>
     mermaIntervalo: {
       desde: string; hasta: string; stockInicial: number; comprado: number
       consumoTeorico: number; stockFinal: number; merma: number; mermaPct: number | null
@@ -153,6 +155,28 @@ export default function InsumoPrintPage({
   const foodCostProm = ventasNetas > 0 ? (costoTot / ventasNetas) * 100 : null
   const margenPromPct = ventasNetas > 0 ? (margenTotPeriodo / ventasNetas) * 100 : null
 
+  const truncProv = (name: string | null) => {
+    const t = name ?? '—'
+    return t.length > 20 ? t.slice(0, 20) + '…' : t
+  }
+  // Serie diaria combinada (consumo + comprado) sobre todos los días del rango.
+  const consumoByDay = new Map(d.consumoPorDia.map((x) => [x.fecha, x.consumo]))
+  const compradoByDay = new Map(d.compradoPorDia.map((x) => [x.fecha, x.comprado]))
+  const daily = s.stockSerie.map((p) => ({
+    fecha: p.fecha,
+    consumo: consumoByDay.get(p.fecha) ?? 0,
+    comprado: compradoByDay.get(p.fecha) ?? 0,
+  }))
+  const hayStockSerie = s.stockSerie.some((p) => p.teorico != null)
+  // Punto de conteo real: verde si coincide con el teórico (±5%), rojo si hay desvío.
+  const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; teorico: number | null } }) => {
+    const { cx, cy, index, payload } = props
+    if (payload?.conteo == null || cx == null || cy == null) return <g key={`e${index}`} />
+    const teorico = payload.teorico
+    const ok = teorico != null && Math.abs(payload.conteo - teorico) <= Math.max(0.5, Math.abs(teorico) * 0.05)
+    return <circle key={`d${index}`} cx={cx} cy={cy} r={4} fill={ok ? '#10b981' : '#ef4444'} stroke="#ffffff" strokeWidth={1} />
+  }
+
   const kpis: Array<[string, string]> = [
     ['Consumo teórico', `${fmtNumAR(r.consumoTeorico, 2)} ${u}`],
     ['Comprado', `${fmtNumAR(r.compradoBase, 2)} ${u}`],
@@ -183,12 +207,33 @@ export default function InsumoPrintPage({
 
       <div className="sheet">
         {/* Encabezado */}
-        <div className="mb-5">
-          <h1 className="text-xl font-bold text-slate-900">{d.insumo.nombre}</h1>
-          <p className="text-[12px] text-slate-500">
-            Informe de conciliación · Unidad base {u} · Período {fmtFecha(from)} – {fmtFecha(to)} · Generado {new Date().toLocaleDateString('es-AR')}
-          </p>
+        <div className="mb-4 pb-3 border-b-2 border-slate-800 flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Informe de conciliación</p>
+            <h1 className="text-2xl font-bold text-slate-900 leading-tight">{d.insumo.nombre}</h1>
+            <p className="text-[12px] text-slate-500">Unidad base {u}</p>
+          </div>
+          <div className="text-right text-[11px] text-slate-500 shrink-0">
+            <span className="inline-block bg-slate-100 rounded px-2 py-0.5 text-slate-700 font-medium">{fmtFecha(from)} – {fmtFecha(to)}</span>
+            <p className="mt-1">Generado {new Date().toLocaleDateString('es-AR')}</p>
+          </div>
         </div>
+
+        {/* Gráfico principal (página 1): consumo y compras por día */}
+        <Section title="Consumo y compras por día">
+          {daily.length === 0 ? (
+            <p className="text-[12px] text-slate-500">Sin movimientos en el período.</p>
+          ) : (
+            <ComposedChart width={640} height={200} data={daily} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
+              <YAxis tick={{ fontSize: 10 }} width={42} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" barSize={10} />
+              <Line type="monotone" dataKey="consumo" name={`Consumo (${u})`} stroke="#f59e0b" strokeWidth={2} dot={false} />
+            </ComposedChart>
+          )}
+        </Section>
 
         {/* Resumen */}
         <Section title="Resumen del período">
@@ -213,6 +258,21 @@ export default function InsumoPrintPage({
           ) : (
             <p className="text-[12px] text-slate-500">Sin dos conteos en el período para calcular desvío.</p>
           )}
+          {hayStockSerie && (
+            <div className="my-2">
+              <p className="text-[11px] text-slate-500 mb-1">
+                Stock teórico (línea) vs conteos reales (puntos). Punto <span className="text-emerald-600 font-medium">verde</span> = stock OK;
+                <span className="text-red-600 font-medium"> rojo</span> = desvío a esa fecha.
+              </p>
+              <ComposedChart width={640} height={170} data={s.stockSerie} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
+                <YAxis tick={{ fontSize: 10 }} width={42} />
+                <Line type="monotone" dataKey="teorico" name={`Stock teórico (${u})`} stroke="#6366f1" strokeWidth={2} dot={false} connectNulls />
+                <Line dataKey="conteo" name="Conteo real" stroke="transparent" isAnimationActive={false} dot={renderConteoDot as never} legendType="circle" />
+              </ComposedChart>
+            </div>
+          )}
           {s.conteos.length > 0 && (
             <table className="w-full text-[12px] mt-2">
               <thead><tr><th className={th}>Conteo</th><th className={thr}>Stock ({u})</th><th className={th}>Nota</th></tr></thead>
@@ -234,7 +294,7 @@ export default function InsumoPrintPage({
                 <p className="text-[13px] font-semibold text-emerald-700">{margenPromPct != null ? `${fmtNumAR(margenPromPct, 1)}%` : '—'}</p>
               </div>
               <div className="border border-slate-200 rounded px-2 py-1.5">
-                <p className="text-[10px] uppercase tracking-wide text-slate-400">Food cost promedio</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Costo % promedio</p>
                 <p className="text-[13px] font-semibold text-slate-800">{foodCostProm != null ? `${fmtNumAR(foodCostProm, 1)}%` : '—'}</p>
               </div>
               <div className="border border-slate-200 rounded px-2 py-1.5">
@@ -253,7 +313,7 @@ export default function InsumoPrintPage({
                   <th className={thr}>Vendidas</th>
                   <th className={thr}>Precio neto</th>
                   <th className={thr}>Costo receta</th>
-                  <th className={thr}>Food cost</th>
+                  <th className={thr}>Costo %</th>
                   <th className={thr}>Margen u.</th>
                   <th className={thr}>Margen total</th>
                 </tr>
@@ -275,7 +335,7 @@ export default function InsumoPrintPage({
           )}
           <p className="text-[10px] text-slate-400 mt-1">
             {productos.some((p) => p.costoIncompleto) && '* costo incompleto (algún insumo sin compra en el período). '}
-            Margen y food cost netos (sin IVA): el precio se neteó con el IVA de venta de los cierres; el costo de factura ya es neto.
+            Margen y costo % netos (sin IVA): el precio se neteó con el IVA de venta de los cierres; el costo de factura ya es neto.
           </p>
         </Section>
 
@@ -336,7 +396,7 @@ export default function InsumoPrintPage({
                 {comprasList.map((c, i) => (
                   <tr key={i}>
                     <td className={td}>{c.fecha ? fmtFecha(c.fecha) : '—'}</td>
-                    <td className={td}>{c.proveedor ?? '—'}</td>
+                    <td className={td} title={c.proveedor ?? ''}>{truncProv(c.proveedor)}</td>
                     <td className={td}>{c.descripcion}</td>
                     <td className={tdr}>{c.cantidad != null ? `${fmtNumAR(c.cantidad, 2)} ${c.unidad ?? ''}` : '—'}</td>
                     <td className={tdr}>{fmtAR(c.subtotal)}</td>
@@ -355,48 +415,24 @@ export default function InsumoPrintPage({
           <p className="text-[10px] text-slate-400 mt-1">Importes netos (sin IVA). $/{u} = costo por unidad base normalizado por el factor del alias.</p>
         </Section>
 
-        {/* Evolución con gráficos */}
-        <Section title="Evolución semanal — consumo vs comprado">
+        {/* Detalle semanal (números) */}
+        <Section title="Detalle semanal">
           {d.serie.length === 0 ? (
             <p className="text-[12px] text-slate-500">Sin movimientos en el período.</p>
           ) : (
-            <>
-              <BarChart width={640} height={190} data={d.serie} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="semana" tickFormatter={fmtFecha} tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} width={42} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="consumo" name={`Consumo (${u})`} fill="#f59e0b" />
-                <Bar dataKey="comprado" name={`Comprado (${u})`} fill="#6366f1" />
-              </BarChart>
-              <table className="w-full text-[12px] mt-2">
-                <thead><tr><th className={th}>Semana (desde)</th><th className={thr}>Consumo ({u})</th><th className={thr}>Comprado ({u})</th><th className={thr}>Costo unit.</th></tr></thead>
-                <tbody>
-                  {d.serie.map((w) => (
-                    <tr key={w.semana}>
-                      <td className={td}>{fmtFecha(w.semana)}</td>
-                      <td className={tdr}>{fmtNumAR(w.consumo, 2)}</td>
-                      <td className={tdr}>{fmtNumAR(w.comprado, 2)}</td>
-                      <td className={tdr}>{w.costoUnitario != null ? fmtAR(w.costoUnitario) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </Section>
-
-        {/* Consumo diario */}
-        <Section title="Evolución del consumo por día">
-          {d.consumoPorDia.length === 0 ? (
-            <p className="text-[12px] text-slate-500">Sin consumo en el período.</p>
-          ) : (
-            <LineChart width={640} height={170} data={d.consumoPorDia} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-              <XAxis dataKey="fecha" tickFormatter={fmtFecha} tick={{ fontSize: 9 }} minTickGap={24} />
-              <YAxis tick={{ fontSize: 10 }} width={42} />
-              <Line type="monotone" dataKey="consumo" name={`Consumo (${u})`} stroke="#f59e0b" strokeWidth={2} dot={false} />
-            </LineChart>
+            <table className="w-full text-[12px]">
+              <thead><tr><th className={th}>Semana (desde)</th><th className={thr}>Consumo ({u})</th><th className={thr}>Comprado ({u})</th><th className={thr}>Costo unit.</th></tr></thead>
+              <tbody>
+                {d.serie.map((w) => (
+                  <tr key={w.semana}>
+                    <td className={td}>{fmtFecha(w.semana)}</td>
+                    <td className={tdr}>{fmtNumAR(w.consumo, 2)}</td>
+                    <td className={tdr}>{fmtNumAR(w.comprado, 2)}</td>
+                    <td className={tdr}>{w.costoUnitario != null ? fmtAR(w.costoUnitario) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </Section>
       </div>

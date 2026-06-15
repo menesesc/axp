@@ -56,6 +56,7 @@ interface DetalleResponse {
     diasCobertura: number | null
     dias: number
     mermaRecetaConfigurada: boolean
+    stockSerie: Array<{ fecha: string; teorico: number | null; conteo: number | null }>
     mermaIntervalo: {
       desde: string
       hasta: string
@@ -124,6 +125,14 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
   // se vuelve merma al contrastarlo con el conteo físico de cierre.
   const stockProbable = m ? m.stockInicial + m.comprado - m.consumoTeorico : null
   const mermaConfigurada = stock.mermaRecetaConfigurada
+  const hayStockSerie = stock.stockSerie.some((p) => p.teorico != null)
+  const renderConteoDot = (props: { cx?: number; cy?: number; index?: number; payload?: { conteo: number | null; teorico: number | null } }) => {
+    const { cx, cy, index, payload } = props
+    if (payload?.conteo == null || cx == null || cy == null) return <g key={`e${index}`} />
+    const teo = payload.teorico
+    const ok = teo != null && Math.abs(payload.conteo - teo) <= Math.max(0.5, Math.abs(teo) * 0.05)
+    return <circle key={`d${index}`} cx={cx} cy={cy} r={4} fill={ok ? '#10b981' : '#ef4444'} stroke="#ffffff" strokeWidth={1} />
+  }
 
   if (!hayDatos) {
     return (
@@ -235,32 +244,51 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
           </div>
         </div>
 
-        {/* Diferencia acumulada */}
+        {/* Stock teórico vs conteos (o diferencia acumulada si no hay conteos) */}
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2 flex items-center gap-1.5">
-            Diferencia acumulada ({u})
-            {difPos ? <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> : <TrendingDown className="h-3.5 w-3.5 text-red-500" />}
+            {hayStockSerie ? 'Stock teórico vs conteos' : 'Diferencia acumulada'} ({u})
+            {!hayStockSerie && (difPos ? <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> : <TrendingDown className="h-3.5 w-3.5 text-red-500" />)}
           </p>
           <div className="h-48">
             <ResponsiveContainer>
-              <AreaChart data={serie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="difAcum" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                <XAxis dataKey="semana" tickFormatter={fmtSemana} tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} width={44} />
-                <Tooltip
-                  labelFormatter={(l) => `Semana del ${fmtSemana(String(l))}`}
-                  formatter={((v: number) => [`${v >= 0 ? '+' : ''}${fmtNumAR(v, 2)} ${u}`, 'Comprado − consumo (acum.)']) as never}
-                />
-                <Area type="monotone" dataKey="difAcum" stroke="#6366f1" strokeWidth={2} fill="url(#difAcum)" />
-              </AreaChart>
+              {hayStockSerie ? (
+                <LineChart data={stock.stockSerie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
+                  <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
+                  <XAxis dataKey="fecha" tickFormatter={fmtSemana} tick={{ fontSize: 11 }} minTickGap={24} />
+                  <YAxis tick={{ fontSize: 11 }} width={44} />
+                  <Tooltip
+                    labelFormatter={(l) => fmtSemana(String(l))}
+                    formatter={((v: number, n: string) => [`${fmtNumAR(v, 2)} ${u}`, n]) as never}
+                  />
+                  <Line type="monotone" dataKey="teorico" name="Stock teórico" stroke="#6366f1" strokeWidth={2} dot={false} connectNulls />
+                  <Line dataKey="conteo" name="Conteo real" stroke="transparent" isAnimationActive={false} dot={renderConteoDot as never} />
+                </LineChart>
+              ) : (
+                <AreaChart data={serie} margin={{ left: 0, right: 12, top: 8, bottom: 4 }}>
+                  <defs>
+                    <linearGradient id="difAcum" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
+                  <XAxis dataKey="semana" tickFormatter={fmtSemana} tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={44} />
+                  <Tooltip
+                    labelFormatter={(l) => `Semana del ${fmtSemana(String(l))}`}
+                    formatter={((v: number) => [`${v >= 0 ? '+' : ''}${fmtNumAR(v, 2)} ${u}`, 'Comprado − consumo (acum.)']) as never}
+                  />
+                  <Area type="monotone" dataKey="difAcum" stroke="#6366f1" strokeWidth={2} fill="url(#difAcum)" />
+                </AreaChart>
+              )}
             </ResponsiveContainer>
           </div>
+          {hayStockSerie && (
+            <p className="text-[11px] text-slate-400 mt-1">
+              Punto <span className="text-emerald-600">verde</span> = stock OK; <span className="text-red-600">rojo</span> = desvío a esa fecha.
+            </p>
+          )}
         </div>
       </div>
 
