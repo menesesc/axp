@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
   const from = sp.get('from') || def.from
   const to = sp.get('to') || def.to
   const sucursal = sp.get('sucursal') || null
+  const insumoId = sp.get('insumoId') || null
   const estadosFinal = [...ESTADOS_COMPRA]
 
   // Costo unitario por insumo (en $/unidadBase) a partir de las compras del período.
@@ -70,7 +71,11 @@ export async function GET(request: NextRequest) {
 
   // Recetas activas con ingredientes.
   const recetas = await prisma.sales_recipes.findMany({
-    where: { activa: true, productMaster: { clienteId: clienteId! } },
+    where: {
+      activa: true,
+      productMaster: { clienteId: clienteId! },
+      ...(insumoId ? { ingredients: { some: { insumoId } } } : {}),
+    },
     include: {
       productMaster: { select: { id: true, nombre: true, rubroNombre: true } },
       ingredients: { include: { insumo: { select: { id: true, unidadBase: true } } } },

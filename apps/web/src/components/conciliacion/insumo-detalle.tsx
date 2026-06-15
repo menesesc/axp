@@ -20,7 +20,8 @@ import { fmtAR, fmtNumAR } from '@/components/sales/shared'
 import { InsumoAliasPanel } from './insumo-alias-panel'
 import { InsumoRecetasPanel } from './insumo-recetas-panel'
 import { InsumoStockPanel } from './insumo-stock-panel'
-import { TrendingUp, TrendingDown } from 'lucide-react'
+import { MargenTable, type MargenProducto } from './margen-table'
+import { TrendingUp, TrendingDown, Printer } from 'lucide-react'
 
 interface Insumo {
   id: string
@@ -97,6 +98,16 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
       const res = await fetch(`/api/conciliacion/insumos/${insumo.id}/detalle?from=${from}&to=${to}`)
       if (!res.ok) throw new Error('Error cargando detalle')
       return res.json() as Promise<DetalleResponse>
+    },
+    staleTime: 30_000,
+  })
+
+  const { data: margenData } = useQuery({
+    queryKey: ['insumo-margen', insumo.id, from, to],
+    queryFn: async () => {
+      const res = await fetch(`/api/conciliacion/margen?from=${from}&to=${to}&insumoId=${insumo.id}`)
+      if (!res.ok) throw new Error('Error cargando margen')
+      return res.json() as Promise<{ productos: MargenProducto[] }>
     },
     staleTime: 30_000,
   })
@@ -276,6 +287,12 @@ function ConciliacionTabContent({ insumo, from, to }: { insumo: Insumo; from: st
           </div>
         )}
       </div>
+
+      {/* Margen de los productos que lo usan */}
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-2">Margen de los productos que usan este insumo</p>
+        <MargenTable productos={margenData?.productos ?? []} />
+      </div>
     </div>
   )
 }
@@ -293,9 +310,19 @@ export function InsumoDetalle({
 }) {
   return (
     <div>
-      <div className="mb-4">
-        <h3 className="text-base font-semibold text-slate-800">{insumo.nombre}</h3>
-        <p className="text-xs text-slate-500">Unidad base: {insumo.unidadBase}</p>
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <div>
+          <h3 className="text-base font-semibold text-slate-800">{insumo.nombre}</h3>
+          <p className="text-xs text-slate-500">Unidad base: {insumo.unidadBase}</p>
+        </div>
+        <a
+          href={`/conciliacion/insumos/${insumo.id}/print?from=${from}&to=${to}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 inline-flex items-center gap-1.5 text-sm border border-slate-200 rounded-md px-3 py-1.5 text-slate-600 hover:bg-slate-50"
+        >
+          <Printer className="h-4 w-4" /> Imprimir informe
+        </a>
       </div>
 
       <Tabs defaultValue="conciliacion">
