@@ -73,6 +73,23 @@ export function defaultRange(): { from: string; to: string } {
   return { from, to }
 }
 
+/**
+ * Devuelve el período inmediatamente anterior, de la misma longitud que [from, to].
+ * Ej: 7 días → los 7 días previos; 1 día (ayer) → antes de ayer; 30 días → los 30 previos.
+ */
+export function previousRange(from: string, to: string): { from: string; to: string } {
+  const MS = 86_400_000
+  const f = new Date(`${from}T00:00:00Z`).getTime()
+  const t = new Date(`${to}T00:00:00Z`).getTime()
+  const days = Math.round((t - f) / MS) + 1
+  const prevTo = f - MS
+  const prevFrom = prevTo - (days - 1) * MS
+  return {
+    from: new Date(prevFrom).toISOString().slice(0, 10),
+    to: new Date(prevTo).toISOString().slice(0, 10),
+  }
+}
+
 export const TURNO_LABEL: Record<string, string> = {
   ALMUERZO: 'Almuerzo',
   CENA: 'Cena',

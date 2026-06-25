@@ -5,9 +5,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Upload, Receipt, ChevronDown, ChevronUp, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
-import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip, XAxis } from 'recharts'
+import { LineChart, Line, ResponsiveContainer } from 'recharts'
 import { DateRange } from './date-range'
-import { fmtAR, fmtNumAR, fmtFecha, defaultRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
+import { fmtAR, fmtNumAR, fmtFecha, defaultRange, previousRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
 import { ClosureDetail } from './closure-detail'
 
 interface ClosureRow {
@@ -28,6 +28,17 @@ interface ClosureRow {
 }
 
 type SortKey = 'fecha' | 'turno' | 'nroCierre' | 'tickets' | 'cubiertos' | 'ticketProm' | 'total'
+
+function sumTotals(closures: ClosureRow[]) {
+  return closures.reduce(
+    (acc, c) => ({
+      ventas: acc.ventas + Number(c.totalVentas ?? 0),
+      tickets: acc.tickets + (c.cantTickets ?? 0),
+      cubiertos: acc.cubiertos + Number(c.cantCubiertos ?? 0),
+    }),
+    { ventas: 0, tickets: 0, cubiertos: 0 }
+  )
+}
 
 export function ClosuresTab() {
   const queryClient = useQueryClient()
@@ -61,16 +72,30 @@ export function ClosuresTab() {
 
   const closures = data?.closures ?? []
 
-  const totals = useMemo(() => {
-    return closures.reduce(
-      (acc, c) => ({
-        ventas: acc.ventas + Number(c.totalVentas ?? 0),
-        tickets: acc.tickets + (c.cantTickets ?? 0),
-        cubiertos: acc.cubiertos + Number(c.cantCubiertos ?? 0),
-      }),
-      { ventas: 0, tickets: 0, cubiertos: 0 }
-    )
-  }, [closures])
+  const totals = useMemo(() => sumTotals(closures), [closures])
+
+  // Período anterior de la misma longitud (7 días → semana previa, 1 día → día previo, etc.)
+  // para mostrar la variación % en cada card.
+  const prevParams = useMemo(() => {
+    const { from: pf, to: pt } = previousRange(from, to)
+    const p = new URLSearchParams({ from: pf, to: pt, pageSize: '200' })
+    if (sucursal) p.append('sucursal', sucursal)
+    if (turno) p.append('turno', turno)
+    return p.toString()
+  }, [from, to, sucursal, turno])
+
+  const { data: prevData } = useQuery({
+    queryKey: ['sales-closures', prevParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/sales/closures?${prevParams}`)
+      if (!res.ok) throw new Error('Error cargando período anterior')
+      return res.json() as Promise<{ closures: ClosureRow[] }>
+    },
+    staleTime: 60_000,
+  })
+
+  const prevClosures = prevData?.closures ?? []
+  const prevTotals = useMemo(() => sumTotals(prevClosures), [prevClosures])
 
   // Series diarias para sparklines (cierres, tickets, cubiertos y ventas totales por día)
   const daily = useMemo(() => {
@@ -86,6 +111,9 @@ export function ClosuresTab() {
     }
     return Array.from(map.values()).sort((a, b) => a.fecha.localeCompare(b.fecha))
   }, [closures])
+
+  // Promedios diarios sobre los días con cierres del rango.
+  const nDays = daily.length || 1
 
   const getValue = (c: ClosureRow, k: SortKey): number | string => {
     switch (k) {
@@ -184,6 +212,9 @@ export function ClosuresTab() {
         <KPI
           label="Cierres"
           value={fmtNumAR(closures.length)}
+          current={closures.length}
+          previous={prevClosures.length}
+          promedio={closures.length / nDays}
           series={daily}
           dataKey="cierres"
           color="#6366f1"
@@ -191,6 +222,9 @@ export function ClosuresTab() {
         <KPI
           label="Tickets"
           value={fmtNumAR(totals.tickets)}
+          current={totals.tickets}
+          previous={prevTotals.tickets}
+          promedio={totals.tickets / nDays}
           series={daily}
           dataKey="tickets"
           color="#0ea5e9"
@@ -198,6 +232,9 @@ export function ClosuresTab() {
         <KPI
           label="Cubiertos"
           value={fmtNumAR(totals.cubiertos)}
+          current={totals.cubiertos}
+          previous={prevTotals.cubiertos}
+          promedio={totals.cubiertos / nDays}
           series={daily}
           dataKey="cubiertos"
           color="#f59e0b"
@@ -205,6 +242,9 @@ export function ClosuresTab() {
         <KPI
           label="Ventas totales"
           value={fmtAR(totals.ventas)}
+          current={totals.ventas}
+          previous={prevTotals.ventas}
+          promedio={totals.ventas / nDays}
           series={daily}
           dataKey="ventas"
           color="#10b981"
@@ -263,6 +303,9 @@ export function ClosuresTab() {
 function KPI({
   label,
   value,
+  current,
+  previous,
+  promedio,
   highlight,
   series,
   dataKey,
@@ -271,41 +314,62 @@ function KPI({
 }: {
   label: string
   value: string
+  current: number
+  previous: number
+  promedio: number
   highlight?: boolean
   series?: Array<{ fecha: string; cierres: number; tickets: number; cubiertos: number; ventas: number }>
   dataKey?: 'cierres' | 'tickets' | 'cubiertos' | 'ventas'
   color?: string
   isCurrency?: boolean
 }) {
+  // Variación vs. el período anterior de igual longitud. Si antes no hubo nada,
+  // no hay base para un %; lo dejamos sin dato.
+  const pct = previous > 0 ? ((current - previous) / previous) * 100 : null
+  const up = pct != null && pct >= 0
+  const tone = pct == null ? 'text-slate-400' : up ? 'text-emerald-600' : 'text-rose-600'
+  const sparkColor = pct == null ? color ?? '#94a3b8' : up ? '#10b981' : '#f43f5e'
+
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
-      <p className="text-xs text-slate-500">{label}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs text-slate-500">{label}</p>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {series && dataKey && series.length > 1 && (
+            <div className="w-14 h-6">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={series} margin={{ top: 3, right: 1, left: 1, bottom: 3 }}>
+                  <Line
+                    type="monotone"
+                    dataKey={dataKey}
+                    stroke={sparkColor}
+                    strokeWidth={1.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <span className={`text-xs font-medium inline-flex items-center gap-0.5 ${tone}`}>
+            {pct != null ? (
+              <>
+                {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                {`${up ? '+' : ''}${pct.toFixed(0)}%`}
+              </>
+            ) : (
+              's/d'
+            )}
+          </span>
+        </div>
+      </div>
       <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-emerald-700' : 'text-slate-800'}`}>
         {value}
       </p>
-      {series && dataKey && series.length > 1 && (
-        <div className="mt-2 h-10 -mx-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={series} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-              <XAxis dataKey="fecha" hide />
-              <Line
-                type="monotone"
-                dataKey={dataKey}
-                stroke={color ?? '#6366f1'}
-                strokeWidth={1.5}
-                dot={false}
-                isAnimationActive={false}
-              />
-              <RTooltip
-                cursor={false}
-                contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
-                labelFormatter={(l) => fmtFecha(String(l))}
-                formatter={((v: number) => [isCurrency ? fmtAR(v) : fmtNumAR(v), label]) as never}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+      <p className="text-xs text-slate-500 mt-1">
+        Prom. {isCurrency ? fmtAR(promedio) : fmtNumAR(promedio, 1)}
+        <span className="text-slate-400"> /día</span>
+      </p>
     </div>
   )
 }
