@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(psql:*)",
+      "Bash(npx turbo build:*)",
+      "Bash(npx next build)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(python3:*)",
+      "Bash(git -C /Users/cristianmeneses/Programacion/axp push origin main)",
+      "Bash(git -C /Users/cristianmeneses/Programacion/axp add apps/web/src/app/api/items/stats/route.ts apps/web/src/app/items/page.tsx)",
+      "Bash(git -C:*)",
+      "Bash(ls:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx prisma migrate dev:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx prisma db execute:*)",
+      "Bash(bun:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx prisma db execute --stdin 2)",
+      "Bash(1:*)",
+      "WebFetch(domain:aws.amazon.com)",
+      "Bash(xargs:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(PGPASSWORD=\"H7qEhDMUg0dEus3I\" psql:*)",
+      "Bash(dotenv -e .env.local -- npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" bun -e:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" node -e \":*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx ts-node:*)",
+      "Bash(npx tsx:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres.tlpjwwhciilocxeebnmg:H7qEhDMUg0dEus3I@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx tsx:*)",
+      "Bash(git status:*)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}
