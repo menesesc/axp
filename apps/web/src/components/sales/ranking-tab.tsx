@@ -89,6 +89,20 @@ export function RankingTab() {
 
   const maxImporte = sorted[0]?.importe ?? 0
 
+  // Total de las filas efectivamente mostradas (respeta el filtro de búsqueda).
+  const shownTotal = useMemo(
+    () =>
+      sorted.reduce(
+        (acc, it) => ({
+          unidades: acc.unidades + it.unidades,
+          importe: acc.importe + it.importe,
+          unidadesDia: acc.unidadesDia + it.unidadesDia,
+        }),
+        { unidades: 0, importe: 0, unidadesDia: 0 }
+      ),
+    [sorted]
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -183,13 +197,13 @@ export function RankingTab() {
                   />
                 )
               })}
-              {data?.total && (
+              {sorted.length > 0 && (
                 <tr className="bg-slate-50 font-medium">
                   <td colSpan={groupBy === 'item' ? 3 : 2} className="px-4 py-2.5 text-slate-600 text-right">Total mostrado</td>
-                  <td className="px-4 py-2.5 text-right text-slate-700">{fmtNumAR(data.total.unidades)}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(data.total.importe)}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-700">{fmtNumAR(shownTotal.unidades)}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(shownTotal.importe)}</td>
                   <td />
-                  <td />
+                  <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(shownTotal.unidadesDia, 1)}</td>
                   <td />
                   <td />
                   {groupBy === 'item' && <td />}
