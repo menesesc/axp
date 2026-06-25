@@ -10,8 +10,8 @@ import { toast } from 'sonner'
 
 interface SummaryResp {
   totals: Record<string, { count: number; totalMonto: number }>
-  descuentosPorMozo: Array<{ mozo: string | null; count: number; totalMonto: number }>
-  eliminacionesPorMozo: Array<{ mozo: string | null; count: number }>
+  descuentosPorMozo: Array<{ mozo: string | null; nombre: string | null; count: number; totalMonto: number }>
+  eliminacionesPorMozo: Array<{ mozo: string | null; nombre: string | null; count: number }>
   productosEliminados: Array<{ productoNombre: string | null; count: number }>
 }
 
@@ -24,6 +24,7 @@ interface AuditEvent {
   mozo: string | null
   comprobante: string | null
   hora: string | null
+  mozoNombre: string | null
   detalle: string
   monto: number | null
   porcentaje: number | null
@@ -204,7 +205,7 @@ export function AuditTab() {
                 <tbody>
                   {summary.descuentosPorMozo.map((d) => (
                     <tr key={d.mozo ?? 'null'} className="border-t border-slate-100">
-                      <td className="py-1.5 text-slate-700">{d.mozo ?? '—'}</td>
+                      <td className="py-1.5 text-slate-700"><Mozo codigo={d.mozo} nombre={d.nombre} /></td>
                       <td className="py-1.5 text-right text-slate-600">{d.count}</td>
                       <td className="py-1.5 text-right font-medium text-amber-700">{fmtAR(d.totalMonto)}</td>
                     </tr>
@@ -228,7 +229,7 @@ export function AuditTab() {
                 <tbody>
                   {summary.eliminacionesPorMozo.map((d) => (
                     <tr key={d.mozo ?? 'null'} className="border-t border-slate-100">
-                      <td className="py-1.5 text-slate-700">{d.mozo ?? '—'}</td>
+                      <td className="py-1.5 text-slate-700"><Mozo codigo={d.mozo} nombre={d.nombre} /></td>
                       <td className="py-1.5 text-right font-medium text-rose-700">{d.count}</td>
                     </tr>
                   ))}
@@ -317,7 +318,7 @@ export function AuditTab() {
                       </span>
                     </td>
                     <td className="px-4 py-2 text-slate-600">{e.mesa ?? '—'}</td>
-                    <td className="px-4 py-2 text-slate-600">{e.mozo ?? '—'}</td>
+                    <td className="px-4 py-2 text-slate-600"><Mozo codigo={e.mozo} nombre={e.mozoNombre} /></td>
                     <td className="px-4 py-2 text-slate-700 max-w-md">
                       {e.tipo === 'ELIMINACION' && e.productoNombre ? (
                         <span className="text-rose-700">{e.productoNombre}</span>
@@ -348,6 +349,17 @@ export function AuditTab() {
         )}
       </div>
     </div>
+  )
+}
+
+/** Muestra "#código Nombre"; si no hay nombre conocido, sólo el código. */
+function Mozo({ codigo, nombre }: { codigo: string | null; nombre: string | null }) {
+  if (!codigo) return <span className="text-slate-400">—</span>
+  return (
+    <span>
+      <span className="text-slate-400 text-xs mr-1.5">#{codigo}</span>
+      <span>{nombre ?? '—'}</span>
+    </span>
   )
 }
 

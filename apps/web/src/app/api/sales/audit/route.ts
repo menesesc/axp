@@ -42,6 +42,21 @@ export async function GET(request: NextRequest) {
 
   const closureById = new Map(closures.map((c) => [c.id, c]))
 
+  // Mapa código de mozo → nombre. El parser de auditoría sólo guarda el código;
+  // el nombre vive en sales_closure_waiters (mismo código que usa Maxirest).
+  const waiters = await prisma.sales_closure_waiters.findMany({
+    where: { closureId: { in: closureIds } },
+    select: { codigo: true, nombre: true },
+  })
+  const mozoNombreByCodigo = new Map<string, string>()
+  for (const w of waiters) {
+    if (w.codigo && w.nombre && !mozoNombreByCodigo.has(w.codigo)) {
+      mozoNombreByCodigo.set(w.codigo, w.nombre)
+    }
+  }
+  const nombreDeMozo = (codigo: string | null): string | null =>
+    codigo ? mozoNombreByCodigo.get(codigo) ?? null : null
+
   const where: Record<string, unknown> = { closureId: { in: closureIds } }
   if (tipo) where.tipo = tipo
   if (mozo) where.mozo = mozo
@@ -88,11 +103,13 @@ export async function GET(request: NextRequest) {
       totals,
       descuentosPorMozo: byMozoDescuento.map((g) => ({
         mozo: g.mozo,
+        nombre: nombreDeMozo(g.mozo),
         count: g._count,
         totalMonto: Number(g._sum.monto ?? 0),
       })),
       eliminacionesPorMozo: byMozoEliminacion.map((g) => ({
         mozo: g.mozo,
+        nombre: nombreDeMozo(g.mozo),
         count: g._count,
       })),
       productosEliminados: topEliminados.map((g) => ({
@@ -120,6 +137,7 @@ export async function GET(request: NextRequest) {
     const c = closureById.get(e.closureId)
     return {
       ...e,
+      mozoNombre: nombreDeMozo(e.mozo),
       monto: e.monto ? Number(e.monto) : null,
       porcentaje: e.porcentaje ? Number(e.porcentaje) : null,
       importeMesa: e.importeMesa ? Number(e.importeMesa) : null,
