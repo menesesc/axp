@@ -9,6 +9,7 @@ import { RecentDocumentsCard } from '@/components/dashboard/recent-documents-car
 import { StatusChart } from '@/components/dashboard/status-chart'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { PaymentsSummary } from '@/components/dashboard/payments-summary'
+import { ChequesHoyAlert } from '@/components/dashboard/cheques-hoy-alert'
 import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
@@ -211,6 +212,9 @@ export default function Home() {
             />
           }
         />
+
+        {/* Aviso de cheques/eCheq que vencen hoy (sólo si los hay) */}
+        <ChequesHoyAlert data={paymentStats?.chequesHoy} />
 
         {/* Tabs */}
         <Tabs defaultValue="operaciones">

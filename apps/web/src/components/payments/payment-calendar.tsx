@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { formatCurrency, formatNumeroOrden } from '@/lib/utils'
 import { PaymentMethodBadge } from '@/components/ui/payment-method-badge'
 import type { PaymentMethod } from '@/components/ui/payment-method-badge'
-import { X } from 'lucide-react'
+import { X, Building2, CreditCard } from 'lucide-react'
 
 interface CalendarEventItem {
   pagoId: string
@@ -15,6 +15,27 @@ interface CalendarEventItem {
   estado: string
   monto: number
   tipo: string
+}
+
+/** Suma diferenciada por medio de pago: transferencia vs cheques/eCheq (vs resto). */
+function splitByMethod(items: CalendarEventItem[]) {
+  let transferencia = 0
+  let chequeEcheq = 0
+  let otros = 0
+  for (const it of items) {
+    if (it.tipo === 'TRANSFERENCIA') transferencia += it.monto
+    else if (it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ') chequeEcheq += it.monto
+    else otros += it.monto
+  }
+  return { transferencia, chequeEcheq, otros }
+}
+
+/** Monto compacto para celdas chicas: $1,2M · $50k · $300. */
+function formatCompactARS(n: number): string {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
+  if (abs >= 1_000) return `$${Math.round(n / 1_000)}k`
+  return `$${Math.round(n)}`
 }
 
 interface CalendarEvent {
@@ -116,11 +137,29 @@ export function PaymentCalendar({ month, eventos }: PaymentCalendarProps) {
                 )}>
                   {day.getDate()}
                 </div>
-                {event && isCurrentMonth && (
+                {event && isCurrentMonth && (() => {
+                  const split = splitByMethod(event.items)
+                  return (
                   <div className="mt-1 space-y-0.5">
                     <div className="font-semibold text-slate-900 tabular-nums text-[11px]">
                       {formatCurrency(event.total)}
                     </div>
+                    {(split.transferencia > 0 || split.chequeEcheq > 0) && (
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] leading-tight">
+                        {split.transferencia > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-blue-600 tabular-nums">
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                            {formatCompactARS(split.transferencia)}
+                          </span>
+                        )}
+                        {split.chequeEcheq > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-orange-600 tabular-nums">
+                            <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                            {formatCompactARS(split.chequeEcheq)}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {event.items.slice(0, 2).map((item, i) => (
                       <div
                         key={i}
@@ -140,7 +179,8 @@ export function PaymentCalendar({ month, eventos }: PaymentCalendarProps) {
                       </div>
                     )}
                   </div>
-                )}
+                  )
+                })()}
               </div>
             )
           })}
@@ -170,6 +210,28 @@ export function PaymentCalendar({ month, eventos }: PaymentCalendarProps) {
               </button>
             </div>
           </div>
+          {(() => {
+            const split = splitByMethod(selectedEvent.items)
+            if (split.transferencia <= 0 && split.chequeEcheq <= 0) return null
+            return (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {split.transferencia > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                    <Building2 className="h-3 w-3" />
+                    Transferencia
+                    <span className="font-semibold tabular-nums">{formatCurrency(split.transferencia)}</span>
+                  </span>
+                )}
+                {split.chequeEcheq > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs text-orange-700">
+                    <CreditCard className="h-3 w-3" />
+                    Cheques/eCheq
+                    <span className="font-semibold tabular-nums">{formatCurrency(split.chequeEcheq)}</span>
+                  </span>
+                )}
+              </div>
+            )
+          })()}
           <div className="space-y-2">
             {selectedEvent.items.map((item, i) => (
               <Link

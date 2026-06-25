@@ -19,6 +19,7 @@ export async function GET() {
     porEstado,
     pagadoMes,
     proximos7,
+    chequesHoy,
     ordenesRecientes,
   ] = await Promise.all([
     prisma.proveedores.count({
@@ -61,6 +62,23 @@ export async function GET() {
           ELSE p.fecha
         END BETWEEN ${ahora}::date AND ${fin7dias}::date
     `,
+    // Cheques y eCheq cuyo vencimiento (fecha efectiva) es HOY.
+    prisma.$queryRaw<Array<{ tipo: string; total: number; cantidad: bigint }>>`
+      SELECT
+        pm.tipo::text as tipo,
+        COALESCE(SUM(pm.monto), 0)::float as total,
+        COUNT(*) as cantidad
+      FROM pago_metodos pm
+      JOIN pagos p ON pm."pagoId" = p.id
+      WHERE p."clienteId" = ${user.clienteId}::uuid
+        AND p.estado IN ('BORRADOR', 'EMITIDA')
+        AND pm.tipo IN ('CHEQUE', 'ECHEQ')
+        AND CASE
+          WHEN pm.meta->>'fecha' IS NOT NULL THEN (pm.meta->>'fecha')::date
+          ELSE p.fecha
+        END = ${ahora}::date
+      GROUP BY pm.tipo
+    `,
     prisma.pagos.findMany({
       where: { clienteId: user.clienteId },
       include: { proveedores: { select: { razonSocial: true } } },
@@ -84,6 +102,12 @@ export async function GET() {
     }
   }
 
+  // Desglose de vencimientos de hoy por tipo (cheque / echeq)
+  const cheque = chequesHoy.find((r) => r.tipo === 'CHEQUE')
+  const echeq = chequesHoy.find((r) => r.tipo === 'ECHEQ')
+  const hoyCheque = { cantidad: Number(cheque?.cantidad ?? 0), total: Number(cheque?.total ?? 0) }
+  const hoyEcheq = { cantidad: Number(echeq?.cantidad ?? 0), total: Number(echeq?.total ?? 0) }
+
   return NextResponse.json({
     proveedoresConSaldo,
     montoPendiente: documentosConfirmados._sum?.total || 0,
@@ -95,6 +119,12 @@ export async function GET() {
     proximos7: {
       total: Number(proximos7[0]?.total ?? 0),
       cantidad: Number(proximos7[0]?.cantidad ?? 0),
+    },
+    chequesHoy: {
+      cantidad: hoyCheque.cantidad + hoyEcheq.cantidad,
+      total: hoyCheque.total + hoyEcheq.total,
+      cheque: hoyCheque,
+      echeq: hoyEcheq,
     },
     ordenesRecientes: ordenesRecientes.map((o) => ({
       id: o.id,
