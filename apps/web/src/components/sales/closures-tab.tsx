@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Upload, Receipt, ChevronDown, ChevronUp, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
-import { LineChart, Line, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip, XAxis } from 'recharts'
 import { DateRange } from './date-range'
 import { fmtAR, fmtNumAR, fmtFecha, defaultRange, previousRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
 import { ClosureDetail } from './closure-detail'
@@ -328,40 +328,17 @@ function KPI({
   const pct = previous > 0 ? ((current - previous) / previous) * 100 : null
   const up = pct != null && pct >= 0
   const tone = pct == null ? 'text-slate-400' : up ? 'text-emerald-600' : 'text-rose-600'
-  const sparkColor = pct == null ? color ?? '#94a3b8' : up ? '#10b981' : '#f43f5e'
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-slate-500">{label}</p>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {series && dataKey && series.length > 1 && (
-            <div className="w-14 h-6">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={series} margin={{ top: 3, right: 1, left: 1, bottom: 3 }}>
-                  <Line
-                    type="monotone"
-                    dataKey={dataKey}
-                    stroke={sparkColor}
-                    strokeWidth={1.5}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          <span className={`text-xs font-medium inline-flex items-center gap-0.5 ${tone}`}>
-            {pct != null ? (
-              <>
-                {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                {`${up ? '+' : ''}${pct.toFixed(0)}%`}
-              </>
-            ) : (
-              's/d'
-            )}
+        {pct != null && (
+          <span className={`text-xs font-medium inline-flex items-center gap-0.5 shrink-0 ${tone}`}>
+            {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+            {`${up ? '+' : ''}${pct.toFixed(0)}%`}
           </span>
-        </div>
+        )}
       </div>
       <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-emerald-700' : 'text-slate-800'}`}>
         {value}
@@ -370,6 +347,29 @@ function KPI({
         Prom. {isCurrency ? fmtAR(promedio) : fmtNumAR(promedio, 1)}
         <span className="text-slate-400"> /día</span>
       </p>
+      {series && dataKey && series.length > 1 && (
+        <div className="mt-2 h-10 -mx-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={series} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+              <XAxis dataKey="fecha" hide />
+              <Line
+                type="monotone"
+                dataKey={dataKey}
+                stroke={color ?? '#6366f1'}
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <RTooltip
+                cursor={false}
+                contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
+                labelFormatter={(l) => fmtFecha(String(l))}
+                formatter={((v: number) => [isCurrency ? fmtAR(v) : fmtNumAR(v), label]) as never}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   )
 }
