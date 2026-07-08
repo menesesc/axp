@@ -203,7 +203,8 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
       const pagoId = editMode?.pagoId || data.pago?.id
       if (variables.emitir) {
         setCreatedPagoId(pagoId)
-        toast.success('Orden de pago emitida')
+        toast.success('Orden de pago emitida — descargando PDF…')
+        if (pagoId) downloadPdf(pagoId, { silent: true }).catch(() => {})
       } else {
         setSavedDraftId(pagoId)
         toast.success('Borrador guardado')
@@ -280,23 +281,31 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
     })
   }
 
+  // Descarga usando el nombre que arma el server (empieza con el proveedor en
+  // MAYÚSCULAS, vía Content-Disposition).
+  const downloadPdf = async (pagoId: string, opts?: { silent?: boolean }) => {
+    const res = await fetch(`/api/pagos/${pagoId}/pdf`)
+    if (!res.ok) throw new Error('Error al generar PDF')
+    const cd = res.headers.get('Content-Disposition') || ''
+    const m = cd.match(/filename="?([^"]+)"?/)
+    const filename = m?.[1] || `orden-pago-${pagoId}.pdf`
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    if (!opts?.silent) toast.success('PDF descargado')
+  }
+
   const handleDownloadPdf = async () => {
     if (!createdPagoId) return
     setIsDownloading(true)
     try {
-      const res = await fetch(`/api/pagos/${createdPagoId}/pdf`)
-      if (!res.ok) throw new Error('Error al generar PDF')
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `orden-pago-${createdPagoId}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      toast.success('PDF descargado')
+      await downloadPdf(createdPagoId)
     } catch {
       toast.error('Error al descargar PDF')
     } finally {
@@ -308,26 +317,19 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
     if (!createdPagoId) return
     setIsDownloading(true)
     try {
-      const res = await fetch(`/api/pagos/${createdPagoId}/pdf`)
-      if (!res.ok) throw new Error('Error al generar PDF')
-
-      const blob = await res.blob()
-      const file = new File([blob], `orden-pago-${createdPagoId}.pdf`, { type: 'application/pdf' })
-
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: `Orden de pago - ${proveedorNombre}`,
-          files: [file],
-        })
-      } else {
-        handleDownloadPdf()
-        toast.info('Descarga el PDF y compártelo manualmente por WhatsApp')
-      }
+      await downloadPdf(createdPagoId, { silent: true })
     } catch {
-      toast.error('Error al compartir')
+      toast.error('No se pudo descargar el PDF para adjuntar')
     } finally {
       setIsDownloading(false)
     }
+    const h = new Date().getHours()
+    const saludo = h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches'
+    const text = encodeURIComponent(
+      `${saludo}, se ha realizado una transferencia relacionada a la orden de pago adjunta. Muchas gracias.`
+    )
+    window.open(`https://web.whatsapp.com/send?text=${text}`, '_blank')
+    toast.info('Se abrió WhatsApp Web. Elegí el contacto y adjuntá el PDF descargado.')
   }
 
   const handleShareEmail = () => {
@@ -615,7 +617,16 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <span>{doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}</span>
+                                  <a
+                                    href={`/documento/${doc.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                    title="Abrir documento en nueva pestaña"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
+                                  </a>
                                   {doc.anotacionesCount ? (
                                     <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium" title="Documento con anotaciones">
                                       <MessageSquareWarning className="h-3 w-3" />
@@ -720,7 +731,15 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
                       {selectedDocsList.map((doc) => (
                         <TableRow key={doc.id}>
                           <TableCell>
-                            {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
+                            <a
+                              href={`/documento/${doc.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                              title="Abrir documento en nueva pestaña"
+                            >
+                              {doc.tipo} {doc.letra || ''} {doc.numeroCompleto || 'S/N'}
+                            </a>
                           </TableCell>
                           <TableCell className="text-slate-500">
                             {doc.fechaEmision ? formatDate(doc.fechaEmision) : '-'}

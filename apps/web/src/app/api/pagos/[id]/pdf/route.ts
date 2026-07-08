@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { generatePaymentOrderPdf, formatNumeroOrden } from '@/lib/pdf/generate-payment-order-pdf'
+import { generatePaymentOrderPdf, formatNumeroOrden, layoutTwoUp, pdfProveedorPrefix } from '@/lib/pdf/generate-payment-order-pdf'
 
 export async function GET(
   request: NextRequest,
@@ -17,6 +17,7 @@ export async function GET(
 
     const { id } = await params
     const isView = request.nextUrl.searchParams.get('view') === 'true'
+    const twoUp = request.nextUrl.searchParams.get('layout') === '2up'
 
     const cliente = await prisma.clientes.findUnique({
       where: { id: user.clienteId },
@@ -54,17 +55,22 @@ export async function GET(
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
 
-    const pdfBytes = await generatePaymentOrderPdf(pago, {
+    let pdfBytes = await generatePaymentOrderPdf(pago, {
       clienteRazonSocial: cliente.razonSocial,
       clienteCuit: cliente.cuit,
     })
+    if (twoUp) {
+      pdfBytes = await layoutTwoUp(pdfBytes)
+    }
+
+    // Nombre: empieza con el proveedor en MAYÚSCULAS.
+    const prefix = pdfProveedorPrefix(pago.proveedores.razonSocial)
+    const filename = `${prefix}-OP${formatNumeroOrden(pago.numero)}${twoUp ? '-2en1' : ''}.pdf`
 
     return new NextResponse(Buffer.from(pdfBytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': isView
-          ? `inline; filename="orden-pago-${formatNumeroOrden(pago.numero)}.pdf"`
-          : `attachment; filename="orden-pago-${formatNumeroOrden(pago.numero)}.pdf"`,
+        'Content-Disposition': `${isView ? 'inline' : 'attachment'}; filename="${filename}"`,
       },
     })
   } catch (error) {

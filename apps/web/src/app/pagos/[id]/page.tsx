@@ -26,6 +26,7 @@ import { formatCurrency, formatDate, formatTipoDocumento, formatNumeroOrden } fr
 import { toast } from 'sonner'
 import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer, Send } from 'lucide-react'
 import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
+import { TransferReceiptCard } from '@/components/payments/transfer-receipt-card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,14 +72,52 @@ interface Pago {
   estado: 'BORRADOR' | 'EMITIDA' | 'PAGADO'
   montoTotal: number
   nota: string | null
+  comprobanteKey: string | null
   proveedor: {
     id: string
     razonSocial: string
     cuit: string | null
     email: string | null
+    telefono: string | null
   }
   metodos: PaymentMethodItem[]
   documentos: Documento[]
+}
+
+/** Prefijo de archivo desde el proveedor, en MAYÚSCULAS (espejo del backend). */
+function proveedorPrefix(razonSocial: string): string {
+  return (
+    razonSocial
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 30) || 'PROVEEDOR'
+  )
+}
+
+/** Normaliza un teléfono argentino a formato wa.me (54 9 + área + número). */
+function waPhone(telefono: string | null): string | null {
+  if (!telefono) return null
+  let d = telefono.replace(/\D/g, '')
+  if (!d) return null
+  d = d.replace(/^0+/, '') // sacar 0 inicial (área)
+  // Quitar el 15 de celular si quedó pegado tras el área no lo detectamos bien;
+  // asumimos números ya sin 0 y con área. Prefijo país 54 + 9 (celular).
+  if (d.startsWith('54')) {
+    const rest = d.slice(2)
+    return rest.startsWith('9') ? d : `549${rest}`
+  }
+  return `549${d}`
+}
+
+/** Saludo según la hora local. */
+function saludo(): string {
+  const h = new Date().getHours()
+  if (h < 13) return 'Buenos días'
+  if (h < 20) return 'Buenas tardes'
+  return 'Buenas noches'
 }
 
 export default function PagoDetailPage() {
@@ -112,10 +151,15 @@ export default function PagoDetailPage() {
       if (!res.ok) throw new Error('Failed to update')
       return res.json()
     },
-    onSuccess: () => {
+    onSuccess: (_data, estado) => {
       queryClient.invalidateQueries({ queryKey: ['pago', id] })
       queryClient.invalidateQueries({ queryKey: ['pagos'] })
-      toast.success('Orden actualizada')
+      if (estado === 'EMITIDA') {
+        toast.success('Orden emitida — descargando PDF…')
+        downloadPdf({ silent: true }).catch(() => toast.error('No se pudo descargar el PDF'))
+      } else {
+        toast.success('Orden actualizada')
+      }
     },
     onError: () => {
       toast.error('Error al actualizar la orden')
@@ -140,22 +184,28 @@ export default function PagoDetailPage() {
     },
   })
 
+  const pdfFileName = () =>
+    `${pago ? proveedorPrefix(pago.proveedor.razonSocial) : 'ORDEN'}-OP${pago ? formatNumeroOrden(pago.numero) : id}.pdf`
+
+  const downloadPdf = async (opts?: { silent?: boolean }) => {
+    const res = await fetch(`/api/pagos/${id}/pdf`)
+    if (!res.ok) throw new Error('Error al generar PDF')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = pdfFileName()
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    if (!opts?.silent) toast.success('PDF descargado')
+  }
+
   const handleDownloadPdf = async () => {
     setIsDownloading(true)
     try {
-      const res = await fetch(`/api/pagos/${id}/pdf`)
-      if (!res.ok) throw new Error('Error al generar PDF')
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `orden-pago-${pago ? formatNumeroOrden(pago.numero) : id}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      toast.success('PDF descargado')
+      await downloadPdf()
     } catch {
       toast.error('Error al descargar PDF')
     } finally {
@@ -164,29 +214,31 @@ export default function PagoDetailPage() {
   }
 
   const handleShareWhatsApp = async () => {
+    if (!pago) return
+    const phone = waPhone(pago.proveedor.telefono)
+    const mensaje =
+      `${saludo()}, se ha realizado una transferencia relacionada a la orden de pago adjunta. ` +
+      `Muchas gracias.`
+    // WhatsApp Web no permite adjuntar el PDF por URL: prellenamos número y
+    // mensaje, y descargamos el PDF para que se arrastre al chat en un clic.
     setIsDownloading(true)
     try {
-      const res = await fetch(`/api/pagos/${id}/pdf`)
-      if (!res.ok) throw new Error('Error al generar PDF')
-
-      const blob = await res.blob()
-      const file = new File([blob], `orden-pago-${pago ? formatNumeroOrden(pago.numero) : id}.pdf`, { type: 'application/pdf' })
-
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: `Orden de pago #${pago ? formatNumeroOrden(pago.numero) : ''} - ${pago?.proveedor.razonSocial}`,
-          files: [file],
-        })
-      } else {
-        // Fallback: download and show instructions
-        handleDownloadPdf()
-        toast.info('Descarga el PDF y compártelo manualmente por WhatsApp')
-      }
+      await downloadPdf({ silent: true })
     } catch {
-      toast.error('Error al compartir')
+      toast.error('No se pudo descargar el PDF para adjuntar')
     } finally {
       setIsDownloading(false)
     }
+    const text = encodeURIComponent(mensaje)
+    const url = phone
+      ? `https://web.whatsapp.com/send?phone=${phone}&text=${text}`
+      : `https://web.whatsapp.com/send?text=${text}`
+    window.open(url, '_blank')
+    toast.info(
+      phone
+        ? 'Se abrió WhatsApp Web. Adjuntá el PDF que se descargó.'
+        : 'El proveedor no tiene teléfono cargado. Se abrió WhatsApp Web; elegí el contacto y adjuntá el PDF.'
+    )
   }
 
   const handleShareEmail = () => {
@@ -234,8 +286,9 @@ export default function PagoDetailPage() {
     }
   }
 
+  // Imprimir en 2 en 1: orden a la izquierda, comprobante a la derecha (apaisado).
   const handlePrint = () => {
-    window.open(`/api/pagos/${id}/pdf?view=true`, '_blank')
+    window.open(`/api/pagos/${id}/pdf?view=true&layout=2up`, '_blank')
   }
 
   const pago = data?.pago
@@ -426,6 +479,15 @@ export default function PagoDetailPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Comprobante de transferencia (nivel orden, editable en cualquier estado) */}
+        {isAdmin && (
+          <TransferReceiptCard
+            pagoId={id}
+            comprobanteKey={pago.comprobanteKey}
+            onChange={() => queryClient.invalidateQueries({ queryKey: ['pago', id] })}
+          />
+        )}
 
         {/* Nota */}
         {pago.nota && (

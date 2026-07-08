@@ -53,6 +53,7 @@ export async function GET(
             razonSocial: true,
             cuit: true,
             email: true,
+            telefono: true,
           },
         },
         pago_metodos: true,
@@ -87,6 +88,7 @@ export async function GET(
         estado: pago.estado,
         montoTotal: Number(pago.montoTotal),
         nota: pago.nota,
+        comprobanteKey: pago.comprobanteKey,
         proveedor: pago.proveedores,
         metodos: pago.pago_metodos.map((m) => {
           const meta = (m.meta || {}) as Record<string, unknown>

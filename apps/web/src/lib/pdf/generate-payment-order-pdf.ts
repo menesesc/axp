@@ -47,6 +47,8 @@ export interface PagoForPdf {
   fecha: Date | string
   estado: string
   nota: string | null
+  /** Comprobante de transferencia a nivel orden; se anexa al final del PDF. */
+  comprobanteKey?: string | null
   proveedores: { razonSocial: string; cuit: string | null }
   pago_documentos: Array<{
     documentos: {
@@ -213,23 +215,85 @@ export async function generatePaymentOrderPdf(
   // Attachments
   if (options?.includeAttachments !== false) {
     const bucket = `axp-client-${context.clienteCuit}`
+    const appendPdf = async (key: string) => {
+      try {
+        const bytes = await downloadFromR2(bucket, key)
+        const attachmentPdf = await PDFDocument.load(bytes)
+        const copiedPages = await pdfDoc.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
+        copiedPages.forEach((p) => pdfDoc.addPage(p))
+      } catch (err) {
+        console.warn(`Could not load attachment ${key}:`, err)
+      }
+    }
+    // Comprobante de transferencia a nivel orden (va primero tras la orden).
+    if (pago.comprobanteKey) {
+      await appendPdf(pago.comprobanteKey)
+    }
+    // Adjuntos por forma de pago.
     for (const metodo of pago.pago_metodos) {
       const meta = (metodo.meta || {}) as Record<string, unknown>
       const attachments = (meta.attachments || []) as { key: string; filename: string }[]
       for (const att of attachments) {
-        try {
-          const bytes = await downloadFromR2(bucket, att.key)
-          const attachmentPdf = await PDFDocument.load(bytes)
-          const copiedPages = await pdfDoc.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
-          copiedPages.forEach((p) => pdfDoc.addPage(p))
-        } catch (err) {
-          console.warn(`Could not load attachment ${att.key}:`, err)
-        }
+        await appendPdf(att.key)
       }
     }
   }
 
   return pdfDoc.save()
+}
+
+/**
+ * Recompone un PDF a "2 en 1": cada hoja apaisada (A4 landscape) contiene dos
+ * páginas fuente lado a lado. Para la orden de pago típica (1 pág. orden +
+ * 1 pág. comprobante) queda la orden a la izquierda y la transferencia a la
+ * derecha en una sola hoja. Si hay más páginas, se emparejan secuencialmente.
+ */
+export async function layoutTwoUp(sourceBytes: Uint8Array): Promise<Uint8Array> {
+  const src = await PDFDocument.load(sourceBytes)
+  const out = await PDFDocument.create()
+
+  const sheetW = 842 // A4 apaisado
+  const sheetH = 595
+  const half = sheetW / 2
+  const margin = 14
+
+  const indices = src.getPageIndices()
+  const embedded = await out.embedPages(indices.map((i) => src.getPage(i)))
+
+  const place = (page: ReturnType<typeof out.addPage>, emb: (typeof embedded)[number], offsetX: number) => {
+    const slotW = half - margin * 2
+    const slotH = sheetH - margin * 2
+    const scale = Math.min(slotW / emb.width, slotH / emb.height)
+    const w = emb.width * scale
+    const h = emb.height * scale
+    const x = offsetX + (half - w) / 2
+    const y = (sheetH - h) / 2
+    page.drawPage(emb, { x, y, width: w, height: h })
+  }
+
+  for (let i = 0; i < embedded.length; i += 2) {
+    const page = out.addPage([sheetW, sheetH])
+    place(page, embedded[i]!, 0)
+    if (embedded[i + 1]) place(page, embedded[i + 1]!, half)
+  }
+
+  return out.save()
+}
+
+/**
+ * Prefijo de archivo basado en el proveedor, en MAYÚSCULAS (ej. "LA-SERENISIMA").
+ * Se antepone al nombre del PDF descargado.
+ */
+export function pdfProveedorPrefix(razonSocial: string): string {
+  return (
+    razonSocial
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '') // sacar tildes
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 30) || 'PROVEEDOR'
+  )
 }
 
 export { formatNumeroOrden, formatCurrency, formatDate }
