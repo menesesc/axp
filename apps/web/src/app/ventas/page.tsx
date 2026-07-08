@@ -25,7 +25,7 @@ export default function VentasPage() {
           <div>
             <h1 className="text-2xl font-semibold text-slate-800">Ventas</h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Unidades vendidas por día y ranking de productos. Filtrá por rango de fechas, turno y rubro.
+              Unidades por rubro y producto.
             </p>
           </div>
           <RankingDashboard />

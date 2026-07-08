@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requirePermiso } from '@/lib/auth'
+import { PERMISO, esRestringido } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,10 +9,14 @@ export const dynamic = 'force-dynamic'
  * Detalle diario (con desglose por turno) de un producto vendido en un rango.
  * Query: codigo, from, to, sucursal?
  * Devuelve series por fecha con valores por turno.
+ * Para usuarios restringidos (permiso ventas.ranking) los importes NUNCA salen
+ * del servidor: importe = 0 en toda la respuesta.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireClienteId()
+  const { user, clienteId, error } = await requirePermiso(PERMISO.VENTAS_RANKING)
   if (error) return error
+
+  const hideMontos = esRestringido(user?.permisos)
 
   const sp = request.nextUrl.searchParams
   const codigo = sp.get('codigo')
@@ -52,6 +57,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       codigo,
       nombre: null,
+      hideMontos,
       series: [],
       totals: { unidades: 0, importe: 0 },
       porTurno: { ALMUERZO: { unidades: 0, importe: 0 }, CENA: { unidades: 0, importe: 0 }, OTRO: { unidades: 0, importe: 0 } },
@@ -72,7 +78,7 @@ export async function GET(request: NextRequest) {
   for (const it of items) {
     const key = it.closure.fecha.toISOString().slice(0, 10)
     const u = Number(it.unidades)
-    const i = Number(it.importe)
+    const i = hideMontos ? 0 : Number(it.importe)
     const t = it.closure.turnoNombre as 'ALMUERZO' | 'CENA' | 'OTRO'
     const cur = map.get(key) ?? {
       ALMUERZO_u: 0, ALMUERZO_i: 0, CENA_u: 0, CENA_i: 0, OTRO_u: 0, OTRO_i: 0,
@@ -104,6 +110,7 @@ export async function GET(request: NextRequest) {
     codigo,
     nombre: items[0]?.nombre ?? null,
     rubroNombre: items[0]?.rubroNombre ?? null,
+    hideMontos,
     series,
     totals: { unidades: totalU, importe: totalI },
     porTurno,

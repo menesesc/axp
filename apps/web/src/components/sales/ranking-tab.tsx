@@ -385,21 +385,26 @@ interface ProductDetailData {
   }
 }
 
-function ProductDetail({
+export function ProductDetail({
   codigo,
   nombre,
   from,
   to,
+  hideMontos = false,
 }: {
   codigo: string
   nombre: string | undefined
   from: string
   to: string
+  /** Usuario restringido: solo unidades, sin importes ni toggle de métrica. */
+  hideMontos?: boolean
 }) {
   const [byShift, setByShift] = useState(true)
   const [metric, setMetric] = useState<'unidades' | 'importe'>('unidades')
   const [view, setView] = useState<'fecha' | 'weekday'>('fecha')
   const [wdMetric, setWdMetric] = useState<'avg' | 'total'>('avg')
+  // Sin montos → la métrica queda fija en unidades (no se muestra el toggle).
+  const effMetric = hideMontos ? 'unidades' : metric
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales-ranking-product', codigo, nombre, from, to],
@@ -444,11 +449,11 @@ function ProductDetail({
   }
 
   const fmtVal = (v: number) =>
-    metric === 'importe'
+    effMetric === 'importe'
       ? fmtAR(v)
       : fmtNumAR(v, view === 'weekday' && wdMetric === 'avg' ? 1 : 0)
   const showOtro = data.porTurno.OTRO.unidades > 0
-  const suf = metric === 'unidades' ? '_u' : '_i'
+  const suf = effMetric === 'unidades' ? '_u' : '_i'
 
   // Promedios por turno: total / cantidad de días en los que apareció el producto en ese turno.
   const diasPorTurno = data.series.reduce(
@@ -492,24 +497,26 @@ function ProductDetail({
               Por día de semana
             </button>
           </div>
-          <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
-            <button
-              onClick={() => setMetric('unidades')}
-              className={`px-2.5 py-1 text-xs rounded-md ${
-                metric === 'unidades' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
-              }`}
-            >
-              Unidades
-            </button>
-            <button
-              onClick={() => setMetric('importe')}
-              className={`px-2.5 py-1 text-xs rounded-md ${
-                metric === 'importe' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
-              }`}
-            >
-              Importe
-            </button>
-          </div>
+          {!hideMontos && (
+            <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+              <button
+                onClick={() => setMetric('unidades')}
+                className={`px-2.5 py-1 text-xs rounded-md ${
+                  metric === 'unidades' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
+                }`}
+              >
+                Unidades
+              </button>
+              <button
+                onClick={() => setMetric('importe')}
+                className={`px-2.5 py-1 text-xs rounded-md ${
+                  metric === 'importe' ? 'bg-slate-100 text-slate-800' : 'text-slate-500'
+                }`}
+              >
+                Importe
+              </button>
+            </div>
+          )}
           {view === 'weekday' ? (
             <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
               <button
@@ -551,6 +558,7 @@ function ProductDetail({
           importe={data.totals.importe}
           promU={promTotalU}
           promI={promTotalI}
+          hideMontos={hideMontos}
         />
         <MiniKPI
           label="Almuerzo"
@@ -559,6 +567,7 @@ function ProductDetail({
           promU={promAlmuerzoU}
           promI={promAlmuerzoI}
           color="amber"
+          hideMontos={hideMontos}
         />
         <MiniKPI
           label="Cena"
@@ -567,6 +576,7 @@ function ProductDetail({
           promU={promCenaU}
           promI={promCenaI}
           color="indigo"
+          hideMontos={hideMontos}
         />
       </div>
 
@@ -584,7 +594,7 @@ function ProductDetail({
               <XAxis dataKey="short" tick={{ fontSize: 11 }} />
             )}
             <YAxis
-              tickFormatter={metric === 'importe' ? fmtCompactAR : (v) => fmtNumAR(v)}
+              tickFormatter={effMetric === 'importe' ? fmtCompactAR : (v) => fmtNumAR(v)}
               tick={{ fontSize: 11 }}
               width={56}
               allowDecimals={view === 'weekday' && wdMetric === 'avg'}
@@ -599,7 +609,7 @@ function ProductDetail({
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {view === 'fecha' && !byShift ? (
-              <Bar dataKey={metric === 'importe' ? 'importe' : 'unidades'} name="Total" fill="#6366f1" radius={[2, 2, 0, 0]} />
+              <Bar dataKey={effMetric === 'importe' ? 'importe' : 'unidades'} name="Total" fill="#6366f1" radius={[2, 2, 0, 0]} />
             ) : (
               <>
                 <Bar dataKey={`ALMUERZO${suf}`} stackId="t" name="Almuerzo" fill="#f59e0b" radius={[0, 0, 0, 0]} />
@@ -628,10 +638,10 @@ function ProductDetail({
               <th className="text-left px-3 py-2 font-medium">
                 {view === 'fecha' ? 'Fecha' : 'Día'}
               </th>
-              <th className="text-right px-3 py-2 font-medium">Almuerzo (u/$)</th>
-              <th className="text-right px-3 py-2 font-medium">Cena (u/$)</th>
+              <th className="text-right px-3 py-2 font-medium">Almuerzo{hideMontos ? '' : ' (u/$)'}</th>
+              <th className="text-right px-3 py-2 font-medium">Cena{hideMontos ? '' : ' (u/$)'}</th>
               <th className="text-right px-3 py-2 font-medium">Total unid.</th>
-              <th className="text-right px-3 py-2 font-medium">Total $</th>
+              {!hideMontos && <th className="text-right px-3 py-2 font-medium">Total $</th>}
             </tr>
           </thead>
           <tbody>
@@ -640,13 +650,15 @@ function ProductDetail({
                   <tr key={s.fecha} className="border-t border-slate-100">
                     <td className="px-3 py-1.5 text-slate-600">{fmtFecha(s.fecha)}</td>
                     <td className="px-3 py-1.5 text-right text-amber-700">
-                      {fmtNumAR(s.ALMUERZO_u)} <span className="text-slate-400">/</span> {fmtAR(s.ALMUERZO_i)}
+                      {fmtNumAR(s.ALMUERZO_u)}
+                      {!hideMontos && <> <span className="text-slate-400">/</span> {fmtAR(s.ALMUERZO_i)}</>}
                     </td>
                     <td className="px-3 py-1.5 text-right text-indigo-700">
-                      {fmtNumAR(s.CENA_u)} <span className="text-slate-400">/</span> {fmtAR(s.CENA_i)}
+                      {fmtNumAR(s.CENA_u)}
+                      {!hideMontos && <> <span className="text-slate-400">/</span> {fmtAR(s.CENA_i)}</>}
                     </td>
                     <td className="px-3 py-1.5 text-right font-medium text-slate-700">{fmtNumAR(s.unidades)}</td>
-                    <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(s.importe)}</td>
+                    {!hideMontos && <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(s.importe)}</td>}
                   </tr>
                 ))
               : weekdayData.map((w) => {
@@ -658,13 +670,15 @@ function ProductDetail({
                         <span className="text-slate-400">({w.count})</span>
                       </td>
                       <td className="px-3 py-1.5 text-right text-amber-700">
-                        {fmtNumAR(w.ALMUERZO_u, dec)} <span className="text-slate-400">/</span> {fmtAR(w.ALMUERZO_i)}
+                        {fmtNumAR(w.ALMUERZO_u, dec)}
+                        {!hideMontos && <> <span className="text-slate-400">/</span> {fmtAR(w.ALMUERZO_i)}</>}
                       </td>
                       <td className="px-3 py-1.5 text-right text-indigo-700">
-                        {fmtNumAR(w.CENA_u, dec)} <span className="text-slate-400">/</span> {fmtAR(w.CENA_i)}
+                        {fmtNumAR(w.CENA_u, dec)}
+                        {!hideMontos && <> <span className="text-slate-400">/</span> {fmtAR(w.CENA_i)}</>}
                       </td>
                       <td className="px-3 py-1.5 text-right font-medium text-slate-700">{fmtNumAR(w.unidades, dec)}</td>
-                      <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(w.importe)}</td>
+                      {!hideMontos && <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmtAR(w.importe)}</td>}
                     </tr>
                   )
                 })}
@@ -682,6 +696,7 @@ function MiniKPI({
   promU,
   promI,
   color,
+  hideMontos = false,
 }: {
   label: string
   unidades: number
@@ -689,24 +704,26 @@ function MiniKPI({
   promU?: number
   promI?: number
   color?: 'amber' | 'indigo'
+  hideMontos?: boolean
 }) {
   const colorMap = {
     amber: 'border-amber-200 bg-amber-50',
     indigo: 'border-indigo-200 bg-indigo-50',
   }
   const cls = color ? colorMap[color] : 'border-slate-200 bg-white'
+  const showI = !hideMontos && promI != null
   return (
     <div className={`rounded border ${cls} px-3 py-2`}>
       <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
       <div className="flex items-baseline gap-2 mt-0.5">
         <span className="text-base font-semibold text-slate-800">{fmtNumAR(unidades)}</span>
-        <span className="text-xs text-slate-500">u · {fmtAR(importe)}</span>
+        <span className="text-xs text-slate-500">u{hideMontos ? '' : ` · ${fmtAR(importe)}`}</span>
       </div>
-      {(promU != null || promI != null) && (
+      {(promU != null || showI) && (
         <p className="text-[10px] text-slate-500 mt-1">
           Prom. {promU != null ? `${fmtNumAR(promU, 1)} u` : ''}
-          {promU != null && promI != null ? ' · ' : ''}
-          {promI != null ? fmtAR(promI) : ''}
+          {promU != null && showI ? ' · ' : ''}
+          {showI ? fmtAR(promI as number) : ''}
           <span className="text-slate-400"> /día</span>
         </p>
       )}

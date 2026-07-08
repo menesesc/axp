@@ -74,6 +74,30 @@ export function defaultRange(): { from: string; to: string } {
 }
 
 /**
+ * Rango de un solo día = ayer. Default del panel de ventas restringido:
+ * lo primero que mira el operador es el cierre del día anterior.
+ */
+export function yesterdayRange(): { from: string; to: string } {
+  const y = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  return { from: y, to: y }
+}
+
+/**
+ * Etiqueta corta para un rango, pensada para el botón del selector de fecha.
+ * Un solo día → "Hoy" / "Ayer" / "DD/MM"; rango → "DD/MM → DD/MM".
+ */
+export function fmtRangeLabel(from: string, to: string): string {
+  const today = new Date().toISOString().slice(0, 10)
+  const yest = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  if (from === to) {
+    if (from === today) return 'Hoy'
+    if (from === yest) return 'Ayer'
+    return fmtFechaShort(from)
+  }
+  return `${fmtFechaShort(from)} → ${fmtFechaShort(to)}`
+}
+
+/**
  * Devuelve el período inmediatamente anterior, de la misma longitud que [from, to].
  * Ej: 7 días → los 7 días previos; 1 día (ayer) → antes de ayer; 30 días → los 30 previos.
  */

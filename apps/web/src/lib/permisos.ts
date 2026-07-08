@@ -59,14 +59,14 @@ export function landingRestringido(permisos: string[]): string {
 
 /**
  * Prefijos de API que puede consumir un usuario restringido.
- * El resto de /api/** le responde 403 desde el middleware.
- * Nota: /api/sales/ranking está permitido pero el endpoint elimina los montos.
- * NO se permite /api/sales/ranking/product (mostraría importes por día).
+ * El resto de /api/** le responde 403 desde el middleware (match exacto de path).
+ * Nota: /api/sales/ranking y /api/sales/ranking/product están permitidos, pero
+ * ambos endpoints eliminan los montos para el usuario restringido (importe = 0).
  */
 export function apisPermitidas(permisos: string[]): string[] {
   const apis: string[] = []
   if (permisos.includes(PERMISO.VENTAS_RANKING)) {
-    apis.push('/api/sales/ranking', '/api/sales/units-daily')
+    apis.push('/api/sales/ranking', '/api/sales/ranking/product', '/api/sales/units-daily')
   }
   if (permisos.includes(PERMISO.COMPRAS)) {
     apis.push('/api/informes/compras')
