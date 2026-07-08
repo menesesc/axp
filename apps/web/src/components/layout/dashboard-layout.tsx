@@ -72,7 +72,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </main>
       </div>
-      <Toaster position="bottom-right" />
+      <Toaster position="top-center" />
     </TooltipProvider>
   )
 }

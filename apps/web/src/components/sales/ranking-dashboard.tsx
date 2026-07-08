@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
 import { ProductDetail } from './ranking-tab'
-import { fmtNumAR, fmtRangeLabel, yesterdayRange } from './shared'
+import { fmtAR, fmtNumAR, fmtRangeLabel, yesterdayRange } from './shared'
 import { ChevronRight, ChevronLeft, Menu, Search, X, Package } from 'lucide-react'
 
 /** true cuando el viewport alcanza el breakpoint (px). Para features solo PC/tablet. */
@@ -52,6 +52,10 @@ interface RankingItem {
   rubroNombre: string | null
   unidades: number
   unidadesDia: number
+  // Solo llegan con importes (admin / no restringido). El server los pone en 0
+  // para usuarios restringidos.
+  importe?: number
+  promedioDiario?: number
 }
 
 const TURNOS = [
@@ -74,7 +78,7 @@ const MODOS = [
  * El modo "General" salta el nivel de rubro y lista todos los productos.
  * Filtros siempre a mano: rango de fechas (botón desplegable) y turno (segmentado).
  */
-export function RankingDashboard() {
+export function RankingDashboard({ hideMontos = true }: { hideMontos?: boolean } = {}) {
   const [range, setRange] = useState(yesterdayRange())
   const [turno, setTurno] = useState<'' | 'ALMUERZO' | 'CENA'>('')
   const [mode, setMode] = useState<'rubro' | 'general'>('rubro')
@@ -140,6 +144,7 @@ export function RankingDashboard() {
   }, [items, search, isRubroList])
 
   const totalUnidades = useMemo(() => filtered.reduce((a, it) => a + it.unidades, 0), [filtered])
+  const totalImporte = useMemo(() => filtered.reduce((a, it) => a + (it.importe ?? 0), 0), [filtered])
 
   // --- Handlers de navegación (limpian la búsqueda al cambiar de contexto) ---
   const changeRange = (r: { from: string; to: string }) => {
@@ -204,7 +209,7 @@ export function RankingDashboard() {
             nombre={selectedProduct.nombre || undefined}
             from={range.from}
             to={range.to}
-            hideMontos
+            hideMontos={hideMontos}
           />
         </div>
       </div>
@@ -276,8 +281,10 @@ export function RankingDashboard() {
             <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-400">
               <span className="flex-1">{isRubroList ? 'Rubro' : 'Producto'}</span>
               {sparkEnabled && !isRubroList && <span className="hidden md:block w-[88px]" />}
-              <span className="w-16 text-right">Unidades</span>
-              {!isRubroList && <span className="hidden md:block w-16 text-right">Prom/día</span>}
+              <span className="w-24 text-right">{hideMontos ? 'Unidades' : 'Importe'}</span>
+              {!isRubroList && (
+                <span className="hidden md:block w-16 text-right">{hideMontos ? 'Prom/día' : 'Unidades'}</span>
+              )}
               <span className="w-4" />
             </div>
             <div className="divide-y divide-slate-100">
@@ -316,15 +323,28 @@ export function RankingDashboard() {
                         />
                       </div>
                     )}
-                    <div className="text-right shrink-0 w-16">
-                      <p className="text-sm font-semibold text-slate-800 tabular-nums">{fmtNumAR(it.unidades)}</p>
-                      {/* En mobile el promedio va como subtexto; en tablet/PC pasa a columna propia. */}
-                      <p className="text-[11px] text-slate-400 tabular-nums md:hidden">{fmtNumAR(it.unidadesDia, 1)}/día</p>
+                    <div className="text-right shrink-0 w-24">
+                      <p className="text-sm font-semibold text-slate-800 tabular-nums">
+                        {hideMontos ? fmtNumAR(it.unidades) : fmtAR(it.importe ?? 0)}
+                      </p>
+                      {/* En mobile el dato secundario va como subtexto; en tablet/PC pasa a columna propia. */}
+                      <p className="text-[11px] text-slate-400 tabular-nums md:hidden">
+                        {hideMontos ? `${fmtNumAR(it.unidadesDia, 1)}/día` : `${fmtNumAR(it.unidades)} u`}
+                      </p>
                     </div>
                     {!isRubroList && (
                       <div className="hidden md:block text-right shrink-0 w-16">
-                        <p className="text-sm font-semibold text-emerald-700 tabular-nums">{fmtNumAR(it.unidadesDia, 1)}</p>
-                        <p className="text-[10px] text-slate-400 leading-tight">u/día</p>
+                        {hideMontos ? (
+                          <>
+                            <p className="text-sm font-semibold text-emerald-700 tabular-nums">{fmtNumAR(it.unidadesDia, 1)}</p>
+                            <p className="text-[10px] text-slate-400 leading-tight">u/día</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-slate-600 tabular-nums">{fmtNumAR(it.unidades)}</p>
+                            <p className="text-[10px] text-slate-400 leading-tight">unid.</p>
+                          </>
+                        )}
                       </div>
                     )}
                     <ChevronRight
@@ -341,7 +361,9 @@ export function RankingDashboard() {
       {/* Resumen del listado mostrado */}
       {!isLoading && filtered.length > 0 && (
         <p className="text-xs text-slate-400 px-1">
-          {filtered.length} {isRubroList ? 'rubros' : 'productos'} · {fmtNumAR(totalUnidades)} unidades
+          {filtered.length} {isRubroList ? 'rubros' : 'productos'} ·{' '}
+          {!hideMontos && <span className="text-slate-500 font-medium">{fmtAR(totalImporte)} · </span>}
+          {fmtNumAR(totalUnidades)} unidades
         </p>
       )}
     </div>

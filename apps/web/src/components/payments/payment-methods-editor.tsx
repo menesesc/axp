@@ -54,8 +54,13 @@ export function PaymentMethodsEditor({
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
 
-  const totalPagos = methods.reduce((sum, m) => sum + m.monto, 0)
-  const diferencia = totalOrden - totalPagos
+  // Redondeo a 2 decimales: los montos vienen de sumar Decimals y arrastran
+  // artefactos de coma flotante (ej. 1463478.0499999). Redondeamos en cada
+  // punto donde se setea un monto para que el input muestre "1463478.05".
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+  const totalPagos = round2(methods.reduce((sum, m) => sum + m.monto, 0))
+  const diferencia = round2(totalOrden - totalPagos)
 
   // Auto-add first method with full amount if none exists
   useEffect(() => {
@@ -63,7 +68,7 @@ export function PaymentMethodsEditor({
       const newMethod: PaymentMethodLine = {
         id: crypto.randomUUID(),
         tipo: 'TRANSFERENCIA',
-        monto: totalOrden,
+        monto: round2(totalOrden),
         fecha: new Date(),
         attachments: [],
       }
@@ -72,7 +77,7 @@ export function PaymentMethodsEditor({
   }, [totalOrden, methods.length, onChange])
 
   const addMethod = () => {
-    const remaining = totalOrden - totalPagos
+    const remaining = round2(totalOrden - totalPagos)
     if (remaining <= 0) {
       toast.error('El total ya está cubierto')
       return
@@ -90,10 +95,11 @@ export function PaymentMethodsEditor({
   const updateMethod = (id: string, updates: Partial<PaymentMethodLine>) => {
     // Validate amount doesn't exceed remaining + current
     if (updates.monto !== undefined) {
+      updates.monto = round2(updates.monto)
       const method = methods.find(m => m.id === id)
       if (method) {
-        const otherTotal = methods.filter(m => m.id !== id).reduce((sum, m) => sum + m.monto, 0)
-        const maxAllowed = totalOrden - otherTotal
+        const otherTotal = round2(methods.filter(m => m.id !== id).reduce((sum, m) => sum + m.monto, 0))
+        const maxAllowed = round2(totalOrden - otherTotal)
         if (updates.monto > maxAllowed) {
           toast.error(`El importe no puede exceder ${formatCurrency(maxAllowed)}`)
           updates.monto = maxAllowed
@@ -386,29 +392,27 @@ export function PaymentMethodsEditor({
       )}
 
       {/* Resumen de totales */}
-      <div className="flex items-center justify-end gap-6 pt-2 border-t">
-        <div className="text-sm">
-          <span className="text-slate-500">Total orden:</span>
-          <span className="ml-2 font-medium text-slate-900">
-            {formatCurrency(totalOrden)}
-          </span>
-        </div>
-        <div className="text-sm">
-          <span className="text-slate-500">Total pagos:</span>
-          <span className="ml-2 font-medium text-slate-900">
+      <div className="flex flex-wrap items-end justify-end gap-x-8 gap-y-2 pt-3 border-t">
+        <div className="flex flex-col items-end">
+          <span className="text-xs text-slate-500">Total pagos</span>
+          <span className="text-base font-semibold text-slate-700 tabular-nums">
             {formatCurrency(totalPagos)}
           </span>
         </div>
-        <div className="text-sm">
-          <span className="text-slate-500">Diferencia:</span>
+        <div className="flex flex-col items-end">
+          <span className="text-xs text-slate-500">Diferencia</span>
           <span
-            className={`ml-2 font-medium ${
-              Math.abs(diferencia) < 0.01
-                ? 'text-emerald-600'
-                : 'text-red-600'
+            className={`text-base font-semibold tabular-nums ${
+              Math.abs(diferencia) < 0.01 ? 'text-emerald-600' : 'text-red-600'
             }`}
           >
             {formatCurrency(diferencia)}
+          </span>
+        </div>
+        <div className="flex flex-col items-end">
+          <span className="text-xs text-slate-500">Total orden</span>
+          <span className="text-2xl font-bold text-slate-900 tabular-nums">
+            {formatCurrency(totalOrden)}
           </span>
         </div>
       </div>

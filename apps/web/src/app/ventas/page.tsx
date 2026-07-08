@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useUser } from '@/hooks/use-user'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClosuresTab } from '@/components/sales/closures-tab'
-import { RankingTab } from '@/components/sales/ranking-tab'
+import { RankingDashboard } from '@/components/sales/ranking-dashboard'
 import { WaitersTab } from '@/components/sales/waiters-tab'
 import { PaymentsTab } from '@/components/sales/payments-tab'
 import { BillingTab } from '@/components/sales/billing-tab'
@@ -42,7 +42,7 @@ export default function VentasPage() {
             <ClosuresTab />
           </TabsContent>
           <TabsContent value="ranking" className="mt-6">
-            <RankingTab />
+            <RankingDashboard hideMontos={false} />
           </TabsContent>
           <TabsContent value="mozos" className="mt-6">
             <WaitersTab />
