@@ -1,18 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requirePermiso } from '@/lib/auth'
+import { PERMISO, esRestringido } from '@/lib/permisos'
 import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
+const TURNOS_VALIDOS = new Set(['ALMUERZO', 'CENA', 'OTRO'])
+
 /**
  * Ranking de productos vendidos en un rango de fechas.
  * groupBy=item (default) | rubro
- * Devuelve top N + cantidad de días con ventas por producto/rubro.
+ * Filtros opcionales: turno (ALMUERZO|CENA|OTRO), rubro (rubroCodigo), sucursal.
+ * Para usuarios restringidos (permiso ventas.ranking) se eliminan los montos:
+ * el importe NUNCA sale del servidor.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireClienteId()
+  const { user, clienteId, error } = await requirePermiso(PERMISO.VENTAS_RANKING)
   if (error) return error
+
+  // Usuario restringido → sin montos. El importe se anula en la respuesta.
+  const hideMontos = esRestringido(user?.permisos)
 
   const sp = request.nextUrl.searchParams
   const from = sp.get('from')
@@ -20,6 +28,9 @@ export async function GET(request: NextRequest) {
   const groupBy = sp.get('groupBy') === 'rubro' ? 'rubro' : 'item'
   const limit = Math.min(parseInt(sp.get('limit') || '50'), 500)
   const sucursal = sp.get('sucursal')
+  const turnoParam = sp.get('turno')
+  const turno = turnoParam && TURNOS_VALIDOS.has(turnoParam) ? turnoParam : null
+  const rubro = sp.get('rubro') || null
 
   const dateFilter: Record<string, Date> = {}
   if (from) dateFilter.gte = new Date(`${from}T00:00:00Z`)
@@ -28,6 +39,7 @@ export async function GET(request: NextRequest) {
   const closureWhere: Record<string, unknown> = { clienteId: clienteId! }
   if (Object.keys(dateFilter).length > 0) closureWhere.fecha = dateFilter
   if (sucursal) closureWhere.sucursal = sucursal
+  if (turno) closureWhere.turnoNombre = turno
 
   const closures = await prisma.sales_closures.findMany({
     where: closureWhere,
@@ -35,15 +47,22 @@ export async function GET(request: NextRequest) {
   })
   const closureIds = closures.map((c) => c.id)
   if (closureIds.length === 0) {
-    return NextResponse.json({ ranking: [], groupBy, total: { unidades: 0, importe: 0 } })
+    return NextResponse.json({ ranking: [], groupBy, hideMontos, total: { unidades: 0, importe: 0 } })
   }
 
+  // Orden: por importe (normal) o por unidades (cuando ocultamos montos).
+  const orderCol: 'unidades' | 'importe' = hideMontos ? 'unidades' : 'importe'
+  const rubroSql = rubro ? Prisma.sql`AND i."rubroCodigo" = ${rubro}` : Prisma.empty
+
   if (groupBy === 'rubro') {
+    const itemWhere: Record<string, unknown> = { closureId: { in: closureIds } }
+    if (rubro) itemWhere.rubroCodigo = rubro
+
     const grouped = await prisma.sales_closure_items.groupBy({
       by: ['rubroCodigo', 'rubroNombre'],
-      where: { closureId: { in: closureIds } },
+      where: itemWhere,
       _sum: { unidades: true, importe: true },
-      orderBy: { _sum: { importe: 'desc' } },
+      orderBy: hideMontos ? { _sum: { unidades: 'desc' } } : { _sum: { importe: 'desc' } },
       take: limit,
     })
 
@@ -53,7 +72,7 @@ export async function GET(request: NextRequest) {
         SELECT i."rubroCodigo" as "rubroCodigo", COUNT(DISTINCT c.fecha) as dias
         FROM sales_closure_items i
         JOIN sales_closures c ON c.id = i."closureId"
-        WHERE c.id = ANY(${closureIds}::uuid[])
+        WHERE c.id = ANY(${closureIds}::uuid[]) ${rubroSql}
         GROUP BY i."rubroCodigo"
       `
     )
@@ -61,7 +80,7 @@ export async function GET(request: NextRequest) {
 
     const ranking = grouped.map((g) => {
       const unidades = Number(g._sum.unidades ?? 0)
-      const importe = Number(g._sum.importe ?? 0)
+      const importe = hideMontos ? 0 : Number(g._sum.importe ?? 0)
       const dias = diasMap.get(g.rubroCodigo ?? '__null__') ?? 0
       return {
         rubroCodigo: g.rubroCodigo,
@@ -69,7 +88,7 @@ export async function GET(request: NextRequest) {
         unidades,
         importe,
         dias,
-        promedioDiario: dias > 0 ? importe / dias : 0,
+        promedioDiario: hideMontos ? 0 : dias > 0 ? importe / dias : 0,
         unidadesDia: dias > 0 ? unidades / dias : 0,
       }
     })
@@ -77,7 +96,7 @@ export async function GET(request: NextRequest) {
       (acc, r) => ({ unidades: acc.unidades + r.unidades, importe: acc.importe + r.importe }),
       { unidades: 0, importe: 0 }
     )
-    return NextResponse.json({ ranking, groupBy, total })
+    return NextResponse.json({ ranking, groupBy, hideMontos, total })
   }
 
   // groupBy=item: agrupamos por (codigo, nombre).
@@ -105,9 +124,9 @@ export async function GET(request: NextRequest) {
       COUNT(DISTINCT c.fecha) as dias
     FROM sales_closure_items i
     JOIN sales_closures c ON c.id = i."closureId"
-    WHERE c.id = ANY(${closureIds}::uuid[])
+    WHERE c.id = ANY(${closureIds}::uuid[]) ${rubroSql}
     GROUP BY i.codigo, i.nombre, i."rubroCodigo", i."rubroNombre"
-    ORDER BY SUM(i.importe) DESC
+    ORDER BY SUM(i.${Prisma.raw(orderCol)}) DESC
     LIMIT ${limit}
   `)
 
@@ -124,7 +143,7 @@ export async function GET(request: NextRequest) {
   const ranking = grouped.map((g) => {
     const m = g.codigo !== '****' ? masterByCodigo.get(g.codigo) : undefined
     const unidades = Number(g.unidades)
-    const importe = Number(g.importe)
+    const importe = hideMontos ? 0 : Number(g.importe)
     const dias = Number(g.dias)
     return {
       codigo: g.codigo,
@@ -134,7 +153,7 @@ export async function GET(request: NextRequest) {
       unidades,
       importe,
       dias,
-      promedioDiario: dias > 0 ? importe / dias : 0,
+      promedioDiario: hideMontos ? 0 : dias > 0 ? importe / dias : 0,
       unidadesDia: dias > 0 ? unidades / dias : 0,
     }
   })
@@ -144,5 +163,5 @@ export async function GET(request: NextRequest) {
     { unidades: 0, importe: 0 }
   )
 
-  return NextResponse.json({ ranking, groupBy, total })
+  return NextResponse.json({ ranking, groupBy, hideMontos, total })
 }

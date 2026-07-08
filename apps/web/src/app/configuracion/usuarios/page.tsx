@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/dialog'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { UserPlus, Mail, Phone, Shield, Eye, Loader2, Trash2, Check, X, Pencil } from 'lucide-react'
+import { UserPlus, Mail, Phone, Shield, Eye, Loader2, Trash2, Check, X, Pencil, Lock } from 'lucide-react'
+import { PERMISOS_DISPONIBLES } from '@/lib/permisos'
 
 interface Usuario {
   id: string
@@ -30,9 +31,14 @@ interface Usuario {
   nombre: string
   rol: 'SUPERADMIN' | 'ADMIN' | 'USER'
   tipo_acceso: 'ADMIN' | 'VIEWER'
+  permisos: string[]
   telefono: string | null
   activo: boolean
   canSendDocs: boolean
+}
+
+function togglePermiso(list: string[], value: string): string[] {
+  return list.includes(value) ? list.filter((p) => p !== value) : [...list, value]
 }
 
 export default function UsuariosPage() {
@@ -45,6 +51,7 @@ export default function UsuariosPage() {
     nombre: '',
     tipo_acceso: 'VIEWER' as 'ADMIN' | 'VIEWER',
     telefono: '',
+    permisos: [] as string[],
   })
 
   const { data, isLoading } = useQuery<{ usuarios: Usuario[] }>({
@@ -73,7 +80,7 @@ export default function UsuariosPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['usuarios'] })
       setIsAddingUser(false)
-      setNewUser({ email: '', nombre: '', tipo_acceso: 'VIEWER', telefono: '' })
+      setNewUser({ email: '', nombre: '', tipo_acceso: 'VIEWER', telefono: '', permisos: [] })
       toast.success('Usuario creado. Se envió invitación por email.')
     },
     onError: (error: Error) => {
@@ -191,6 +198,7 @@ export default function UsuariosPage() {
                   <Select
                     value={newUser.tipo_acceso}
                     onValueChange={(v) => setNewUser({ ...newUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })}
+                    disabled={newUser.permisos.length > 0}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -210,6 +218,30 @@ export default function UsuariosPage() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Lock className="h-3.5 w-3.5 text-slate-500" />
+                    <span className="text-sm font-medium text-slate-700">Acceso restringido</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Si marcás módulos, el usuario SOLO verá eso (solo lectura). Dejá todo sin marcar para acceso normal.
+                  </p>
+                  <div className="space-y-1.5">
+                    {PERMISOS_DISPONIBLES.map((p) => (
+                      <label key={p.value} className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newUser.permisos.includes(p.value)}
+                          onChange={() => setNewUser({ ...newUser, permisos: togglePermiso(newUser.permisos, p.value) })}
+                          className="mt-0.5 rounded border-slate-300"
+                        />
+                        <span className="text-sm text-slate-700">
+                          {p.label} <span className="text-slate-400">— {p.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="ghost" onClick={() => setIsAddingUser(false)}>
@@ -263,6 +295,7 @@ export default function UsuariosPage() {
                   <Select
                     value={editingUser.tipo_acceso}
                     onValueChange={(v) => setEditingUser({ ...editingUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })}
+                    disabled={(editingUser.permisos ?? []).length > 0}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -282,6 +315,30 @@ export default function UsuariosPage() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Lock className="h-3.5 w-3.5 text-slate-500" />
+                    <span className="text-sm font-medium text-slate-700">Acceso restringido</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Si marcás módulos, el usuario SOLO verá eso (solo lectura).
+                  </p>
+                  <div className="space-y-1.5">
+                    {PERMISOS_DISPONIBLES.map((p) => (
+                      <label key={p.value} className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(editingUser.permisos ?? []).includes(p.value)}
+                          onChange={() => setEditingUser({ ...editingUser, permisos: togglePermiso(editingUser.permisos ?? [], p.value) })}
+                          className="mt-0.5 rounded border-slate-300"
+                        />
+                        <span className="text-sm text-slate-700">
+                          {p.label} <span className="text-slate-400">— {p.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-slate-700">
@@ -309,6 +366,7 @@ export default function UsuariosPage() {
                         updates: {
                           tipo_acceso: editingUser.tipo_acceso,
                           activo: editingUser.activo,
+                          permisos: editingUser.permisos ?? [],
                         },
                       })
                       setEditingUser(null)
@@ -361,17 +419,30 @@ export default function UsuariosPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                        usuario.tipo_acceso === 'ADMIN'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {usuario.tipo_acceso === 'ADMIN' ? (
-                          <><Shield className="h-3 w-3" /> Admin</>
-                        ) : (
-                          <><Eye className="h-3 w-3" /> Lectura</>
-                        )}
-                      </span>
+                      {(usuario.permisos ?? []).length > 0 ? (
+                        <div className="inline-flex flex-col items-center gap-0.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                            <Lock className="h-3 w-3" /> Restringido
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {(usuario.permisos ?? [])
+                              .map((p) => PERMISOS_DISPONIBLES.find((d) => d.value === p)?.label ?? p)
+                              .join(' · ')}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          usuario.tipo_acceso === 'ADMIN'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {usuario.tipo_acceso === 'ADMIN' ? (
+                            <><Shield className="h-3 w-3" /> Admin</>
+                          ) : (
+                            <><Eye className="h-3 w-3" /> Lectura</>
+                          )}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button

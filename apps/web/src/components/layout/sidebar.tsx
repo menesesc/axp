@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useUser } from '@/hooks/use-user'
 import { useSubscription } from '@/hooks/use-subscription'
 import { cn } from '@/lib/utils'
+import { paginasPermitidas } from '@/lib/permisos'
 import {
   LayoutDashboard,
   FileText,
@@ -122,6 +123,8 @@ interface SidebarContentProps {
   pathname: string
   user: { nombre?: string } | null
   isAdmin: boolean
+  isRestricted?: boolean
+  permisos?: string[]
   subscription: { plan_nombre?: string } | null
   signOut: () => void
   pendingCount?: number
@@ -134,6 +137,8 @@ function SidebarContent({
   pathname,
   user,
   isAdmin,
+  isRestricted = false,
+  permisos = [],
   subscription,
   signOut,
   pendingCount = 0,
@@ -141,6 +146,7 @@ function SidebarContent({
   collapsed = false,
   onCollapse,
 }: SidebarContentProps) {
+  const allowedHrefs = isRestricted ? new Set(paginasPermitidas(permisos)) : null
   return (
     <aside
       className={cn(
@@ -173,10 +179,12 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto scrollbar-hide min-h-0">
         {navigationSections.map((section, sectionIndex) => {
-          // Filter items based on role access
-          const visibleItems = section.items.filter(
-            (item) => (!item.adminOnly || isAdmin) && (!item.viewerHidden || isAdmin)
-          )
+          // Filter items based on role access. Usuarios restringidos: solo los
+          // módulos habilitados por sus permisos.
+          const visibleItems = section.items.filter((item) => {
+            if (allowedHrefs) return allowedHrefs.has(item.href)
+            return (!item.adminOnly || isAdmin) && (!item.viewerHidden || isAdmin)
+          })
 
           if (visibleItems.length === 0) return null
 
@@ -269,7 +277,7 @@ function SidebarContent({
                 {user?.nombre?.split(' ')[0]}
               </p>
               <p className="text-xs text-slate-500">
-                {isAdmin ? 'Admin' : 'Lectura'}
+                {isAdmin ? 'Admin' : isRestricted ? 'Acceso limitado' : 'Lectura'}
               </p>
             </div>
           )}
@@ -296,7 +304,7 @@ interface SidebarProps {
 
 export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps) {
   const pathname = usePathname()
-  const { user, signOut, isAdmin } = useUser()
+  const { user, signOut, isAdmin, isRestricted, permisos } = useUser()
   const { subscription } = useSubscription()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -308,6 +316,8 @@ export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps)
           pathname={pathname}
           user={user}
           isAdmin={isAdmin}
+          isRestricted={isRestricted}
+          permisos={permisos}
           subscription={subscription}
           signOut={signOut}
           pendingCount={pendingCount}
@@ -334,6 +344,8 @@ export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps)
               pathname={pathname}
               user={user}
               isAdmin={isAdmin}
+              isRestricted={isRestricted}
+              permisos={permisos}
               subscription={subscription}
               signOut={signOut}
               pendingCount={pendingCount}

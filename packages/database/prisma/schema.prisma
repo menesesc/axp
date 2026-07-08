@@ -211,6 +211,10 @@ model usuarios {
   nombre                String                  @db.VarChar(255)
   rol                   RolUsuario
   tipo_acceso           String?                 @default("VIEWER") @db.VarChar(255)
+  // Permisos granulares para usuarios restringidos. Vacío = sin restricción
+  // (ADMIN/VIEWER conservan su comportamiento). No vacío = el usuario SOLO ve
+  // los módulos listados. Valores: "ventas.ranking", "compras".
+  permisos              String[]                @default([])
   clienteId             String?                 @db.Uuid
   activo                Boolean                 @default(true)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)

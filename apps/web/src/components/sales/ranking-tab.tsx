@@ -30,17 +30,41 @@ interface RankingItem {
 
 type SortKey = 'idx' | 'nombre' | 'rubro' | 'unidades' | 'importe' | 'promedioDiario' | 'unidadesDia' | 'dias'
 
-export function RankingTab() {
-  const [{ from, to }, setRange] = useState(defaultRange())
+export function RankingTab({
+  hideMontos = false,
+  range: controlledRange,
+  turno: controlledTurno,
+  rubro: controlledRubro,
+  hideOwnFilters = false,
+}: {
+  hideMontos?: boolean
+  /** Rango controlado desde afuera (panel). Si no viene, el tab lo maneja solo. */
+  range?: { from: string; to: string }
+  /** Turno/rubro controlados desde el panel (comparten filtro con el gráfico). */
+  turno?: string
+  rubro?: string
+  /** Oculta los selectores de rango/turno/rubro propios (los provee el panel). */
+  hideOwnFilters?: boolean
+} = {}) {
+  const [internalRange, setRange] = useState(defaultRange())
+  const { from, to } = controlledRange ?? internalRange
   const [groupBy, setGroupBy] = useState<'item' | 'rubro'>('item')
   const [search, setSearch] = useState('')
+  const [internalTurno, setInternalTurno] = useState('')
+  const [internalRubro, setInternalRubro] = useState('')
+  const turno = hideOwnFilters ? controlledTurno ?? '' : internalTurno
+  const rubro = hideOwnFilters ? controlledRubro ?? '' : internalRubro
+  const setTurno = setInternalTurno
+  const setRubro = setInternalRubro
   // Clave compuesta codigo|nombre porque "****" se reusa para varios productos.
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ from, to, groupBy, limit: '200' })
+    if (turno) p.set('turno', turno)
+    if (rubro) p.set('rubro', rubro)
     return p.toString()
-  }, [from, to, groupBy])
+  }, [from, to, groupBy, turno, rubro])
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales-ranking', params],
@@ -50,11 +74,34 @@ export function RankingTab() {
       return res.json() as Promise<{
         ranking: RankingItem[]
         groupBy: 'item' | 'rubro'
+        hideMontos?: boolean
         total: { unidades: number; importe: number }
       }>
     },
     staleTime: 60_000,
   })
+
+  // Lista de rubros disponibles en el rango (para el filtro por rubro/sector).
+  const { data: rubrosData } = useQuery({
+    queryKey: ['sales-ranking-rubros', from, to],
+    queryFn: async () => {
+      const res = await fetch(`/api/sales/ranking?from=${from}&to=${to}&groupBy=rubro&limit=500`)
+      if (!res.ok) throw new Error('Error cargando rubros')
+      return res.json() as Promise<{ ranking: RankingItem[] }>
+    },
+    staleTime: 5 * 60_000,
+  })
+  const rubros = useMemo(
+    () =>
+      (rubrosData?.ranking ?? [])
+        .filter((r) => r.rubroCodigo && r.rubroNombre)
+        .map((r) => ({ codigo: r.rubroCodigo as string, nombre: r.rubroNombre as string }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    [rubrosData]
+  )
+
+  // El server manda hideMontos según permisos; respetamos también el prop.
+  const noMontos = hideMontos || data?.hideMontos === true
 
   const items = data?.ranking ?? []
 
@@ -84,10 +131,11 @@ export function RankingTab() {
   const { sorted, sort, toggle } = useSort<RankingItem, SortKey>(
     filtered,
     getValue,
-    { key: 'importe', dir: 'desc' }
+    { key: noMontos ? 'unidades' : 'importe', dir: 'desc' }
   )
 
-  const maxImporte = sorted[0]?.importe ?? 0
+  // Referencia para la barra de participación: importe, o unidades sin montos.
+  const maxRef = noMontos ? (sorted[0]?.unidades ?? 0) : (sorted[0]?.importe ?? 0)
 
   // Total de las filas efectivamente mostradas (respeta el filtro de búsqueda).
   const shownTotal = useMemo(
@@ -106,8 +154,8 @@ export function RankingTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <DateRange from={from} to={to} onChange={setRange} />
-        <div className="flex items-center gap-2">
+        {controlledRange ? <span /> : <DateRange from={from} to={to} onChange={setRange} />}
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
@@ -115,7 +163,7 @@ export function RankingTab() {
               placeholder="Buscar (ej. BIF)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="border border-slate-200 rounded-md pl-8 pr-7 py-1.5 text-sm bg-white w-56"
+              className="border border-slate-200 rounded-md pl-8 pr-7 py-1.5 text-sm bg-white w-44 sm:w-56"
             />
             {search && (
               <button
@@ -127,6 +175,34 @@ export function RankingTab() {
               </button>
             )}
           </div>
+          {!hideOwnFilters && (
+            <>
+              {/* Filtro por turno */}
+              <select
+                value={turno}
+                onChange={(e) => { setTurno(e.target.value); setExpandedKey(null) }}
+                className="border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-white"
+                aria-label="Filtrar por turno"
+              >
+                <option value="">Todos los turnos</option>
+                <option value="ALMUERZO">Almuerzo</option>
+                <option value="CENA">Cena</option>
+                <option value="OTRO">Otro</option>
+              </select>
+              {/* Filtro por rubro (sector) */}
+              <select
+                value={rubro}
+                onChange={(e) => { setRubro(e.target.value); setExpandedKey(null) }}
+                className="border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-white max-w-[10rem]"
+                aria-label="Filtrar por rubro"
+              >
+                <option value="">Todos los rubros</option>
+                {rubros.map((r) => (
+                  <option key={r.codigo} value={r.codigo}>{r.nombre}</option>
+                ))}
+              </select>
+            </>
+          )}
           <div className="inline-flex bg-slate-100 rounded-lg p-1">
             <button
               onClick={() => { setGroupBy('item'); setExpandedKey(null) }}
@@ -148,7 +224,7 @@ export function RankingTab() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
         {isLoading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
         ) : sorted.length === 0 ? (
@@ -159,36 +235,38 @@ export function RankingTab() {
             </p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[540px]">
             <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
               <tr>
                 <th className="text-left px-4 py-2.5 font-medium w-10">#</th>
                 <SortTh label={groupBy === 'item' ? 'Producto' : 'Rubro'} k="nombre" sort={sort} onToggle={toggle} />
                 {groupBy === 'item' && <SortTh label="Rubro" k="rubro" sort={sort} onToggle={toggle} />}
                 <SortTh label="Unidades" k="unidades" sort={sort} onToggle={toggle} align="right" />
-                <SortTh label="Importe" k="importe" sort={sort} onToggle={toggle} align="right" />
+                {!noMontos && <SortTh label="Importe" k="importe" sort={sort} onToggle={toggle} align="right" />}
                 <SortTh label="Días" k="dias" sort={sort} onToggle={toggle} align="right" />
                 <SortTh label="Unid./día" k="unidadesDia" sort={sort} onToggle={toggle} align="right" />
-                <SortTh label="$/día" k="promedioDiario" sort={sort} onToggle={toggle} align="right" />
+                {!noMontos && <SortTh label="$/día" k="promedioDiario" sort={sort} onToggle={toggle} align="right" />}
                 <th className="px-4 py-2.5 w-40">Participación</th>
-                {groupBy === 'item' && <th className="w-8" />}
+                {groupBy === 'item' && !noMontos && <th className="w-8" />}
               </tr>
             </thead>
             <tbody>
               {sorted.map((it, idx) => {
-                const pct = maxImporte > 0 ? (it.importe / maxImporte) * 100 : 0
+                const ref = noMontos ? it.unidades : it.importe
+                const pct = maxRef > 0 ? (ref / maxRef) * 100 : 0
                 const itemKey = `${it.codigo ?? ''}|${it.nombre ?? ''}`
-                const expanded = groupBy === 'item' && itemKey === expandedKey
+                const expanded = groupBy === 'item' && !noMontos && itemKey === expandedKey
                 return (
                   <RankingRow
                     key={`${itemKey}-${it.rubroCodigo ?? ''}-${idx}`}
                     idx={idx}
                     item={it}
                     groupBy={groupBy}
+                    noMontos={noMontos}
                     pct={pct}
                     expanded={expanded}
                     onToggle={
-                      groupBy === 'item' && it.codigo
+                      groupBy === 'item' && it.codigo && !noMontos
                         ? () => setExpandedKey(expanded ? null : itemKey)
                         : undefined
                     }
@@ -201,12 +279,12 @@ export function RankingTab() {
                 <tr className="bg-slate-50 font-medium">
                   <td colSpan={groupBy === 'item' ? 3 : 2} className="px-4 py-2.5 text-slate-600 text-right">Total mostrado</td>
                   <td className="px-4 py-2.5 text-right text-slate-700">{fmtNumAR(shownTotal.unidades)}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(shownTotal.importe)}</td>
+                  {!noMontos && <td className="px-4 py-2.5 text-right text-slate-800">{fmtAR(shownTotal.importe)}</td>}
                   <td />
                   <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(shownTotal.unidadesDia, 1)}</td>
+                  {!noMontos && <td />}
                   <td />
-                  <td />
-                  {groupBy === 'item' && <td />}
+                  {groupBy === 'item' && !noMontos && <td />}
                 </tr>
               )}
             </tbody>
@@ -221,6 +299,7 @@ function RankingRow({
   idx,
   item,
   groupBy,
+  noMontos,
   pct,
   expanded,
   onToggle,
@@ -230,6 +309,7 @@ function RankingRow({
   idx: number
   item: RankingItem
   groupBy: 'item' | 'rubro'
+  noMontos: boolean
   pct: number
   expanded: boolean
   onToggle: (() => void) | undefined
@@ -250,16 +330,20 @@ function RankingRow({
           <td className="px-4 py-2.5 text-slate-500 text-xs">{item.rubroNombre ?? '—'}</td>
         )}
         <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(item.unidades)}</td>
-        <td className="px-4 py-2.5 text-right font-medium text-slate-800">{fmtAR(item.importe)}</td>
+        {!noMontos && (
+          <td className="px-4 py-2.5 text-right font-medium text-slate-800">{fmtAR(item.importe)}</td>
+        )}
         <td className="px-4 py-2.5 text-right text-slate-500">{fmtNumAR(item.dias)}</td>
         <td className="px-4 py-2.5 text-right text-slate-600">{fmtNumAR(item.unidadesDia, 1)}</td>
-        <td className="px-4 py-2.5 text-right text-slate-600">{fmtAR(item.promedioDiario)}</td>
+        {!noMontos && (
+          <td className="px-4 py-2.5 text-right text-slate-600">{fmtAR(item.promedioDiario)}</td>
+        )}
         <td className="px-4 py-2.5">
           <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
             <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
           </div>
         </td>
-        {groupBy === 'item' && (
+        {groupBy === 'item' && !noMontos && (
           <td className="px-4 py-2.5 text-slate-400">
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </td>

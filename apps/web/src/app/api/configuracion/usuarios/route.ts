@@ -2,6 +2,15 @@ import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PERMISOS_DISPONIBLES } from '@/lib/permisos'
+
+const PERMISOS_VALIDOS = new Set(PERMISOS_DISPONIBLES.map((p) => p.value as string))
+
+/** Filtra a solo permisos conocidos y sin duplicados. */
+function sanitizePermisos(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  return [...new Set(input.filter((p): p is string => typeof p === 'string' && PERMISOS_VALIDOS.has(p)))]
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +32,7 @@ export async function GET() {
         nombre: true,
         rol: true,
         tipo_acceso: true,
+        permisos: true,
         activo: true,
       },
       orderBy: { nombre: 'asc' },
@@ -31,6 +41,7 @@ export async function GET() {
     const usuariosWithExtras = usuarios.map((u) => ({
       ...u,
       tipo_acceso: u.tipo_acceso || (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN' ? 'ADMIN' : 'VIEWER'),
+      permisos: u.permisos ?? [],
       telefono: null,
       canSendDocs: true,
     }))
@@ -54,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { email, nombre, tipo_acceso } = body
+    const permisos = sanitizePermisos(body.permisos)
 
     if (!email || !nombre) {
       return NextResponse.json({ error: 'Email y nombre son requeridos' }, { status: 400 })
@@ -103,18 +115,21 @@ export async function POST(request: NextRequest) {
     }
 
     const authUserId = authData.user.id
-    const rol = tipo_acceso === 'ADMIN' ? 'ADMIN' : 'USER'
-    const tipoAcceso = tipo_acceso || 'VIEWER'
+    // Un usuario restringido (con permisos) nunca es admin.
+    const rol = tipo_acceso === 'ADMIN' && permisos.length === 0 ? 'ADMIN' : 'USER'
+    const tipoAcceso = permisos.length > 0 ? 'VIEWER' : tipo_acceso || 'VIEWER'
 
-    // Upsert into public.usuarios using the Supabase Auth UUID
+    // Upsert into public.usuarios using the Supabase Auth UUID.
+    // rol es enum "RolUsuario"; tipo_acceso es varchar (sin cast a enum).
     await prisma.$executeRaw`
-      INSERT INTO usuarios (id, email, nombre, rol, tipo_acceso, "clienteId", activo, "updatedAt")
-      VALUES (${authUserId}::uuid, ${email}, ${nombre}, ${rol}::"Rol", ${tipoAcceso}::"TipoAcceso", ${clienteId}::uuid, true, NOW())
+      INSERT INTO usuarios (id, email, nombre, rol, tipo_acceso, permisos, "clienteId", activo, "updatedAt")
+      VALUES (${authUserId}::uuid, ${email}, ${nombre}, ${rol}::"RolUsuario", ${tipoAcceso}, ${permisos}::text[], ${clienteId}::uuid, true, NOW())
       ON CONFLICT (email) DO UPDATE
         SET id = ${authUserId}::uuid,
             nombre = ${nombre},
-            rol = ${rol}::"Rol",
-            tipo_acceso = ${tipoAcceso}::"TipoAcceso",
+            rol = ${rol}::"RolUsuario",
+            tipo_acceso = ${tipoAcceso},
+            permisos = ${permisos}::text[],
             "clienteId" = ${clienteId}::uuid,
             activo = true,
             "updatedAt" = NOW()
@@ -127,6 +142,7 @@ export async function POST(request: NextRequest) {
         nombre,
         rol,
         tipo_acceso: tipoAcceso,
+        permisos,
         activo: true,
         telefono: null,
         canSendDocs: true,

@@ -1,19 +1,15 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requirePermiso } from '@/lib/auth'
+import { PERMISO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, error } = await requirePermiso(PERMISO.COMPRAS)
     if (error) return error
-
-    const clienteId = user?.clienteId
-    if (!clienteId) {
-      return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
-    }
 
     const { searchParams } = new URL(request.url)
     const desde = searchParams.get('desde')

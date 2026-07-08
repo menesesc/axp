@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
+import { apisPermitidas, paginasPermitidas, landingRestringido } from '@/lib/permisos'
 
 type CookieToSet = { name: string; value: string; options?: Partial<ResponseCookie> }
 
@@ -60,6 +61,37 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Gating de usuarios RESTRINGIDOS (permisos no vacío): solo pueden ver los
+  // módulos habilitados. Este es el candado de servidor; la UI solo acompaña.
+  if (user && !isPublicPath) {
+    const { data: usuario } = await supabase
+      .from('usuarios')
+      .select('permisos')
+      .eq('id', user.id)
+      .single()
+    const permisos = ((usuario?.permisos as string[] | null) ?? []).filter(Boolean)
+
+    if (permisos.length > 0) {
+      if (pathname.startsWith('/api/')) {
+        // Solo las APIs explícitamente habilitadas (match exacto de path;
+        // p.ej. /api/sales/ranking sí, /api/sales/ranking/product no).
+        const ok = apisPermitidas(permisos).includes(pathname)
+        if (!ok) {
+          return NextResponse.json({ error: 'No tienes acceso a esta sección' }, { status: 403 })
+        }
+      } else {
+        const allowed = paginasPermitidas(permisos)
+        const ok = allowed.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+        if (!ok) {
+          const url = request.nextUrl.clone()
+          url.pathname = landingRestringido(permisos)
+          url.search = ''
+          return NextResponse.redirect(url)
+        }
+      }
+    }
   }
 
   return supabaseResponse

@@ -1,6 +1,14 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
+import { PERMISOS_DISPONIBLES } from '@/lib/permisos'
+
+const PERMISOS_VALIDOS = new Set(PERMISOS_DISPONIBLES.map((p) => p.value as string))
+
+function sanitizePermisos(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  return [...new Set(input.filter((p): p is string => typeof p === 'string' && PERMISOS_VALIDOS.has(p)))]
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +40,19 @@ export async function PATCH(
 
     const updates: any = { updatedAt: new Date() }
     if (typeof activo === 'boolean') updates.activo = activo
-    if (tipo_acceso) {
+
+    // Permisos granulares (usuario restringido). Si vienen en el body, mandan:
+    // un usuario con permisos nunca es admin.
+    if (Array.isArray(body.permisos)) {
+      const permisos = sanitizePermisos(body.permisos)
+      updates.permisos = permisos
+      if (permisos.length > 0) {
+        updates.tipo_acceso = 'VIEWER'
+        updates.rol = 'USER'
+      }
+    }
+
+    if (tipo_acceso && updates.tipo_acceso === undefined) {
       updates.tipo_acceso = tipo_acceso
       updates.rol = tipo_acceso === 'ADMIN' ? 'ADMIN' : 'USER'
     }

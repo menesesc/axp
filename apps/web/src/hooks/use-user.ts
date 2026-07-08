@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect } from 'react'
+import { esRestringido, puede, type Permiso } from '@/lib/permisos'
 
 interface Usuario {
   id: string
@@ -10,6 +11,7 @@ interface Usuario {
   nombre: string
   rol: 'SUPERADMIN' | 'ADMIN' | 'USER'
   tipo_acceso: 'ADMIN' | 'VIEWER'
+  permisos: string[]
   clienteId: string | null
   activo: boolean
   clientes: {
@@ -25,6 +27,11 @@ interface UserSession {
   isAdmin: boolean
   isViewer: boolean
   isSuperAdmin: boolean
+  /** Usuario limitado a un subconjunto de módulos (permisos no vacío). */
+  isRestricted: boolean
+  permisos: string[]
+  /** ¿Puede ver el módulo? (no restringidos pueden todo). */
+  can: (modulo: Permiso) => boolean
   clienteId: string | null
   clienteNombre: string | null
   signOut: () => Promise<void>
@@ -68,13 +75,14 @@ export function useUser(): UserSession {
           nombre: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || '',
           rol: 'USER' as const,
           tipo_acceso: 'VIEWER' as const,
+          permisos: [],
           clienteId: null,
           activo: true,
           clientes: null,
         }
       }
 
-      return usuario as Usuario
+      return { ...(usuario as Usuario), permisos: (usuario as { permisos?: string[] }).permisos ?? [] }
     },
     staleTime: 1000 * 60 * 5, // 5 minutos
     retry: false,
@@ -101,12 +109,17 @@ export function useUser(): UserSession {
     window.location.href = '/login'
   }
 
+  const permisos = userData?.permisos ?? []
+
   return {
     user: userData ?? null,
     isLoading,
     isAdmin: userData?.tipo_acceso === 'ADMIN',
     isViewer: userData?.tipo_acceso === 'VIEWER',
     isSuperAdmin: userData?.rol === 'SUPERADMIN',
+    isRestricted: esRestringido(permisos),
+    permisos,
+    can: (modulo: Permiso) => puede(permisos, modulo),
     clienteId: userData?.clienteId ?? null,
     clienteNombre: userData?.clientes?.razonSocial ?? null,
     signOut,
