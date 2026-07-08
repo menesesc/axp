@@ -43,9 +43,9 @@ export async function PATCH(
 
     // Permisos granulares (usuario restringido). Si vienen en el body, mandan:
     // un usuario con permisos nunca es admin.
+    let permisos: string[] | null = null
     if (Array.isArray(body.permisos)) {
-      const permisos = sanitizePermisos(body.permisos)
-      updates.permisos = permisos
+      permisos = sanitizePermisos(body.permisos)
       if (permisos.length > 0) {
         updates.tipo_acceso = 'VIEWER'
         updates.rol = 'USER'
@@ -62,7 +62,14 @@ export async function PATCH(
       data: updates,
     })
 
-    return NextResponse.json({ usuario: updated })
+    // permisos vía SQL directo: no depende de regenerar el cliente Prisma.
+    if (permisos !== null) {
+      await prisma.$executeRaw`
+        UPDATE usuarios SET permisos = ${permisos}::text[], "updatedAt" = NOW() WHERE id = ${id}::uuid
+      `
+    }
+
+    return NextResponse.json({ usuario: { ...updated, permisos: permisos ?? undefined } })
   } catch (error) {
     console.error('Error updating usuario:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

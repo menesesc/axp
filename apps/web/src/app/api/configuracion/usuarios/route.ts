@@ -24,19 +24,23 @@ export async function GET() {
       return NextResponse.json({ error: 'No tienes empresa asignada' }, { status: 403 })
     }
 
-    const usuarios = await prisma.usuarios.findMany({
-      where: { clienteId },
-      select: {
-        id: true,
-        email: true,
-        nombre: true,
-        rol: true,
-        tipo_acceso: true,
-        permisos: true,
-        activo: true,
-      },
-      orderBy: { nombre: 'asc' },
-    })
+    // SQL directo: no depende de que el cliente Prisma conozca `permisos`.
+    const usuarios = await prisma.$queryRaw<
+      Array<{
+        id: string
+        email: string
+        nombre: string
+        rol: string
+        tipo_acceso: string | null
+        permisos: string[] | null
+        activo: boolean
+      }>
+    >`
+      SELECT id, email, nombre, rol::text AS rol, tipo_acceso, permisos, activo
+      FROM usuarios
+      WHERE "clienteId" = ${clienteId}::uuid
+      ORDER BY nombre ASC
+    `
 
     const usuariosWithExtras = usuarios.map((u) => ({
       ...u,
