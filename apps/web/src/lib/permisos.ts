@@ -64,7 +64,7 @@ export function landingRestringido(permisos: string[]): string {
 export function apisPermitidas(permisos: string[]): string[] {
   const apis: string[] = []
   if (permisos.includes(PERMISO.VENTAS_RANKING)) {
-    apis.push('/api/sales/ranking', '/api/sales/ranking/product', '/api/sales/units-daily')
+    apis.push('/api/sales/ranking', '/api/sales/ranking/product', '/api/sales/ranking/spark', '/api/sales/units-daily')
   }
   if (permisos.includes(PERMISO.COMPRAS)) {
     apis.push('/api/informes/compras/precios')

@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
 import { fmtAR, fmtNumAR, fmtFechaShort, fmtFecha, fmtCompactAR, defaultRange, groupByWeekday, useSort, type SortDir } from './shared'
-import { Package, Search, X, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react'
+import { Package, Search, X, ArrowUp, ArrowDown, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -550,8 +550,14 @@ export function ProductDetail({
         </div>
       </div>
 
-      {/* Mini KPIs por turno: total + promedio por día con ventas */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* KPIs: promedio destacado + total y desglose por turno */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <AvgCard
+          promU={promTotalU}
+          promI={promTotalI}
+          dias={totalDias}
+          hideMontos={hideMontos}
+        />
         <MiniKPI
           label="Total"
           unidades={data.totals.unidades}
@@ -689,6 +695,36 @@ export function ProductDetail({
   )
 }
 
+/** Card destacado del promedio diario (headline en unidades/día). */
+function AvgCard({
+  promU,
+  promI,
+  dias,
+  hideMontos = false,
+}: {
+  promU: number
+  promI: number
+  dias: number
+  hideMontos?: boolean
+}) {
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+      <div className="flex items-center gap-1.5">
+        <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+        <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-700/80">Promedio / día</p>
+      </div>
+      <div className="mt-1 flex items-baseline gap-1.5">
+        <span className="text-2xl font-bold text-emerald-700 tabular-nums leading-none">{fmtNumAR(promU, 1)}</span>
+        <span className="text-xs text-emerald-700/70">u/día</span>
+      </div>
+      <p className="text-[11px] text-emerald-700/70 mt-1.5">
+        {!hideMontos && promI > 0 && <span className="font-medium">{fmtAR(promI)}/día · </span>}
+        {fmtNumAR(dias)} día{dias === 1 ? '' : 's'} con venta
+      </p>
+    </div>
+  )
+}
+
 function MiniKPI({
   label,
   unidades,
@@ -711,21 +747,28 @@ function MiniKPI({
     indigo: 'border-indigo-200 bg-indigo-50',
   }
   const cls = color ? colorMap[color] : 'border-slate-200 bg-white'
+  const chipCls = color === 'amber'
+    ? 'bg-amber-100/70 text-amber-800'
+    : color === 'indigo'
+      ? 'bg-indigo-100/70 text-indigo-800'
+      : 'bg-slate-100 text-slate-600'
   const showI = !hideMontos && promI != null
   return (
-    <div className={`rounded border ${cls} px-3 py-2`}>
-      <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
-      <div className="flex items-baseline gap-2 mt-0.5">
-        <span className="text-base font-semibold text-slate-800">{fmtNumAR(unidades)}</span>
+    <div className={`rounded-lg border ${cls} px-3 py-2.5`}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="flex items-baseline gap-1.5 mt-1">
+        <span className="text-xl font-bold text-slate-800 tabular-nums leading-none">{fmtNumAR(unidades)}</span>
         <span className="text-xs text-slate-500">u{hideMontos ? '' : ` · ${fmtAR(importe)}`}</span>
       </div>
       {(promU != null || showI) && (
-        <p className="text-[10px] text-slate-500 mt-1">
-          Prom. {promU != null ? `${fmtNumAR(promU, 1)} u` : ''}
-          {promU != null && showI ? ' · ' : ''}
-          {showI ? fmtAR(promI as number) : ''}
-          <span className="text-slate-400"> /día</span>
-        </p>
+        <div className={`mt-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${chipCls}`}>
+          <span>
+            {promU != null ? `${fmtNumAR(promU, 1)} u` : ''}
+            {promU != null && showI ? ' · ' : ''}
+            {showI ? fmtAR(promI as number) : ''}
+            <span className="opacity-60">/día</span>
+          </span>
+        </div>
       )}
     </div>
   )
