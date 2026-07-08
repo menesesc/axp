@@ -40,21 +40,18 @@ export function puede(permisos: string[] | null | undefined, modulo: Permiso): b
 }
 
 /**
- * Rutas de página que puede abrir un usuario restringido según sus permisos.
- * Cualquier otra ruta de página lo redirige a su landing.
+ * Rutas de página que puede abrir un usuario restringido.
+ * Todo el acceso restringido vive en /panel (shell con tabs Ventas/Compras);
+ * cualquier otra ruta lo redirige a su landing.
  */
 export function paginasPermitidas(permisos: string[]): string[] {
-  const paths: string[] = []
-  if (permisos.includes(PERMISO.VENTAS_RANKING)) paths.push('/ventas')
-  if (permisos.includes(PERMISO.COMPRAS)) paths.push('/informes/compras')
-  return paths
+  if (esRestringido(permisos)) return ['/panel']
+  return []
 }
 
 /** Landing a la que mandamos a un usuario restringido. */
 export function landingRestringido(permisos: string[]): string {
-  if (permisos.includes(PERMISO.VENTAS_RANKING)) return '/ventas'
-  if (permisos.includes(PERMISO.COMPRAS)) return '/informes/compras'
-  return '/login'
+  return esRestringido(permisos) ? '/panel' : '/login'
 }
 
 /**
@@ -62,6 +59,7 @@ export function landingRestringido(permisos: string[]): string {
  * El resto de /api/** le responde 403 desde el middleware (match exacto de path).
  * Nota: /api/sales/ranking y /api/sales/ranking/product están permitidos, pero
  * ambos endpoints eliminan los montos para el usuario restringido (importe = 0).
+ * Compras usa /api/informes/compras/precios (solo precios unitarios, sin totales).
  */
 export function apisPermitidas(permisos: string[]): string[] {
   const apis: string[] = []
@@ -69,7 +67,7 @@ export function apisPermitidas(permisos: string[]): string[] {
     apis.push('/api/sales/ranking', '/api/sales/ranking/product', '/api/sales/units-daily')
   }
   if (permisos.includes(PERMISO.COMPRAS)) {
-    apis.push('/api/informes/compras')
+    apis.push('/api/informes/compras/precios')
   }
   return apis
 }

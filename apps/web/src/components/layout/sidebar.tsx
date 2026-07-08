@@ -334,7 +334,7 @@ export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps)
             <Button
               variant="ghost"
               size="icon"
-              className="fixed top-3 left-3 z-40 bg-white shadow-md border"
+              className="fixed top-3 right-3 z-40 bg-white shadow-md border"
             >
               <Menu className="h-5 w-5" />
             </Button>
