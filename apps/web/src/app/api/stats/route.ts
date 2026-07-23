@@ -32,6 +32,9 @@ export async function GET() {
     // Inicio del mes actual
     const inicioMes = new Date(today.getFullYear(), today.getMonth(), 1)
 
+    // Inicio de la ventana de 12 meses (primer día del mes, 11 meses atrás)
+    const inicio12Meses = new Date(today.getFullYear(), today.getMonth() - 11, 1)
+
     const [
       totalDocumentos,
       totalPendientes,
@@ -47,6 +50,7 @@ export async function GET() {
       montosPorDiaRaw,
       confidenceAvg,
       confidencePorDiaRaw2,
+      montoPorMesRaw,
     ] = await Promise.all([
       // Total documentos
       prisma.documentos.count({
@@ -195,6 +199,18 @@ export async function GET() {
         _avg: { confidenceScore: true },
         orderBy: { fechaEmision: 'asc' },
       }),
+
+      // Importe total de documentos por mes (últimos 12 meses) para el gráfico anual
+      prisma.$queryRaw<Array<{ mes: string; total: number }>>`
+        SELECT
+          TO_CHAR(d."fechaEmision", 'YYYY-MM') as mes,
+          COALESCE(SUM(d.total), 0)::float as total
+        FROM documentos d
+        WHERE d."clienteId" = ${clienteId}::uuid
+          AND d."fechaEmision" >= ${inicio12Meses}
+        GROUP BY mes
+        ORDER BY mes ASC
+      `,
     ])
 
     // Obtener límite de documentos del plan (raw query ya que no está en Prisma)
@@ -337,6 +353,18 @@ export async function GET() {
       .sort((a, b) => b.total - a.total)
       .slice(0, 10)
 
+    // Normalizar importe por mes a los últimos 12 meses (rellenar meses sin datos con 0)
+    const montoPorMesMap = new Map<string, number>()
+    for (const row of montoPorMesRaw) {
+      montoPorMesMap.set(row.mes, Number(row.total) || 0)
+    }
+    const montoPorMes: { mes: string; total: number }[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      montoPorMes.push({ mes: key, total: montoPorMesMap.get(key) || 0 })
+    }
+
     // Calcular documentos restantes del mes
     const documentosMesLimite = suscripcion?.documentos_mes_limite ?? null
     const documentosRestantes = documentosMesLimite !== null
@@ -363,6 +391,7 @@ export async function GET() {
       confidencePromedio,
       confidencePorDia,
       totalesPorProveedor,
+      montoPorMes,
     })
   } catch (error) {
     console.error('Error fetching stats:', error)

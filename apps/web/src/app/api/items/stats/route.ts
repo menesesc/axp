@@ -355,7 +355,55 @@ export async function GET(request: NextRequest) {
       console.error('[stats] priceOverview error:', e)
     }
 
+    // Total comprado CON IVA: suma de los totales de documento (no de items),
+    // sin join a documento_items para no multiplicar el total por cantidad de líneas.
+    let compradoTotal = 0
+    try {
+      const docFilterParts: string[] = []
+      const docParams: any[] = [clienteId]
+      let dpi = 2
+      if (fechaDesde) {
+        docFilterParts.push(`AND d."fechaEmision" >= $${dpi}::date`)
+        docParams.push(fechaDesde)
+        dpi++
+      }
+      if (fechaHasta) {
+        docFilterParts.push(`AND d."fechaEmision" <= $${dpi}::date`)
+        docParams.push(fechaHasta)
+        dpi++
+      }
+      if (proveedorId) {
+        docFilterParts.push(`AND d."proveedorId" = $${dpi}::uuid`)
+        docParams.push(proveedorId)
+        dpi++
+      }
+      // Si hay búsqueda por texto, restringir a documentos con al menos un item que matchea
+      if (q) {
+        for (const term of q.split(',').map((t: string) => t.trim()).filter(Boolean)) {
+          docFilterParts.push(
+            `AND EXISTS (
+               SELECT 1 FROM documento_items di2
+               LEFT JOIN proveedores p2 ON d."proveedorId" = p2.id
+               WHERE di2."documentoId" = d.id
+                 AND (di2.descripcion ILIKE $${dpi} OR p2."razonSocial" ILIKE $${dpi})
+             )`
+          )
+          docParams.push(`%${term}%`)
+          dpi++
+        }
+      }
+      const compradoRaw = await prisma.$queryRawUnsafe<[{ total: number | null }]>(`
+        SELECT COALESCE(SUM(d.total), 0)::float as total
+        FROM documentos d
+        WHERE d."clienteId" = $1::uuid ${docFilterParts.join(' ')}
+      `, ...docParams)
+      compradoTotal = compradoRaw[0]?.total ? Number(compradoRaw[0].total) : 0
+    } catch (e) {
+      console.error('[stats] compradoTotal error:', e)
+    }
+
     return NextResponse.json({
+      compradoTotal,
       byProvider: byProviderRaw.map(row => ({
         proveedorId: row.proveedor_id,
         proveedor: row.proveedor,

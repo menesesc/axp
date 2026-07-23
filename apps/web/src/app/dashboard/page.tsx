@@ -13,6 +13,7 @@ import { ChequesHoyAlert } from '@/components/dashboard/cheques-hoy-alert'
 import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
+import { MonthlyAmountChart } from '@/components/dashboard/monthly-amount-chart'
 import { PurchasingTabContent } from '@/components/dashboard/purchasing-tab'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -167,14 +168,14 @@ export default function Home() {
   const documentosHoy = stats?.documentosHoy || 0
   const documentosEsteMes = stats?.documentosEsteMes || 0
   const documentosMesLimite = stats?.documentosMesLimite ?? null
+  const totalMes = stats?.totalMes || 0
+  const montoPorMes = stats?.montoPorMes || []
   const montoPendiente = paymentStats?.montoPendiente || 0
 
-  // Items data — total comprado en el período seleccionado
-  // (monthlyTrend no tiene LIMIT, a diferencia de byProvider, así que da el total real)
-  const compradoEnPeriodo = (itemStats?.monthlyTrend || []).reduce(
-    (sum: number, m: any) => sum + (m.totalSubtotal || 0),
-    0
-  )
+  // Items data — total comprado en el período seleccionado (CON IVA)
+  // Usa la suma de totales de documento (compradoTotal), no la de subtotales de items,
+  // para que refleje el importe facturado real con impuestos.
+  const compradoEnPeriodo = itemStats?.compradoTotal || 0
   const itemsActivos = itemStats?.topItems?.length || 0
   const alertasPrecios = itemStats?.priceVariation?.length || 0
   const comprasFilterLabel: Record<ComprasQuickFilter, string> = {
@@ -270,9 +271,11 @@ export default function Home() {
               <FinanceKpis
                 confirmados={confirmados}
                 montoPendiente={montoPendiente}
-                proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
+                totalMes={totalMes}
                 isLoading={statsLoading || paymentsLoading}
               />
+
+              <MonthlyAmountChart data={montoPorMes} isLoading={statsLoading} />
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2">

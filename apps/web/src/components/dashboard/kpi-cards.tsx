@@ -2,7 +2,7 @@
 
 import { cn, formatCurrency } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
-import { FileText, Clock, CheckCircle, DollarSign, Sparkles, Users, ShoppingCart, Package, TrendingUp } from 'lucide-react'
+import { FileText, Clock, CheckCircle, DollarSign, Sparkles, ShoppingCart, Package, TrendingUp } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer } from 'recharts'
 
 // ─── Shared KPI Card ───
@@ -152,14 +152,14 @@ export function OperationsKpis({
 interface FinanceKpisProps {
   confirmados: number
   montoPendiente: number
-  proveedoresConSaldo: number
+  totalMes: number
   isLoading?: boolean
 }
 
 export function FinanceKpis({
   confirmados,
   montoPendiente,
-  proveedoresConSaldo,
+  totalMes,
   isLoading,
 }: FinanceKpisProps) {
   return (
@@ -185,10 +185,10 @@ export function FinanceKpis({
       />
 
       <KpiCard
-        label="Proveedores con saldo"
-        value={proveedoresConSaldo.toLocaleString('es-AR')}
-        subtitle="Con deuda activa"
-        icon={Users}
+        label="Documentos del mes"
+        value={formatCurrency(totalMes)}
+        subtitle="Importe emitido este mes"
+        icon={FileText}
         iconBg="bg-blue-50"
         iconColor="text-blue-600"
         isLoading={isLoading}
