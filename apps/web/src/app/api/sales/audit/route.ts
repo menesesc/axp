@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,8 +14,9 @@ export const dynamic = 'force-dynamic'
  *         mozo, sucursal, summary=true|false.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
   if (error) return error
+  const json = importesJson(verImportes)
 
   const sp = request.nextUrl.searchParams
   const from = sp.get('from')
@@ -37,7 +40,7 @@ export async function GET(request: NextRequest) {
   })
   const closureIds = closures.map((c) => c.id)
   if (closureIds.length === 0) {
-    return NextResponse.json({ events: [], totals: {}, byMozo: [], byProducto: [] })
+    return json({ events: [], totals: {}, byMozo: [], byProducto: [] })
   }
 
   const closureById = new Map(closures.map((c) => [c.id, c]))
@@ -99,7 +102,7 @@ export async function GET(request: NextRequest) {
       totals[t.tipo] = { count: t._count, totalMonto: Number(t._sum.monto ?? 0) }
     }
 
-    return NextResponse.json({
+    return json({
       totals,
       descuentosPorMozo: byMozoDescuento.map((g) => ({
         mozo: g.mozo,
@@ -148,7 +151,7 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  return NextResponse.json({
+  return json({
     events: enriched,
     pagination: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
   })

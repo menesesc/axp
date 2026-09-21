@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId, requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { UNIDADES, sameDimension } from '@/lib/conciliacion/units'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,7 @@ async function getInsumo(insumoId: string, clienteId: string) {
 
 /** Productos de venta cuya receta activa usa este insumo (con su cantidad/unidad/merma). */
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
   if (error) return error
 
   const insumo = await getInsumo(params.id, clienteId!)
@@ -57,9 +58,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
  * Body: { productMasterId, cantidad, unidad, mermaPct? }
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const { user, error } = await requireAdmin()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
   if (error) return error
-  const clienteId = user!.clienteId
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
   const insumo = await getInsumo(params.id, clienteId)
@@ -129,9 +129,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 /** Quita este insumo de la receta activa de un producto (?productMasterId=). Solo admin. */
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const { user, error } = await requireAdmin()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
   if (error) return error
-  const clienteId = user!.clienteId
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
   if (!(await getInsumo(params.id, clienteId))) {

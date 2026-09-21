@@ -1,17 +1,19 @@
 import { prisma } from '@/lib/prisma'
-import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { NextResponse, NextRequest } from 'next/server'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json(
+      return json(
         { error: 'No tienes una empresa asignada' },
         { status: 403 }
       )
@@ -402,7 +404,7 @@ export async function GET(request: NextRequest) {
       console.error('[stats] compradoTotal error:', e)
     }
 
-    return NextResponse.json({
+    return json({
       compradoTotal,
       byProvider: byProviderRaw.map(row => ({
         proveedorId: row.proveedor_id,

@@ -1,15 +1,15 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, error } = await requireModulo(MODULO.SISTEMA)
     if (error) return error
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
       return NextResponse.json(
         { error: 'No tienes una empresa asignada' },
@@ -61,10 +61,9 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, error } = await requireModulo(MODULO.SISTEMA, 'edit')
     if (error) return error
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
       return NextResponse.json(
         { error: 'No tienes una empresa asignada' },

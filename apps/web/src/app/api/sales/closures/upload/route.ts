@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { ingestMaxirestPdf } from '@/lib/sales/maxirest-ingest'
 
 export const dynamic = 'force-dynamic'
@@ -10,7 +11,7 @@ export const maxDuration = 60
  * Procesa el cierre forzando el clienteId del usuario (no requiere CUIT match).
  */
 export async function POST(request: NextRequest) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, error } = await requireModulo(MODULO.VENTAS, 'edit')
   if (error) return error
 
   const form = await request.formData()

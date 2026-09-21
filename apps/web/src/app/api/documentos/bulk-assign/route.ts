@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { determineEstadoRevision, calculateMissingFields } from '@/lib/documento-estado'
-import { requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 // POST: Asignar proveedor a múltiples documentos
 export async function POST(request: NextRequest) {
   try {
     // Autenticar usuario (solo admin puede asignar)
-    const { user, error: authError } = await requireAdmin()
+    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (authError) return authError
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
       return NextResponse.json(

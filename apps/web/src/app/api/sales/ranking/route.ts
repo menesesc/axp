@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermiso } from '@/lib/auth'
-import { PERMISO, esRestringido } from '@/lib/permisos'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -16,11 +16,11 @@ const TURNOS_VALIDOS = new Set(['ALMUERZO', 'CENA', 'OTRO'])
  * el importe NUNCA sale del servidor.
  */
 export async function GET(request: NextRequest) {
-  const { user, clienteId, error } = await requirePermiso(PERMISO.VENTAS_RANKING)
+  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
   if (error) return error
 
   // Usuario restringido → sin montos. El importe se anula en la respuesta.
-  const hideMontos = esRestringido(user?.permisos)
+  const hideMontos = !verImportes
 
   const sp = request.nextUrl.searchParams
   const from = sp.get('from')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
  * primero. Soporta ?q= y ?conReceta=true|false.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
   if (error) return error
 
   const sp = request.nextUrl.searchParams

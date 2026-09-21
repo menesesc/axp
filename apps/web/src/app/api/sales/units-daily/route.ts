@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermiso } from '@/lib/auth'
-import { PERMISO } from '@/lib/permisos'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +20,7 @@ interface Row {
  * Filtros: from, to, turno, rubro, sucursal.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requirePermiso(PERMISO.VENTAS_RANKING)
+  const { clienteId, error } = await requireModulo(MODULO.VENTAS)
   if (error) return error
 
   const sp = request.nextUrl.searchParams

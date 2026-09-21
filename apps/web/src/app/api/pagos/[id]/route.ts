@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { sendPaymentOrderEmail } from '@/lib/email/send-payment-order'
@@ -33,7 +34,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await getAuthUser()
+    const { user, error } = await requireModulo(MODULO.FINANZAS)
     if (error) return error
     if (!user?.clienteId) {
       return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -124,7 +125,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireAdmin()
+  const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -312,7 +313,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireAdmin()
+  const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

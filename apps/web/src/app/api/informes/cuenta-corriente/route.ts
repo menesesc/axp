@@ -1,17 +1,19 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse, NextRequest } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.INFORMES)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
+      return json({ error: 'No tienes una empresa asignada' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
     const proveedorId = searchParams.get('proveedorId')
 
     if (!desde || !hasta) {
-      return NextResponse.json({ error: 'Parámetros desde y hasta son requeridos' }, { status: 400 })
+      return json({ error: 'Parámetros desde y hasta son requeridos' }, { status: 400 })
     }
 
     const fechaDesde = new Date(`${desde}T00:00:00-03:00`)
@@ -132,7 +134,7 @@ export async function GET(request: NextRequest) {
 
       const saldoInicial = saldoAnterior[0]?.saldo || 0
 
-      return NextResponse.json({
+      return json({
         proveedor: proveedor ? { razonSocial: proveedor.razonSocial, cuit: proveedor.cuit } : null,
         saldoInicial,
         movimientos,
@@ -182,7 +184,7 @@ export async function GET(request: NextRequest) {
       ORDER BY saldo DESC
     `
 
-    return NextResponse.json({ saldos })
+    return json({ saldos })
   } catch (error) {
     console.error('Error fetching cuenta corriente:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,10 +67,9 @@ function getVal(row: ImportRow, colName: string | undefined): string | undefined
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, error } = await requireModulo(MODULO.VENTAS, 'edit')
     if (error) return error
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
       return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
     }

@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,13 +12,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
     if (error) return error
+    const json = importesJson(verImportes)
 
     const { id } = await params
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json({ error: 'No tienes empresa asignada' }, { status: 403 })
+      return json({ error: 'No tienes empresa asignada' }, { status: 403 })
     }
 
     // Verificar que el documento pertenece al cliente
@@ -26,7 +28,7 @@ export async function GET(
     })
 
     if (!documento) {
-      return NextResponse.json({ error: 'Documento no encontrado' }, { status: 404 })
+      return json({ error: 'Documento no encontrado' }, { status: 404 })
     }
 
     const anotaciones = await prisma.documento_anotaciones.findMany({
@@ -39,7 +41,7 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json({
+    return json({
       anotaciones: anotaciones.map(a => ({
         id: a.id,
         texto: a.texto,
@@ -59,11 +61,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await getAuthUser()
+    const { user, clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (error) return error
 
     const { id } = await params
-    const clienteId = user?.clienteId
     const usuarioId = user?.id
 
     if (!clienteId || !usuarioId) {
@@ -120,11 +121,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await getAuthUser()
+    const { user, clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (error) return error
 
     const { id: documentoId } = await params
-    const clienteId = user?.clienteId
     const usuarioId = user?.id
 
     if (!clienteId) {

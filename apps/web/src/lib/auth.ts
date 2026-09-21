@@ -1,8 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { puede, type Permiso } from '@/lib/permisos'
+import {
+  cumple,
+  veImportes,
+  type Modulo,
+  type Nivel,
+} from '@/lib/permisos'
 
-interface AuthUser {
+export interface AuthUser {
   id: string
   email: string
   nombre: string
@@ -10,6 +15,7 @@ interface AuthUser {
   tipo_acceso: 'ADMIN' | 'VIEWER'
   permisos: string[]
   clienteId: string | null
+  activo: boolean
 }
 
 interface AuthResult {
@@ -54,6 +60,7 @@ export async function getAuthUser(): Promise<AuthResult> {
         tipo_acceso: 'VIEWER',
         permisos: [],
         clienteId: null,
+        activo: true,
       },
       error: null,
     }
@@ -88,22 +95,62 @@ export async function requireAdmin(): Promise<AuthResult> {
   return result
 }
 
-/**
- * Verifica que el usuario tiene permiso para un módulo dado.
- * Usuarios NO restringidos (permisos vacío) pasan siempre; los restringidos
- * pasan solo si el módulo está en su lista. Devuelve también clienteId.
- */
-export async function requirePermiso(
-  modulo: Permiso
-): Promise<AuthResult & { clienteId: string | null }> {
-  const result = await getAuthUser()
-  if (result.error) return { ...result, clienteId: null }
+/** ¿El usuario tiene acceso total? Los admin no pasan por la matriz. */
+export function esAdminUsuario(user: Pick<AuthUser, 'rol' | 'tipo_acceso'> | null): boolean {
+  if (!user) return false
+  return user.tipo_acceso === 'ADMIN' || user.rol === 'ADMIN' || user.rol === 'SUPERADMIN'
+}
 
-  if (!result.user || !puede(result.user.permisos, modulo)) {
+export interface ModuloResult extends AuthResult {
+  clienteId: string | null
+  /** ¿Puede ver los importes en pesos de este módulo? */
+  verImportes: boolean
+}
+
+/**
+ * Verifica que el usuario alcanza `minimo` en `modulo` y que tiene empresa.
+ * Es el guard que usan las rutas: duplica a propósito el chequeo del
+ * middleware, para que una ruta siga protegida si el matcher cambia.
+ *
+ *   const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
+ *   if (error) return error
+ */
+export async function requireModulo(
+  modulo: Modulo,
+  minimo: Nivel = 'view'
+): Promise<ModuloResult> {
+  const result = await getAuthUser()
+  if (result.error) return { ...result, clienteId: null, verImportes: false }
+
+  // Una cuenta dada de baja no entra a ningún lado, tenga los permisos que tenga.
+  if (result.user && result.user.activo === false) {
     return {
       user: null,
       clienteId: null,
-      error: NextResponse.json({ error: 'No tienes acceso a esta sección' }, { status: 403 }),
+      verImportes: false,
+      error: NextResponse.json({ error: 'Tu cuenta está desactivada' }, { status: 403 }),
+    }
+  }
+
+  const sujeto = {
+    esAdmin: esAdminUsuario(result.user),
+    permisos: result.user?.permisos,
+  }
+
+  if (!result.user || !cumple(sujeto, modulo, minimo)) {
+    return {
+      user: null,
+      clienteId: null,
+      verImportes: false,
+      error: NextResponse.json(
+        {
+          error:
+            minimo === 'edit'
+              ? 'No tenés permiso para modificar esta sección'
+              : 'No tenés acceso a esta sección',
+        },
+        { status: 403 }
+      ),
     }
   }
 
@@ -111,11 +158,16 @@ export async function requirePermiso(
     return {
       user: result.user,
       clienteId: null,
+      verImportes: false,
       error: NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 }),
     }
   }
 
-  return { ...result, clienteId: result.user.clienteId }
+  return {
+    ...result,
+    clienteId: result.user.clienteId,
+    verImportes: veImportes(sujeto, modulo),
+  }
 }
 
 /**

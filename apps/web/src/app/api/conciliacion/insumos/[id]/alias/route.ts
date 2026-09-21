@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId, requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,7 @@ async function ownsInsumo(insumoId: string, clienteId: string) {
 
 /** Lista los alias de un insumo. */
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
   if (error) return error
 
   if (!(await ownsInsumo(params.id, clienteId!))) {
@@ -33,9 +34,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
 /** Crea un alias para el insumo. Solo admin. */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const { user, error } = await requireAdmin()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
   if (error) return error
-  const clienteId = user!.clienteId
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
   if (!(await ownsInsumo(params.id, clienteId))) {
@@ -69,9 +69,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 /** Borra un alias (?aliasId=). Solo admin. */
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const { user, error } = await requireAdmin()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
   if (error) return error
-  const clienteId = user!.clienteId
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
   if (!(await ownsInsumo(params.id, clienteId))) {

@@ -1,14 +1,14 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
-import { requirePermiso } from '@/lib/auth'
-import { PERMISO } from '@/lib/permisos'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { clienteId, error } = await requirePermiso(PERMISO.COMPRAS)
+    const { clienteId, error } = await requireModulo(MODULO.INFORMES)
     if (error) return error
 
     const { searchParams } = new URL(request.url)

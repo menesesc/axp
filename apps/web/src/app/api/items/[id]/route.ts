@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,11 +11,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await getAuthUser()
+    const { user, clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (error) return error
 
     const { id } = await params
-    const clienteId = user?.clienteId
     const usuarioId = user?.id
 
     if (!clienteId || !usuarioId) {

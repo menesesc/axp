@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 
 const VALID_TIPOS = ['FACTURA', 'REMITO', 'NOTA_CREDITO'] as const
 
 // POST: Cambiar tipo de documento a múltiples documentos
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError } = await requireAdmin()
+    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (authError) return authError
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
       return NextResponse.json(
         { error: 'No tienes una empresa asignada' },

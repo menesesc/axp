@@ -1,19 +1,21 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 import { getAnthropicClient, AI_MODEL } from '@/lib/ai/anthropic-client'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.INFORMES)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
+      return json({ error: 'No tienes una empresa asignada' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -192,7 +194,7 @@ Responde SOLO con un JSON válido (sin markdown ni backticks) con esta estructur
       // Continúa sin análisis IA
     }
 
-    return NextResponse.json(responseData)
+    return json(responseData)
   } catch (error) {
     console.error('Error fetching proyecciones:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

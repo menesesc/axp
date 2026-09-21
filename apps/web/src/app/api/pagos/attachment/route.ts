@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { prisma } from '@/lib/prisma'
@@ -21,7 +22,7 @@ const r2Client = R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { user, error } = await requireModulo(MODULO.FINANZAS)
     if (error) return error
 
     if (!user?.clienteId) {

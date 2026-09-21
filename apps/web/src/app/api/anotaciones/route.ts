@@ -1,18 +1,20 @@
 import { prisma } from '@/lib/prisma'
-import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { NextResponse, NextRequest } from 'next/server'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 // GET - Listar todas las anotaciones del cliente
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
+      return json({ error: 'No tienes una empresa asignada' }, { status: 403 })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
       where: { documentos: { clienteId } },
     })
 
-    return NextResponse.json({
+    return json({
       anotaciones: anotaciones.map(a => ({
         id: a.id,
         texto: a.texto,

@@ -1,14 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
-import { PERMISOS_DISPONIBLES } from '@/lib/permisos'
-
-const PERMISOS_VALIDOS = new Set(PERMISOS_DISPONIBLES.map((p) => p.value as string))
-
-function sanitizePermisos(input: unknown): string[] {
-  if (!Array.isArray(input)) return []
-  return [...new Set(input.filter((p): p is string => typeof p === 'string' && PERMISOS_VALIDOS.has(p)))]
-}
+import { sanitizePermisos } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,20 +34,25 @@ export async function PATCH(
     const updates: any = { updatedAt: new Date() }
     if (typeof activo === 'boolean') updates.activo = activo
 
-    // Permisos granulares (usuario restringido). Si vienen en el body, mandan:
-    // un usuario con permisos nunca es admin.
+    // Matriz de permisos por módulo. Los admin no la usan: tienen acceso total,
+    // así que al promover a admin se limpia.
     let permisos: string[] | null = null
-    if (Array.isArray(body.permisos)) {
-      permisos = sanitizePermisos(body.permisos)
-      if (permisos.length > 0) {
-        updates.tipo_acceso = 'VIEWER'
-        updates.rol = 'USER'
-      }
+    if (Array.isArray(body.permisos)) permisos = sanitizePermisos(body.permisos)
+
+    if (tipo_acceso) {
+      const esAdmin = tipo_acceso === 'ADMIN'
+      updates.tipo_acceso = esAdmin ? 'ADMIN' : 'VIEWER'
+      updates.rol = esAdmin ? 'ADMIN' : 'USER'
+      if (esAdmin) permisos = []
     }
 
-    if (tipo_acceso && updates.tipo_acceso === undefined) {
-      updates.tipo_acceso = tipo_acceso
-      updates.rol = tipo_acceso === 'ADMIN' ? 'ADMIN' : 'USER'
+    // Nadie puede sacarse a sí mismo el acceso de administrador: evita que el
+    // último admin de la empresa se deje afuera de Configuración.
+    if (targetUser.id === user?.id && updates.rol === 'USER') {
+      return NextResponse.json(
+        { error: 'No podés quitarte a vos mismo el acceso de administrador' },
+        { status: 400 }
+      )
     }
 
     const updated = await prisma.usuarios.update({

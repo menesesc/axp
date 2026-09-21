@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
   if (error) return error
+  const json = importesJson(verImportes)
 
   const closure = await prisma.sales_closures.findFirst({
     where: { id: params.id, clienteId: clienteId! },
@@ -31,14 +34,14 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   })
 
   if (!closure) {
-    return NextResponse.json({ error: 'Cierre no encontrado' }, { status: 404 })
+    return json({ error: 'Cierre no encontrado' }, { status: 404 })
   }
 
-  return NextResponse.json({ closure })
+  return json({ closure })
 }
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
-  const { clienteId, error, user } = await requireClienteId()
+  const { user, clienteId, error } = await requireModulo(MODULO.VENTAS, 'edit')
   if (error) return error
   if (user?.tipo_acceso !== 'ADMIN') {
     return NextResponse.json({ error: 'Requiere rol admin' }, { status: 403 })

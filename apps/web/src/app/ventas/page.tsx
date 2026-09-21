@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useUser } from '@/hooks/use-user'
+import { MODULO } from '@/lib/permisos'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClosuresTab } from '@/components/sales/closures-tab'
 import { RankingDashboard } from '@/components/sales/ranking-dashboard'
@@ -13,7 +14,7 @@ import { AuditTab } from '@/components/sales/audit-tab'
 import { CsvTab } from '@/components/sales/csv-tab'
 
 export default function VentasPage() {
-  const { clienteId, isLoading } = useUser()
+  const { clienteId, isLoading, canSeeImportes } = useUser()
   if (isLoading) return null
 
   return (
@@ -42,7 +43,7 @@ export default function VentasPage() {
             <ClosuresTab />
           </TabsContent>
           <TabsContent value="ranking" className="mt-6">
-            <RankingDashboard hideMontos={false} />
+            <RankingDashboard hideMontos={!canSeeImportes(MODULO.VENTAS)} />
           </TabsContent>
           <TabsContent value="mozos" className="mt-6">
             <WaitersTab />

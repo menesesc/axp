@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { reparseClosure } from '@/lib/sales/maxirest-ingest'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +17,7 @@ export const maxDuration = 300 // 5 min para procesar muchos cierres
  * Solo admins (tipo_acceso === 'ADMIN').
  */
 export async function POST() {
-  const { clienteId, user, error } = await requireClienteId()
+  const { user, clienteId, error } = await requireModulo(MODULO.VENTAS, 'edit')
   if (error) return error
   if (user?.tipo_acceso !== 'ADMIN') {
     return NextResponse.json({ error: 'Requiere rol admin' }, { status: 403 })

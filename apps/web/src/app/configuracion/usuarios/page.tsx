@@ -22,8 +22,8 @@ import {
 } from '@/components/ui/dialog'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
-import { UserPlus, Mail, Phone, Shield, Eye, Loader2, Trash2, Check, X, Pencil, Lock } from 'lucide-react'
-import { PERMISOS_DISPONIBLES } from '@/lib/permisos'
+import { UserPlus, Mail, Phone, Shield, Eye, Loader2, Trash2, Check, X, Pencil } from 'lucide-react'
+import { PermisosMatriz, PermisosResumen } from '@/components/configuracion/permisos-matriz'
 
 interface Usuario {
   id: string
@@ -35,10 +35,6 @@ interface Usuario {
   telefono: string | null
   activo: boolean
   canSendDocs: boolean
-}
-
-function togglePermiso(list: string[], value: string): string[] {
-  return list.includes(value) ? list.filter((p) => p !== value) : [...list, value]
 }
 
 export default function UsuariosPage() {
@@ -198,7 +194,6 @@ export default function UsuariosPage() {
                   <Select
                     value={newUser.tipo_acceso}
                     onValueChange={(v) => setNewUser({ ...newUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })}
-                    disabled={newUser.permisos.length > 0}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -207,7 +202,7 @@ export default function UsuariosPage() {
                       <SelectItem value="VIEWER">
                         <div className="flex items-center gap-2">
                           <Eye className="h-4 w-4" />
-                          <span>Solo lectura</span>
+                          <span>Permisos por sección</span>
                         </div>
                       </SelectItem>
                       <SelectItem value="ADMIN">
@@ -219,30 +214,16 @@ export default function UsuariosPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Lock className="h-3.5 w-3.5 text-slate-500" />
-                    <span className="text-sm font-medium text-slate-700">Acceso restringido</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mb-2">
-                    Si marcás módulos, el usuario SOLO verá eso (solo lectura). Dejá todo sin marcar para acceso normal.
+                {newUser.tipo_acceso === 'ADMIN' ? (
+                  <p className="rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2 text-xs text-purple-700">
+                    Un administrador accede a todas las secciones, incluida Configuración.
                   </p>
-                  <div className="space-y-1.5">
-                    {PERMISOS_DISPONIBLES.map((p) => (
-                      <label key={p.value} className="flex items-start gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newUser.permisos.includes(p.value)}
-                          onChange={() => setNewUser({ ...newUser, permisos: togglePermiso(newUser.permisos, p.value) })}
-                          className="mt-0.5 rounded border-slate-300"
-                        />
-                        <span className="text-sm text-slate-700">
-                          {p.label} <span className="text-slate-400">— {p.hint}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                ) : (
+                  <PermisosMatriz
+                    permisos={newUser.permisos}
+                    onChange={(permisos) => setNewUser({ ...newUser, permisos })}
+                  />
+                )}
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="ghost" onClick={() => setIsAddingUser(false)}>
                     Cancelar
@@ -295,7 +276,6 @@ export default function UsuariosPage() {
                   <Select
                     value={editingUser.tipo_acceso}
                     onValueChange={(v) => setEditingUser({ ...editingUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })}
-                    disabled={(editingUser.permisos ?? []).length > 0}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -304,7 +284,7 @@ export default function UsuariosPage() {
                       <SelectItem value="VIEWER">
                         <div className="flex items-center gap-2">
                           <Eye className="h-4 w-4" />
-                          <span>Solo lectura</span>
+                          <span>Permisos por sección</span>
                         </div>
                       </SelectItem>
                       <SelectItem value="ADMIN">
@@ -316,30 +296,16 @@ export default function UsuariosPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Lock className="h-3.5 w-3.5 text-slate-500" />
-                    <span className="text-sm font-medium text-slate-700">Acceso restringido</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mb-2">
-                    Si marcás módulos, el usuario SOLO verá eso (solo lectura).
+                {editingUser.tipo_acceso === 'ADMIN' ? (
+                  <p className="rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2 text-xs text-purple-700">
+                    Un administrador accede a todas las secciones, incluida Configuración.
                   </p>
-                  <div className="space-y-1.5">
-                    {PERMISOS_DISPONIBLES.map((p) => (
-                      <label key={p.value} className="flex items-start gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={(editingUser.permisos ?? []).includes(p.value)}
-                          onChange={() => setEditingUser({ ...editingUser, permisos: togglePermiso(editingUser.permisos ?? [], p.value) })}
-                          className="mt-0.5 rounded border-slate-300"
-                        />
-                        <span className="text-sm text-slate-700">
-                          {p.label} <span className="text-slate-400">— {p.hint}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                ) : (
+                  <PermisosMatriz
+                    permisos={editingUser.permisos ?? []}
+                    onChange={(permisos) => setEditingUser({ ...editingUser, permisos })}
+                  />
+                )}
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-slate-700">
                     Estado
@@ -419,29 +385,12 @@ export default function UsuariosPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {(usuario.permisos ?? []).length > 0 ? (
-                        <div className="inline-flex flex-col items-center gap-0.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-                            <Lock className="h-3 w-3" /> Restringido
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {(usuario.permisos ?? [])
-                              .map((p) => PERMISOS_DISPONIBLES.find((d) => d.value === p)?.label ?? p)
-                              .join(' · ')}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          usuario.tipo_acceso === 'ADMIN'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {usuario.tipo_acceso === 'ADMIN' ? (
-                            <><Shield className="h-3 w-3" /> Admin</>
-                          ) : (
-                            <><Eye className="h-3 w-3" /> Lectura</>
-                          )}
+                      {usuario.tipo_acceso === 'ADMIN' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                          <Shield className="h-3 w-3" /> Admin
                         </span>
+                      ) : (
+                        <PermisosResumen permisos={usuario.permisos ?? []} />
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">

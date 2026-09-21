@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { defaultRange, ESTADOS_COMPRA } from '../../../_range'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic'
  * Query: ?from=&to=
  */
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
   if (error) return error
 
   const insumo = await prisma.insumos.findFirst({

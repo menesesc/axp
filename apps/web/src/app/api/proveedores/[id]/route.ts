@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser, requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -18,10 +20,11 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await getAuthUser()
+  const { user, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
   if (error) return error
+  const json = importesJson(verImportes)
   if (!user?.clienteId) {
-    return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
+    return json({ error: 'Sin empresa asignada' }, { status: 403 })
   }
 
   const { id } = await params
@@ -39,10 +42,10 @@ export async function GET(
   })
 
   if (!proveedor) {
-    return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 404 })
+    return json({ error: 'Proveedor no encontrado' }, { status: 404 })
   }
 
-  return NextResponse.json({
+  return json({
     proveedor: {
       ...proveedor,
       documentosCount: proveedor._count.documentos,
@@ -55,7 +58,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireAdmin()
+  const { user, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -161,7 +164,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireAdmin()
+  const { user, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

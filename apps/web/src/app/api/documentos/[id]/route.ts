@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAuthUser, requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
@@ -27,13 +29,13 @@ export async function GET(
 ) {
   try {
     // Verificar autenticación
-    const { user, error: authError } = await getAuthUser()
+    const { clienteId, verImportes, error: authError } = await requireModulo(MODULO.DOCUMENTOS)
     if (authError) return authError
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
-      return NextResponse.json(
+      return json(
         { error: 'No tienes una empresa asignada' },
         { status: 403 }
       )
@@ -70,12 +72,12 @@ export async function GET(
     })
 
     if (!documento) {
-      return NextResponse.json({ error: 'Documento not found' }, { status: 404 })
+      return json({ error: 'Documento not found' }, { status: 404 })
     }
 
     // Verificar que el documento pertenece al cliente del usuario
     if (documento.clienteId !== clienteId) {
-      return NextResponse.json(
+      return json(
         { error: 'No tienes acceso a este documento' },
         { status: 403 }
       )
@@ -102,7 +104,7 @@ export async function GET(
       }).catch(err => console.error('Error auto-healing estadoRevision:', err))
     }
 
-    return NextResponse.json({
+    return json({
       documento: {
         ...documento,
         missingFields: actualMissing,
@@ -126,10 +128,9 @@ export async function PATCH(
 ) {
   try {
     // Requiere permisos de administrador
-    const { user, error: authError } = await requireAdmin()
+    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (authError) return authError
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
       return NextResponse.json(
@@ -328,10 +329,9 @@ export async function DELETE(
 ) {
   try {
     // Requiere permisos de administrador
-    const { user, error: authError } = await requireAdmin()
+    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (authError) return authError
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
       return NextResponse.json(

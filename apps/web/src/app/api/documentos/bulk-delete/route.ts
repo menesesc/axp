@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 // Configurar cliente R2 para eliminar archivos
@@ -23,10 +24,9 @@ const r2Client = R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
 export async function POST(request: NextRequest) {
   try {
     // Requiere permisos de administrador para eliminar
-    const { user, error: authError } = await requireAdmin()
+    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (authError) return authError
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
       return NextResponse.json(

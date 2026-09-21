@@ -1,17 +1,19 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse, NextRequest } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.INFORMES)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
+      return json({ error: 'No tienes una empresa asignada' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -19,7 +21,7 @@ export async function GET(request: NextRequest) {
     const hasta = searchParams.get('hasta')
 
     if (!desde || !hasta) {
-      return NextResponse.json({ error: 'Parámetros desde y hasta son requeridos' }, { status: 400 })
+      return json({ error: 'Parámetros desde y hasta son requeridos' }, { status: 400 })
     }
 
     const fechaDesde = new Date(`${desde}T00:00:00-03:00`)
@@ -244,7 +246,7 @@ export async function GET(request: NextRequest) {
     const alertasWarning = alertasPrecios.filter(a => a.variacion_pct >= 50 && a.variacion_pct < 100)
     const alertasInfo = alertasPrecios.filter(a => a.variacion_pct >= 30 && a.variacion_pct < 50)
 
-    return NextResponse.json({
+    return json({
       kpis: {
         totalFacturado: currentKpis.total_facturado,
         totalPagado: currentKpis.total_pagado,

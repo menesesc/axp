@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { UNIDADES } from '@/lib/conciliacion/units'
 
 export const dynamic = 'force-dynamic'
 
 /** Edita un insumo. Solo admin. */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const { user, error } = await requireAdmin()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
   if (error) return error
-  const clienteId = user!.clienteId
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
   const existing = await prisma.insumos.findFirst({ where: { id: params.id, clienteId } })
@@ -47,9 +47,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 /** Borra un insumo (alias en cascade; recipe_items quedan con insumoId=null). Solo admin. */
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
-  const { user, error } = await requireAdmin()
+  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
   if (error) return error
-  const clienteId = user!.clienteId
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
   const existing = await prisma.insumos.findFirst({ where: { id: params.id, clienteId } })

@@ -1,17 +1,20 @@
-import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
     if (!clienteId) {
-      return NextResponse.json(
+      return json(
         { error: 'No tienes una empresa asignada' },
         { status: 403 }
       )
@@ -91,7 +94,7 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ proveedores })
+    return json({ proveedores })
   } catch (error) {
     console.error('Error fetching deuda proveedores:', error)
     return NextResponse.json(

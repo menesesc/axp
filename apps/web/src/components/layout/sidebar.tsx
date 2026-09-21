@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useUser } from '@/hooks/use-user'
 import { useSubscription } from '@/hooks/use-subscription'
 import { cn } from '@/lib/utils'
-import { paginasPermitidas } from '@/lib/permisos'
+import { esRutaComun, moduloDeRuta, type Modulo, type Nivel } from '@/lib/permisos'
 import {
   LayoutDashboard,
   FileText,
@@ -44,8 +44,11 @@ interface NavItem {
   badge?: boolean
   logsBadge?: boolean
   annotationsBadge?: boolean
-  adminOnly?: boolean
-  viewerHidden?: boolean
+  /**
+   * Nivel mínimo en el módulo de la ruta para ver el ítem. Por defecto 'view':
+   * el módulo al que pertenece el href se resuelve solo (ver MODULOS).
+   */
+  minimo?: Nivel
 }
 
 interface NavSection {
@@ -64,9 +67,9 @@ const navigationSections: NavSection[] = [
     title: 'Documentos',
     items: [
       { name: 'Documentos', href: '/documentos', icon: FileText, badge: true },
-      { name: 'Items', href: '/items', icon: Package, viewerHidden: true },
-      { name: 'Proveedores', href: '/proveedores', icon: Users, viewerHidden: true },
-      { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true, viewerHidden: true },
+      { name: 'Items', href: '/items', icon: Package },
+      { name: 'Proveedores', href: '/proveedores', icon: Users },
+      { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true },
     ],
   },
   {
@@ -78,15 +81,15 @@ const navigationSections: NavSection[] = [
   {
     title: 'Conciliación',
     items: [
-      { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot, viewerHidden: true },
+      { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot },
       { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
     ],
   },
   {
     title: 'Finanzas',
     items: [
-      { name: 'Pagos', href: '/pagos', icon: CreditCard, viewerHidden: true },
-      { name: 'Calendario', href: '/finanzas', icon: CalendarDays, viewerHidden: true },
+      { name: 'Pagos', href: '/pagos', icon: CreditCard },
+      { name: 'Calendario', href: '/finanzas', icon: CalendarDays },
       { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
     ],
   },
@@ -104,16 +107,16 @@ const navigationSections: NavSection[] = [
   {
     title: 'Sistema',
     items: [
-      { name: 'Procesamiento', href: '/procesamiento', icon: Activity, logsBadge: true, viewerHidden: true },
+      { name: 'Procesamiento', href: '/procesamiento', icon: Activity, logsBadge: true },
     ],
   },
   {
     title: 'Configuración',
     items: [
-      { name: 'Empresa', href: '/configuracion/empresa', icon: Building2, adminOnly: true },
-      { name: 'Usuarios', href: '/configuracion/usuarios', icon: UserCog, adminOnly: true },
-      { name: 'Canales', href: '/configuracion/canales', icon: Mail, adminOnly: true },
-      { name: 'Informes por mail', href: '/configuracion/informes', icon: MailPlus, adminOnly: true },
+      { name: 'Empresa', href: '/configuracion/empresa', icon: Building2 },
+      { name: 'Usuarios', href: '/configuracion/usuarios', icon: UserCog },
+      { name: 'Canales', href: '/configuracion/canales', icon: Mail },
+      { name: 'Informes por mail', href: '/configuracion/informes', icon: MailPlus },
       { name: 'Mi Plan', href: '/configuracion/plan', icon: Sparkles },
     ],
   },
@@ -123,8 +126,8 @@ interface SidebarContentProps {
   pathname: string
   user: { nombre?: string } | null
   isAdmin: boolean
-  isRestricted?: boolean
-  permisos?: string[]
+  can: (modulo: Modulo) => boolean
+  canEdit: (modulo: Modulo) => boolean
   subscription: { plan_nombre?: string } | null
   signOut: () => void
   pendingCount?: number
@@ -137,8 +140,8 @@ function SidebarContent({
   pathname,
   user,
   isAdmin,
-  isRestricted = false,
-  permisos = [],
+  can,
+  canEdit,
   subscription,
   signOut,
   pendingCount = 0,
@@ -146,7 +149,14 @@ function SidebarContent({
   collapsed = false,
   onCollapse,
 }: SidebarContentProps) {
-  const allowedHrefs = isRestricted ? new Set(paginasPermitidas(permisos)) : null
+  /** Un ítem se ve si el usuario alcanza el nivel pedido en el módulo del href. */
+  const puedeVerItem = (item: NavItem) => {
+    if (esRutaComun(item.href)) return true
+    const modulo = moduloDeRuta(item.href)
+    if (!modulo) return false
+    return item.minimo === 'edit' ? canEdit(modulo) : can(modulo)
+  }
+
   return (
     <aside
       className={cn(
@@ -179,12 +189,8 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto scrollbar-hide min-h-0">
         {navigationSections.map((section, sectionIndex) => {
-          // Filter items based on role access. Usuarios restringidos: solo los
-          // módulos habilitados por sus permisos.
-          const visibleItems = section.items.filter((item) => {
-            if (allowedHrefs) return allowedHrefs.has(item.href)
-            return (!item.adminOnly || isAdmin) && (!item.viewerHidden || isAdmin)
-          })
+          // Cada ítem se filtra por la matriz de permisos del usuario.
+          const visibleItems = section.items.filter(puedeVerItem)
 
           if (visibleItems.length === 0) return null
 
@@ -277,7 +283,7 @@ function SidebarContent({
                 {user?.nombre?.split(' ')[0]}
               </p>
               <p className="text-xs text-slate-500">
-                {isAdmin ? 'Admin' : isRestricted ? 'Acceso limitado' : 'Lectura'}
+                {isAdmin ? 'Admin' : 'Acceso limitado'}
               </p>
             </div>
           )}
@@ -304,7 +310,7 @@ interface SidebarProps {
 
 export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps) {
   const pathname = usePathname()
-  const { user, signOut, isAdmin, isRestricted, permisos } = useUser()
+  const { user, signOut, isAdmin, can, canEdit } = useUser()
   const { subscription } = useSubscription()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -316,8 +322,8 @@ export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps)
           pathname={pathname}
           user={user}
           isAdmin={isAdmin}
-          isRestricted={isRestricted}
-          permisos={permisos}
+          can={can}
+          canEdit={canEdit}
           subscription={subscription}
           signOut={signOut}
           pendingCount={pendingCount}
@@ -344,8 +350,8 @@ export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps)
               pathname={pathname}
               user={user}
               isAdmin={isAdmin}
-              isRestricted={isRestricted}
-              permisos={permisos}
+              can={can}
+              canEdit={canEdit}
               subscription={subscription}
               signOut={signOut}
               pendingCount={pendingCount}

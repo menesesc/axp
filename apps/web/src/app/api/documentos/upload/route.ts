@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { uploadToR2 } from '@/lib/r2/client'
 import { PDFDocument } from 'pdf-lib'
@@ -19,7 +20,7 @@ const ALLOWED_TYPES = [
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await requireAdmin()
+    const { user, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (error) return error
     if (!user?.clienteId) {
       return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

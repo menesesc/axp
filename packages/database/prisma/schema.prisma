@@ -211,9 +211,13 @@ model usuarios {
   nombre                String                  @db.VarChar(255)
   rol                   RolUsuario
   tipo_acceso           String?                 @default("VIEWER") @db.VarChar(255)
-  // Permisos granulares para usuarios restringidos. Vacío = sin restricción
-  // (ADMIN/VIEWER conservan su comportamiento). No vacío = el usuario SOLO ve
-  // los módulos listados. Valores: "ventas.ranking", "compras".
+  // Matriz de permisos por módulo, para usuarios no administradores.
+  // Entradas: "<modulo>:view" | "<modulo>:edit" (nivel de acceso) y
+  // "<modulo>:importes" (ve los montos en pesos; sin ella, solo cantidades).
+  // Módulos: dashboard, documentos, ventas, conciliacion, finanzas, informes,
+  // sistema. Configuración es solo para admin y no se guarda acá.
+  // Los admin tienen acceso total y llevan el array vacío.
+  // Ver apps/web/src/lib/permisos.ts y la migración manual_permisos_granulares.sql.
   permisos              String[]                @default([])
   clienteId             String?                 @db.Uuid
   activo                Boolean                 @default(true)

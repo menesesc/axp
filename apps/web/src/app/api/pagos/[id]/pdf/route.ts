@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { generatePaymentOrderPdf, formatNumeroOrden, layoutTwoUp, pdfProveedorPrefix } from '@/lib/pdf/generate-payment-order-pdf'
 
@@ -8,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await getAuthUser()
+    const { user, error } = await requireModulo(MODULO.FINANZAS)
     if (error) return error
 
     if (!user?.clienteId) {

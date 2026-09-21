@@ -1,12 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireClienteId } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireClienteId()
+  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
   if (error) return error
+  const json = importesJson(verImportes)
 
   const sp = request.nextUrl.searchParams
   const page = parseInt(sp.get('page') || '1')
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
     }),
   ])
 
-  return NextResponse.json({
+  return json({
     closures,
     pagination: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
     facets: {

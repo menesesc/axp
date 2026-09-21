@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
-  const { user, error } = await getAuthUser()
+  const { user, error } = await requireModulo(MODULO.FINANZAS)
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

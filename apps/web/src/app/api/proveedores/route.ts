@@ -1,19 +1,21 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
-import { getAuthUser, requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
+import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
     // Verificar autenticación
-    const { user, error } = await getAuthUser()
+    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
     if (error) return error
+    const json = importesJson(verImportes)
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
-      return NextResponse.json(
+      return json(
         { error: 'No tienes una empresa asignada' },
         { status: 403 }
       )
@@ -36,7 +38,7 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json({
+    return json({
       proveedores: proveedores.map((p) => ({
         ...p,
         documentosCount: p._count.documentos,
@@ -54,10 +56,9 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     // Requiere permisos de administrador
-    const { user, error } = await requireAdmin()
+    const { clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
     if (error) return error
 
-    const clienteId = user?.clienteId
 
     if (!clienteId) {
       return NextResponse.json(

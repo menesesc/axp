@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/auth'
+import { requireModulo } from '@/lib/auth'
+import { MODULO } from '@/lib/permisos'
 import { getAnthropicClient, parseAIResponse } from '@/lib/ai/anthropic-client'
 
 const CONCILIACION_MODEL = 'claude-sonnet-4-6'
@@ -34,7 +35,7 @@ interface ConciliacionResult {
 }
 
 export async function POST(request: NextRequest) {
-  const { user, error } = await requireAdmin()
+  const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

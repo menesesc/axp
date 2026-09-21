@@ -3,7 +3,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect } from 'react'
-import { esRestringido, puede, type Permiso } from '@/lib/permisos'
+import {
+  matrizDe,
+  nivelDe,
+  puedeEditar,
+  puedeVer,
+  veImportes,
+  type Matriz,
+  type Modulo,
+  type Nivel,
+} from '@/lib/permisos'
 
 interface Usuario {
   id: string
@@ -27,11 +36,17 @@ interface UserSession {
   isAdmin: boolean
   isViewer: boolean
   isSuperAdmin: boolean
-  /** Usuario limitado a un subconjunto de módulos (permisos no vacío). */
-  isRestricted: boolean
   permisos: string[]
-  /** ¿Puede ver el módulo? (no restringidos pueden todo). */
-  can: (modulo: Permiso) => boolean
+  /** Matriz efectiva (ya resuelta para admin / fallback legacy). */
+  matriz: Matriz
+  /** Nivel del usuario en un módulo. */
+  nivel: (modulo: Modulo) => Nivel
+  /** ¿Puede abrir el módulo? */
+  can: (modulo: Modulo) => boolean
+  /** ¿Puede crear/modificar/eliminar en el módulo? */
+  canEdit: (modulo: Modulo) => boolean
+  /** ¿Ve los importes en pesos del módulo, o solo cantidades? */
+  canSeeImportes: (modulo: Modulo) => boolean
   clienteId: string | null
   clienteNombre: string | null
   signOut: () => Promise<void>
@@ -110,16 +125,22 @@ export function useUser(): UserSession {
   }
 
   const permisos = userData?.permisos ?? []
+  const isAdmin =
+    userData?.tipo_acceso === 'ADMIN' || userData?.rol === 'ADMIN' || userData?.rol === 'SUPERADMIN'
+  const sujeto = { esAdmin: isAdmin, permisos }
 
   return {
     user: userData ?? null,
     isLoading,
-    isAdmin: userData?.tipo_acceso === 'ADMIN',
-    isViewer: userData?.tipo_acceso === 'VIEWER',
+    isAdmin,
+    isViewer: !isAdmin,
     isSuperAdmin: userData?.rol === 'SUPERADMIN',
-    isRestricted: esRestringido(permisos),
     permisos,
-    can: (modulo: Permiso) => puede(permisos, modulo),
+    matriz: matrizDe(sujeto),
+    nivel: (modulo: Modulo) => nivelDe(sujeto, modulo),
+    can: (modulo: Modulo) => puedeVer(sujeto, modulo),
+    canEdit: (modulo: Modulo) => puedeEditar(sujeto, modulo),
+    canSeeImportes: (modulo: Modulo) => veImportes(sujeto, modulo),
     clienteId: userData?.clienteId ?? null,
     clienteNombre: userData?.clientes?.razonSocial ?? null,
     signOut,
