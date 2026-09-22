@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email/resend'
 import { renderTemplate } from '@/lib/email/templates/render'
@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
+    const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS, 'edit')
     if (error) return error
     if (!user?.clienteId) {
       return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

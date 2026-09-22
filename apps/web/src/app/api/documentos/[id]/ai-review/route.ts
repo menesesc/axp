@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { downloadFromR2 } from '@/lib/r2/client'
 import { getAnthropicClient, AI_MODEL, calculateCost, parseAIResponse } from '@/lib/ai/anthropic-client'
 import { buildReviewPrompt, type AIReviewResponse } from '@/lib/ai/review-prompt'
@@ -29,7 +29,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { user, clienteId, error: authError } = await requireSeccion(SECCION.DOC_COMPROBANTES, 'edit')
     if (authError) return authError
 
     if (!clienteId) {

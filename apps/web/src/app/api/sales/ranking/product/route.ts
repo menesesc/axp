@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
  * del servidor: importe = 0 en toda la respuesta.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
+  const { clienteId, verImportes, error } = await requireSeccion(SECCION.VENTAS_RANKING)
   if (error) return error
 
   const hideMontos = !verImportes

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +14,7 @@ const TURNOS_VALIDOS = new Set(['ALMUERZO', 'CENA', 'OTRO'])
  * por producto (clave `codigo|nombre`), un array alineado a ese eje.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireModulo(MODULO.VENTAS)
+  const { clienteId, error } = await requireSeccion(SECCION.VENTAS_RANKING)
   if (error) return error
 
   const sp = request.nextUrl.searchParams

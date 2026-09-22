@@ -330,6 +330,7 @@ export default function UsuariosPage() {
                       updateMutation.mutate({
                         id: editingUser.id,
                         updates: {
+                          nombre: editingUser.nombre,
                           tipo_acceso: editingUser.tipo_acceso,
                           activo: editingUser.activo,
                           permisos: editingUser.permisos ?? [],

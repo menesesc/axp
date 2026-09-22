@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { prisma } from '@/lib/prisma'
 
@@ -21,7 +21,7 @@ const r2Client = R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
+    const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS, 'edit')
     if (error) return error
 
     if (!user?.clienteId) {

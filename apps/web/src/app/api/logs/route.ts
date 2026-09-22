@@ -1,13 +1,13 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const { clienteId, error } = await requireModulo(MODULO.SISTEMA)
+    const { clienteId, error } = await requireSeccion(SECCION.SISTEMA_PROCESAMIENTO)
     if (error) return error
 
     if (!clienteId) {
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { clienteId, error } = await requireModulo(MODULO.SISTEMA, 'edit')
+    const { clienteId, error } = await requireSeccion(SECCION.SISTEMA_PROCESAMIENTO, 'edit')
     if (error) return error
 
     if (!clienteId) {

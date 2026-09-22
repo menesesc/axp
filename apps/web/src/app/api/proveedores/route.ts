@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   try {
     // Verificar autenticación
-    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
+    const { clienteId, verImportes, error } = await requireSeccion(SECCION.DOC_PROVEEDORES)
     if (error) return error
     const json = importesJson(verImportes)
 
@@ -56,7 +56,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     // Requiere permisos de administrador
-    const { clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { clienteId, error } = await requireSeccion(SECCION.DOC_PROVEEDORES, 'edit')
     if (error) return error
 
 

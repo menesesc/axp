@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse, NextRequest } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 // GET - Listar todas las anotaciones del cliente
 export async function GET(request: NextRequest) {
   try {
-    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
+    const { clienteId, verImportes, error } = await requireSeccion(SECCION.DOC_ANOTACIONES)
     if (error) return error
     const json = importesJson(verImportes)
 

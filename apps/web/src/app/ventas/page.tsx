@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useUser } from '@/hooks/use-user'
+import { useTabsPermitidas } from '@/components/layout/tabs-permitidas'
 import { MODULO } from '@/lib/permisos'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClosuresTab } from '@/components/sales/closures-tab'
@@ -14,8 +15,22 @@ import { AuditTab } from '@/components/sales/audit-tab'
 import { CsvTab } from '@/components/sales/csv-tab'
 
 export default function VentasPage() {
-  const { clienteId, isLoading, canSeeImportes } = useUser()
+  const { clienteId, isLoading } = useUser()
+  const tabs = useTabsPermitidas(MODULO.VENTAS)
   if (isLoading) return null
+
+  // El middleware ya impide llegar acá sin ninguna pestaña, pero si pasara
+  // (permisos cambiados en otra pestaña del navegador) no dejamos la página en
+  // blanco sin explicación.
+  if (tabs.vacio) {
+    return (
+      <DashboardLayout>
+        <p className="text-sm text-slate-500">
+          No tenés acceso a ninguna sección de Ventas.
+        </p>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
@@ -27,42 +42,58 @@ export default function VentasPage() {
           </p>
         </div>
 
-        <Tabs defaultValue="cierres">
+        <Tabs defaultValue={tabs.primera}>
           <TabsList>
-            <TabsTrigger value="cierres">Cierres</TabsTrigger>
-            <TabsTrigger value="ranking">Ranking</TabsTrigger>
-            <TabsTrigger value="mozos">Mozos</TabsTrigger>
-            <TabsTrigger value="pagos">Formas de pago</TabsTrigger>
-            <TabsTrigger value="facturacion">Facturación</TabsTrigger>
-            <TabsTrigger value="turnos">Por turno</TabsTrigger>
-            <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
-            <TabsTrigger value="csv">Ventas (CSV)</TabsTrigger>
+            {tabs.puede('cierres') && <TabsTrigger value="cierres">Cierres</TabsTrigger>}
+            {tabs.puede('ranking') && <TabsTrigger value="ranking">Ranking</TabsTrigger>}
+            {tabs.puede('mozos') && <TabsTrigger value="mozos">Mozos</TabsTrigger>}
+            {tabs.puede('pagos') && <TabsTrigger value="pagos">Formas de pago</TabsTrigger>}
+            {tabs.puede('facturacion') && <TabsTrigger value="facturacion">Facturación</TabsTrigger>}
+            {tabs.puede('turnos') && <TabsTrigger value="turnos">Por turno</TabsTrigger>}
+            {tabs.puede('auditoria') && <TabsTrigger value="auditoria">Auditoría</TabsTrigger>}
+            {tabs.puede('csv') && <TabsTrigger value="csv">Ventas (CSV)</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="cierres" className="mt-6">
-            <ClosuresTab />
-          </TabsContent>
-          <TabsContent value="ranking" className="mt-6">
-            <RankingDashboard hideMontos={!canSeeImportes(MODULO.VENTAS)} />
-          </TabsContent>
-          <TabsContent value="mozos" className="mt-6">
-            <WaitersTab />
-          </TabsContent>
-          <TabsContent value="pagos" className="mt-6">
-            <PaymentsTab />
-          </TabsContent>
-          <TabsContent value="facturacion" className="mt-6">
-            <BillingTab />
-          </TabsContent>
-          <TabsContent value="turnos" className="mt-6">
-            <ByShiftTab />
-          </TabsContent>
-          <TabsContent value="auditoria" className="mt-6">
-            <AuditTab />
-          </TabsContent>
-          <TabsContent value="csv" className="mt-6">
-            <CsvTab clienteId={clienteId} />
-          </TabsContent>
+          {tabs.puede('cierres') && (
+            <TabsContent value="cierres" className="mt-6">
+              <ClosuresTab />
+            </TabsContent>
+          )}
+          {tabs.puede('ranking') && (
+            <TabsContent value="ranking" className="mt-6">
+              <RankingDashboard hideMontos={!tabs.veImportes('ranking')} />
+            </TabsContent>
+          )}
+          {tabs.puede('mozos') && (
+            <TabsContent value="mozos" className="mt-6">
+              <WaitersTab />
+            </TabsContent>
+          )}
+          {tabs.puede('pagos') && (
+            <TabsContent value="pagos" className="mt-6">
+              <PaymentsTab />
+            </TabsContent>
+          )}
+          {tabs.puede('facturacion') && (
+            <TabsContent value="facturacion" className="mt-6">
+              <BillingTab />
+            </TabsContent>
+          )}
+          {tabs.puede('turnos') && (
+            <TabsContent value="turnos" className="mt-6">
+              <ByShiftTab />
+            </TabsContent>
+          )}
+          {tabs.puede('auditoria') && (
+            <TabsContent value="auditoria" className="mt-6">
+              <AuditTab />
+            </TabsContent>
+          )}
+          {tabs.puede('csv') && (
+            <TabsContent value="csv" className="mt-6">
+              <CsvTab clienteId={clienteId} />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </DashboardLayout>

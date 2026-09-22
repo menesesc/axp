@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
  * Total neto = Σ facturas + Σ NC (NC son negativas) → equivale a totalVentas.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
+  const { clienteId, verImportes, error } = await requireSeccion(SECCION.VENTAS_FACTURACION)
   if (error) return error
   const json = importesJson(verImportes)
 

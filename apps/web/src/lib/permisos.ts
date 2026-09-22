@@ -1,21 +1,29 @@
 /**
- * Permisos granulares por módulo.
+ * Permisos granulares por sección.
+ *
+ * La unidad de permiso es la SECCIÓN: una pestaña o una página concreta
+ * ("Ranking" dentro de Ventas, "Items" dentro de Documentos). El MÓDULO es solo
+ * la agrupación con la que se muestran en la UI y con la que se ordena el menú.
  *
  * Modelo: la columna `usuarios.permisos text[]` guarda entradas planas:
- *   - "<modulo>:<nivel>"     nivel de acceso al módulo ("view" | "edit").
- *   - "<modulo>:importes"    además de ver, puede ver los importes en pesos.
+ *   - "<seccion>:<nivel>"     nivel de acceso a la sección ("view" | "edit").
+ *   - "<seccion>:importes"    además de ver, puede ver los importes en pesos.
  *
- * Un módulo ausente = sin acceso. Un módulo con nivel pero sin ":importes"
+ * Una sección ausente = sin acceso. Una sección con nivel pero sin ":importes"
  * (y que soporte el flag) ve solo cantidades: el server pone los montos en 0.
  *
- * Ejemplo — encargado que carga documentos pero no ve plata, y mira ventas
- * solo en unidades:
- *   { "documentos:edit", "ventas:view" }
+ * Compatibilidad: una entrada a nivel de módulo ("ventas:view") se expande a
+ * todas las secciones de ese módulo. Así siguen valiendo los permisos guardados
+ * con el modelo anterior, sin migración previa.
+ *
+ * Ejemplo — encargado que carga comprobantes pero no ve plata, y de ventas mira
+ * solo el ranking, en unidades:
+ *   { "documentos.comprobantes:edit", "ventas.ranking:view" }
  *
  * Reglas transversales:
  *   - Los usuarios ADMIN (tipo_acceso = 'ADMIN') no usan la matriz: acceso
  *     total. La matriz aplica a los usuarios no administradores.
- *   - El candado real vive en el servidor (middleware + requireModulo). La UI
+ *   - El candado real vive en el servidor (middleware + requireSeccion). La UI
  *     solo oculta lo que el server ya bloquea.
  */
 
@@ -44,7 +52,7 @@ export function nivelRequerido(metodo: string): Exclude<Nivel, 'none'> {
 }
 
 // ---------------------------------------------------------------------------
-// Módulos
+// Módulos (agrupación)
 // ---------------------------------------------------------------------------
 
 export const MODULO = {
@@ -64,96 +72,383 @@ export interface ModuloDef {
   value: Modulo
   label: string
   hint: string
-  /** Prefijos de páginas que cubre el módulo. */
+  /** Reservado a administradores: no se ofrece en la matriz. */
+  soloAdmin?: boolean
+}
+
+export const MODULOS: ModuloDef[] = [
+  { value: MODULO.DASHBOARD, label: 'Dashboard', hint: 'Resumen general de la operación' },
+  { value: MODULO.DOCUMENTOS, label: 'Documentos', hint: 'Comprobantes, items, proveedores y anotaciones' },
+  { value: MODULO.VENTAS, label: 'Ventas', hint: 'Cierres de caja, ranking, mozos y turnos' },
+  { value: MODULO.CONCILIACION, label: 'Conciliación', hint: 'Insumos, recetas y control de stock' },
+  { value: MODULO.FINANZAS, label: 'Finanzas', hint: 'Pagos, calendario de vencimientos y estadísticas' },
+  { value: MODULO.INFORMES, label: 'Informes', hint: 'Compras, cuenta corriente, precios y proyecciones' },
+  { value: MODULO.SISTEMA, label: 'Sistema', hint: 'Procesamiento de documentos y logs' },
+  {
+    value: MODULO.CONFIGURACION,
+    label: 'Configuración',
+    hint: 'Empresa, usuarios, canales e informes por mail',
+    soloAdmin: true,
+  },
+]
+
+const MODULO_POR_VALUE = new Map<string, ModuloDef>(MODULOS.map((m) => [m.value, m]))
+
+export function moduloDef(modulo: Modulo): ModuloDef | undefined {
+  return MODULO_POR_VALUE.get(modulo)
+}
+
+// ---------------------------------------------------------------------------
+// Secciones (unidad de permiso)
+// ---------------------------------------------------------------------------
+
+export interface SeccionDef {
+  /** Identificador estable: "<modulo>.<slug>". Es lo que se guarda en la DB. */
+  value: string
+  modulo: Modulo
+  label: string
+  /** Pestaña dentro de una página con tabs (el `value` del TabsTrigger). */
+  tab?: string
+  /** Prefijos de páginas que cubre. */
   paginas: string[]
-  /** Prefijos de API que cubre el módulo. */
+  /** Prefijos de API que cubre. */
   apis: string[]
   /** No tiene acciones de escritura: el nivel "Editar" no se ofrece. */
   soloLectura?: boolean
   /** Admite el flag "ver importes" (si está apagado, solo cantidades). */
   importes?: boolean
-  /**
-   * Reservado a administradores: no se ofrece en la matriz y ningún usuario no
-   * admin puede acceder. Evita que alguien con "editar" en Configuración se
-   * promueva a sí mismo a admin.
-   */
+  /** Reservado a administradores. */
   soloAdmin?: boolean
 }
 
-export const MODULOS: ModuloDef[] = [
+/**
+ * Catálogo de secciones. El orden es el que usa la UI y el que define la
+ * landing tras el login (la primera que el usuario pueda abrir).
+ *
+ * Al agregar una pestaña o una página nueva hay que declararla acá, o queda
+ * denegada por defecto para los usuarios no administradores.
+ */
+export const SECCIONES: SeccionDef[] = [
+  // --- Dashboard -----------------------------------------------------------
   {
-    value: MODULO.DASHBOARD,
+    value: 'dashboard.general',
+    modulo: MODULO.DASHBOARD,
     label: 'Dashboard',
-    hint: 'Resumen general de la operación',
     paginas: ['/dashboard'],
     apis: ['/api/stats'],
     soloLectura: true,
     importes: true,
   },
+
+  // --- Documentos ----------------------------------------------------------
   {
-    value: MODULO.DOCUMENTOS,
-    label: 'Documentos',
-    hint: 'Comprobantes, items, proveedores y anotaciones',
-    paginas: ['/documentos', '/documento', '/items', '/proveedores', '/anotaciones'],
-    apis: ['/api/documentos', '/api/items', '/api/proveedores', '/api/anotaciones'],
+    value: 'documentos.comprobantes',
+    modulo: MODULO.DOCUMENTOS,
+    label: 'Comprobantes',
+    paginas: ['/documentos', '/documento'],
+    apis: ['/api/documentos'],
     importes: true,
   },
   {
-    value: MODULO.VENTAS,
-    label: 'Ventas',
-    hint: 'Cierres de caja, ranking, mozos y turnos',
+    value: 'documentos.items',
+    modulo: MODULO.DOCUMENTOS,
+    label: 'Items',
+    paginas: ['/items'],
+    apis: ['/api/items'],
+    importes: true,
+  },
+  {
+    value: 'documentos.proveedores',
+    modulo: MODULO.DOCUMENTOS,
+    label: 'Proveedores',
+    paginas: ['/proveedores'],
+    apis: ['/api/proveedores'],
+    importes: true,
+  },
+  {
+    value: 'documentos.anotaciones',
+    modulo: MODULO.DOCUMENTOS,
+    label: 'Anotaciones',
+    paginas: ['/anotaciones'],
+    apis: ['/api/anotaciones'],
+  },
+
+  // --- Ventas (pestañas de /ventas) ----------------------------------------
+  {
+    value: 'ventas.cierres',
+    modulo: MODULO.VENTAS,
+    label: 'Cierres',
+    tab: 'cierres',
     paginas: ['/ventas'],
-    apis: ['/api/sales', '/api/ventas'],
+    apis: ['/api/sales/closures'],
     importes: true,
   },
   {
-    value: MODULO.CONCILIACION,
-    label: 'Conciliación',
-    hint: 'Insumos, recetas y control de stock',
+    value: 'ventas.ranking',
+    modulo: MODULO.VENTAS,
+    label: 'Ranking',
+    tab: 'ranking',
+    paginas: ['/ventas'],
+    apis: ['/api/sales/ranking', '/api/sales/units-daily'],
+    importes: true,
+  },
+  {
+    value: 'ventas.mozos',
+    modulo: MODULO.VENTAS,
+    label: 'Mozos',
+    tab: 'mozos',
+    paginas: ['/ventas'],
+    apis: ['/api/sales/waiters'],
+    importes: true,
+  },
+  {
+    value: 'ventas.pagos',
+    modulo: MODULO.VENTAS,
+    label: 'Formas de pago',
+    tab: 'pagos',
+    paginas: ['/ventas'],
+    apis: ['/api/sales/payments'],
+    importes: true,
+  },
+  {
+    value: 'ventas.facturacion',
+    modulo: MODULO.VENTAS,
+    label: 'Facturación',
+    tab: 'facturacion',
+    paginas: ['/ventas'],
+    apis: ['/api/sales/billing'],
+    importes: true,
+  },
+  {
+    value: 'ventas.turnos',
+    modulo: MODULO.VENTAS,
+    label: 'Por turno',
+    tab: 'turnos',
+    paginas: ['/ventas'],
+    apis: ['/api/sales/by-shift'],
+    importes: true,
+  },
+  {
+    value: 'ventas.auditoria',
+    modulo: MODULO.VENTAS,
+    label: 'Auditoría',
+    tab: 'auditoria',
+    paginas: ['/ventas'],
+    // reparse-all lo dispara la pestaña de auditoría: el prefijo más largo gana
+    // sobre '/api/sales/closures' de la pestaña Cierres.
+    apis: ['/api/sales/audit', '/api/sales/closures/reparse-all'],
+    importes: true,
+  },
+  {
+    value: 'ventas.csv',
+    modulo: MODULO.VENTAS,
+    label: 'Ventas (CSV)',
+    tab: 'csv',
+    paginas: ['/ventas'],
+    apis: ['/api/ventas'],
+    importes: true,
+  },
+
+  // --- Conciliación --------------------------------------------------------
+  {
+    value: 'conciliacion.insumos',
+    modulo: MODULO.CONCILIACION,
+    label: 'Insumos',
+    tab: 'insumos',
+    paginas: ['/conciliacion/insumos'],
+    apis: ['/api/conciliacion/insumos'],
+    importes: true,
+  },
+  {
+    value: 'conciliacion.recetas',
+    modulo: MODULO.CONCILIACION,
+    label: 'Recetas',
+    paginas: ['/conciliacion/recetas'],
+    apis: ['/api/conciliacion/recetas'],
+    importes: true,
+  },
+  {
+    value: 'conciliacion.control',
+    modulo: MODULO.CONCILIACION,
+    label: 'Conciliación de stock',
+    tab: 'insumos',
     paginas: ['/conciliacion'],
     apis: ['/api/conciliacion'],
+    importes: true,
   },
   {
-    value: MODULO.FINANZAS,
-    label: 'Finanzas',
-    hint: 'Pagos, calendario de vencimientos y estadísticas',
-    paginas: ['/pagos', '/finanzas', '/estadisticas'],
+    value: 'conciliacion.margen',
+    modulo: MODULO.CONCILIACION,
+    label: 'Margen por producto',
+    tab: 'margen',
+    paginas: ['/conciliacion'],
+    apis: ['/api/conciliacion/margen'],
+    soloLectura: true,
+    importes: true,
+  },
+
+  // --- Finanzas ------------------------------------------------------------
+  {
+    value: 'finanzas.pagos',
+    modulo: MODULO.FINANZAS,
+    label: 'Pagos',
+    paginas: ['/pagos'],
     apis: ['/api/pagos'],
+    importes: true,
   },
   {
-    value: MODULO.INFORMES,
-    label: 'Informes',
-    hint: 'Compras, cuenta corriente, precios y proyecciones',
+    value: 'finanzas.calendario',
+    modulo: MODULO.FINANZAS,
+    label: 'Calendario',
+    paginas: ['/finanzas'],
+    apis: ['/api/pagos/calendario'],
+    importes: true,
+  },
+  {
+    value: 'finanzas.estadisticas',
+    modulo: MODULO.FINANZAS,
+    label: 'Estadísticas',
+    paginas: ['/estadisticas'],
+    apis: [],
+    soloLectura: true,
+    importes: true,
+  },
+
+  // --- Informes (todos de solo lectura) ------------------------------------
+  {
+    value: 'informes.resumen',
+    modulo: MODULO.INFORMES,
+    label: 'Resumen ejecutivo',
     paginas: ['/informes'],
-    apis: ['/api/informes'],
+    apis: ['/api/informes/resumen'],
     soloLectura: true,
     importes: true,
   },
   {
-    value: MODULO.SISTEMA,
-    label: 'Sistema',
-    hint: 'Procesamiento de documentos y logs',
+    value: 'informes.ventas',
+    modulo: MODULO.INFORMES,
+    label: 'Ventas',
+    paginas: ['/informes/ventas'],
+    apis: [],
+    soloLectura: true,
+    importes: true,
+  },
+  {
+    value: 'informes.cuenta_corriente',
+    modulo: MODULO.INFORMES,
+    label: 'Cuenta corriente',
+    paginas: ['/informes/cuenta-corriente'],
+    apis: ['/api/informes/cuenta-corriente'],
+    soloLectura: true,
+    importes: true,
+  },
+  {
+    value: 'informes.precios',
+    modulo: MODULO.INFORMES,
+    label: 'Análisis de precios',
+    paginas: ['/informes/precios'],
+    apis: ['/api/informes/precios'],
+    soloLectura: true,
+    importes: true,
+  },
+  {
+    value: 'informes.compras',
+    modulo: MODULO.INFORMES,
+    label: 'Compras',
+    paginas: ['/informes/compras'],
+    apis: ['/api/informes/compras'],
+    soloLectura: true,
+    importes: true,
+  },
+  {
+    value: 'informes.proyecciones',
+    modulo: MODULO.INFORMES,
+    label: 'Proyecciones IA',
+    paginas: ['/informes/proyecciones'],
+    apis: ['/api/informes/proyecciones'],
+    soloLectura: true,
+    importes: true,
+  },
+
+  // --- Sistema -------------------------------------------------------------
+  {
+    value: 'sistema.procesamiento',
+    modulo: MODULO.SISTEMA,
+    label: 'Procesamiento',
     paginas: ['/procesamiento'],
     apis: ['/api/logs'],
   },
+
+  // --- Configuración (solo admin) ------------------------------------------
   {
-    value: MODULO.CONFIGURACION,
+    value: 'configuracion.general',
+    modulo: MODULO.CONFIGURACION,
     label: 'Configuración',
-    hint: 'Empresa, usuarios, canales e informes por mail',
     paginas: ['/configuracion'],
     apis: ['/api/configuracion', '/api/suscripciones'],
     soloAdmin: true,
   },
 ]
 
-/** Módulos que se pueden asignar desde el panel de usuarios. */
-export const MODULOS_ASIGNABLES = MODULOS.filter((m) => !m.soloAdmin)
+/**
+ * Identificadores de sección, para usarlos desde las rutas sin escribir el
+ * string a mano. Los valores son los mismos que se guardan en la DB.
+ */
+export const SECCION = {
+  DASHBOARD: 'dashboard.general',
+  DOC_COMPROBANTES: 'documentos.comprobantes',
+  DOC_ITEMS: 'documentos.items',
+  DOC_PROVEEDORES: 'documentos.proveedores',
+  DOC_ANOTACIONES: 'documentos.anotaciones',
+  VENTAS_CIERRES: 'ventas.cierres',
+  VENTAS_RANKING: 'ventas.ranking',
+  VENTAS_MOZOS: 'ventas.mozos',
+  VENTAS_PAGOS: 'ventas.pagos',
+  VENTAS_FACTURACION: 'ventas.facturacion',
+  VENTAS_TURNOS: 'ventas.turnos',
+  VENTAS_AUDITORIA: 'ventas.auditoria',
+  VENTAS_CSV: 'ventas.csv',
+  CONCILIACION_INSUMOS: 'conciliacion.insumos',
+  CONCILIACION_RECETAS: 'conciliacion.recetas',
+  CONCILIACION_CONTROL: 'conciliacion.control',
+  CONCILIACION_MARGEN: 'conciliacion.margen',
+  FINANZAS_PAGOS: 'finanzas.pagos',
+  FINANZAS_CALENDARIO: 'finanzas.calendario',
+  FINANZAS_ESTADISTICAS: 'finanzas.estadisticas',
+  INFORMES_RESUMEN: 'informes.resumen',
+  INFORMES_VENTAS: 'informes.ventas',
+  INFORMES_CUENTA_CORRIENTE: 'informes.cuenta_corriente',
+  INFORMES_PRECIOS: 'informes.precios',
+  INFORMES_COMPRAS: 'informes.compras',
+  INFORMES_PROYECCIONES: 'informes.proyecciones',
+  SISTEMA_PROCESAMIENTO: 'sistema.procesamiento',
+  CONFIGURACION: 'configuracion.general',
+} as const
 
-const POR_VALUE = new Map<string, ModuloDef>(MODULOS.map((m) => [m.value, m]))
+export type SeccionId = (typeof SECCION)[keyof typeof SECCION]
 
-export function moduloDef(modulo: Modulo): ModuloDef | undefined {
-  return POR_VALUE.get(modulo)
+/** Secciones que se pueden asignar desde el panel de usuarios. */
+export const SECCIONES_ASIGNABLES = SECCIONES.filter((s) => !s.soloAdmin)
+
+const SECCION_POR_VALUE = new Map<string, SeccionDef>(SECCIONES.map((s) => [s.value, s]))
+
+export function seccionDef(seccion: string): SeccionDef | undefined {
+  return SECCION_POR_VALUE.get(seccion)
 }
+
+/** Secciones de un módulo, en el orden del catálogo. */
+export function seccionesDeModulo(modulo: Modulo): SeccionDef[] {
+  return SECCIONES.filter((s) => s.modulo === modulo)
+}
+
+/** Módulos que tienen al menos una sección asignable, en orden. */
+export const MODULOS_ASIGNABLES = MODULOS.filter(
+  (m) => !m.soloAdmin && SECCIONES_ASIGNABLES.some((s) => s.modulo === m.value)
+)
+
+// ---------------------------------------------------------------------------
+// Resolución de rutas
+// ---------------------------------------------------------------------------
 
 /**
  * Rutas que cualquier usuario autenticado puede usar, sin importar su matriz:
@@ -178,37 +473,54 @@ export function esRutaComun(pathname: string): boolean {
 }
 
 /**
- * Módulo al que pertenece una ruta (página o API). Gana el prefijo más largo,
- * así `/informes/ventas` cae en Informes y no en Ventas.
+ * Secciones candidatas para una ruta. Gana el prefijo más largo, así
+ * `/informes/ventas` cae en Informes → Ventas y no en Resumen ejecutivo.
+ *
+ * Devuelve una lista porque varias secciones comparten página: las ocho
+ * pestañas de Ventas viven todas en `/ventas`. Para abrir la página alcanza con
+ * tener una; las APIs, en cambio, resuelven siempre a una sola sección.
  */
-export function moduloDeRuta(pathname: string): Modulo | null {
+export function seccionesDeRuta(pathname: string): SeccionDef[] {
   const esApi = pathname.startsWith('/api/')
-  let mejor: { modulo: Modulo; largo: number } | null = null
-  for (const m of MODULOS) {
-    const hit = matchPrefijo(pathname, esApi ? m.apis : m.paginas)
-    if (hit && (!mejor || hit.length > mejor.largo)) mejor = { modulo: m.value, largo: hit.length }
+  let largo = -1
+  let out: SeccionDef[] = []
+  for (const s of SECCIONES) {
+    const hit = matchPrefijo(pathname, esApi ? s.apis : s.paginas)
+    if (!hit) continue
+    if (hit.length > largo) {
+      largo = hit.length
+      out = [s]
+    } else if (hit.length === largo) {
+      out.push(s)
+    }
   }
-  return mejor?.modulo ?? null
+  return out
+}
+
+/** Módulo al que pertenece una ruta, o null si no está declarada. */
+export function moduloDeRuta(pathname: string): Modulo | null {
+  return seccionesDeRuta(pathname)[0]?.modulo ?? null
 }
 
 // ---------------------------------------------------------------------------
 // Matriz de permisos (serialización en text[])
 // ---------------------------------------------------------------------------
 
-export interface PermisoModulo {
+export interface PermisoSeccion {
   nivel: Nivel
-  /** Ve importes en pesos. Irrelevante si el módulo no admite el flag. */
+  /** Ve importes en pesos. Irrelevante si la sección no admite el flag. */
   importes: boolean
 }
 
-export type Matriz = Record<string, PermisoModulo>
+/** Clave = `SeccionDef.value`. */
+export type Matriz = Record<string, PermisoSeccion>
 
 const SUFIJO_IMPORTES = 'importes'
 
 /** Matriz vacía: sin acceso a nada. */
 export function matrizVacia(): Matriz {
   const m: Matriz = {}
-  for (const def of MODULOS) m[def.value] = { nivel: 'none', importes: false }
+  for (const def of SECCIONES) m[def.value] = { nivel: 'none', importes: false }
   return m
 }
 
@@ -219,7 +531,7 @@ export function matrizVacia(): Matriz {
  */
 export function matrizLegacyViewer(): Matriz {
   const m = matrizVacia()
-  for (const def of MODULOS) {
+  for (const def of SECCIONES) {
     if (def.soloAdmin) continue
     m[def.value] = { nivel: 'view', importes: true }
   }
@@ -229,40 +541,64 @@ export function matrizLegacyViewer(): Matriz {
 /** Acceso total (administradores). */
 export function matrizAdmin(): Matriz {
   const m: Matriz = {}
-  for (const def of MODULOS) {
+  for (const def of SECCIONES) {
     m[def.value] = { nivel: def.soloLectura ? 'view' : 'edit', importes: true }
   }
   return m
 }
 
-/** text[] almacenado → matriz. */
+/** Sube el nivel de una entrada sin bajarlo nunca (las entradas se acumulan). */
+function subirNivel(m: Matriz, def: SeccionDef, sufijo: string) {
+  const actual = m[def.value]
+  if (!actual) return
+  if (sufijo === SUFIJO_IMPORTES) {
+    if (def.importes) actual.importes = true
+    return
+  }
+  if (sufijo !== 'view' && sufijo !== 'edit') return
+  const nivel: Nivel = def.soloLectura ? 'view' : sufijo
+  if (ORDEN[nivel] > ORDEN[actual.nivel]) actual.nivel = nivel
+}
+
+/**
+ * text[] almacenado → matriz.
+ *
+ * Acepta las dos formas: "<seccion>:<sufijo>" y, por compatibilidad con el
+ * modelo anterior, "<modulo>:<sufijo>", que se expande a todas las secciones
+ * del módulo.
+ */
 export function parsePermisos(permisos: string[] | null | undefined): Matriz {
   const m = matrizVacia()
   if (!Array.isArray(permisos)) return m
   for (const raw of permisos) {
     if (typeof raw !== 'string') continue
-    const partes = raw.split(':')
-    const modulo = partes[0] ?? ''
-    const sufijo = partes[1] ?? ''
-    const def = POR_VALUE.get(modulo)
-    const actual = m[modulo]
-    if (!def || def.soloAdmin || !sufijo || !actual) continue
-    if (sufijo === SUFIJO_IMPORTES) {
-      if (def.importes) actual.importes = true
+    const corte = raw.indexOf(':')
+    if (corte <= 0) continue
+    const clave = raw.slice(0, corte)
+    const sufijo = raw.slice(corte + 1)
+    if (!sufijo) continue
+
+    const seccion = SECCION_POR_VALUE.get(clave)
+    if (seccion) {
+      if (!seccion.soloAdmin) subirNivel(m, seccion, sufijo)
       continue
     }
-    if (sufijo === 'view' || sufijo === 'edit') {
-      const nivel: Nivel = def.soloLectura ? 'view' : sufijo
-      if (ORDEN[nivel] > ORDEN[actual.nivel]) actual.nivel = nivel
+
+    // Entrada a nivel de módulo (modelo viejo): vale para todas sus secciones.
+    const modulo = MODULO_POR_VALUE.get(clave)
+    if (modulo && !modulo.soloAdmin) {
+      for (const def of seccionesDeModulo(modulo.value)) {
+        if (!def.soloAdmin) subirNivel(m, def, sufijo)
+      }
     }
   }
   return m
 }
 
-/** Matriz → text[] para guardar (omite los módulos sin acceso). */
+/** Matriz → text[] para guardar (omite las secciones sin acceso). */
 export function serializePermisos(matriz: Matriz): string[] {
   const out: string[] = []
-  for (const def of MODULOS) {
+  for (const def of SECCIONES) {
     if (def.soloAdmin) continue
     const p = matriz[def.value]
     if (!p || p.nivel === 'none') continue
@@ -279,7 +615,7 @@ export function sanitizePermisos(input: unknown): string[] {
   return serializePermisos(parsePermisos(input as string[]))
 }
 
-/** ¿Tiene al menos un módulo habilitado? */
+/** ¿Tiene al menos una entrada reconocible? */
 export function tieneMatriz(permisos: string[] | null | undefined): boolean {
   return Array.isArray(permisos) && permisos.some((p) => typeof p === 'string' && p.includes(':'))
 }
@@ -300,37 +636,64 @@ export function matrizDe({ esAdmin, permisos }: SujetoPermisos): Matriz {
   return parsePermisos(permisos)
 }
 
-export function nivelDe(sujeto: SujetoPermisos, modulo: Modulo): Nivel {
-  return matrizDe(sujeto)[modulo]?.nivel ?? 'none'
+export function nivelDe(sujeto: SujetoPermisos, seccion: string): Nivel {
+  return matrizDe(sujeto)[seccion]?.nivel ?? 'none'
 }
 
-/** ¿Alcanza el nivel del usuario para lo que se pide? */
-export function cumple(sujeto: SujetoPermisos, modulo: Modulo, minimo: Nivel): boolean {
-  return ORDEN[nivelDe(sujeto, modulo)] >= ORDEN[minimo]
+/** ¿Alcanza el nivel del usuario en esa sección para lo que se pide? */
+export function cumple(sujeto: SujetoPermisos, seccion: string, minimo: Nivel): boolean {
+  return ORDEN[nivelDe(sujeto, seccion)] >= ORDEN[minimo]
 }
 
-export function puedeVer(sujeto: SujetoPermisos, modulo: Modulo): boolean {
-  return cumple(sujeto, modulo, 'view')
+export function puedeVer(sujeto: SujetoPermisos, seccion: string): boolean {
+  return cumple(sujeto, seccion, 'view')
 }
 
-export function puedeEditar(sujeto: SujetoPermisos, modulo: Modulo): boolean {
-  return cumple(sujeto, modulo, 'edit')
+export function puedeEditar(sujeto: SujetoPermisos, seccion: string): boolean {
+  return cumple(sujeto, seccion, 'edit')
+}
+
+/** ¿Alcanza en ALGUNA sección del módulo? Sirve para mostrar el grupo del menú. */
+export function cumpleModulo(sujeto: SujetoPermisos, modulo: Modulo, minimo: Nivel = 'view'): boolean {
+  return seccionesDeModulo(modulo).some((s) => cumple(sujeto, s.value, minimo))
+}
+
+export function puedeVerModulo(sujeto: SujetoPermisos, modulo: Modulo): boolean {
+  return cumpleModulo(sujeto, modulo, 'view')
 }
 
 /**
- * ¿Ve importes en pesos en este módulo? Si el módulo no admite el flag, ver el
- * módulo implica ver los importes.
+ * ¿Ve importes en pesos en esta sección? Si la sección no admite el flag, verla
+ * implica ver los importes.
  */
-export function veImportes(sujeto: SujetoPermisos, modulo: Modulo): boolean {
-  if (!puedeVer(sujeto, modulo)) return false
-  const def = POR_VALUE.get(modulo)
+export function veImportes(sujeto: SujetoPermisos, seccion: string): boolean {
+  if (!puedeVer(sujeto, seccion)) return false
+  const def = SECCION_POR_VALUE.get(seccion)
   if (!def?.importes) return true
-  return matrizDe(sujeto)[modulo]?.importes === true
+  return matrizDe(sujeto)[seccion]?.importes === true
+}
+
+/** ¿Ve importes en alguna sección del módulo? Para vistas que agregan varias. */
+export function veImportesModulo(sujeto: SujetoPermisos, modulo: Modulo): boolean {
+  return seccionesDeModulo(modulo).some((s) => veImportes(sujeto, s.value))
+}
+
+/**
+ * ¿Puede abrir esta ruta? Para páginas compartidas por varias secciones alcanza
+ * con tener una; para APIs la ruta resuelve a una sola sección.
+ */
+export function puedeAbrirRuta(sujeto: SujetoPermisos, pathname: string, minimo: Nivel): boolean {
+  const secciones = seccionesDeRuta(pathname)
+  if (secciones.length === 0) return false
+  // Las secciones soloAdmin no se filtran acá: `parsePermisos` ya se niega a
+  // asignárselas a un usuario común, y `matrizAdmin` sí se las da al admin.
+  return secciones.some((s) => cumple(sujeto, s.value, minimo))
 }
 
 /** Primera página que el usuario puede abrir; su landing tras el login. */
 export function landingDe(sujeto: SujetoPermisos): string {
-  for (const def of MODULOS) {
+  for (const def of SECCIONES) {
+    if (def.soloAdmin) continue
     const destino = def.paginas[0]
     if (destino && puedeVer(sujeto, def.value)) return destino
   }

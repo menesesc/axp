@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { useUser } from '@/hooks/use-user'
+import { useTabsPermitidas } from '@/components/layout/tabs-permitidas'
+import { MODULO } from '@/lib/permisos'
 import { DateRange } from '@/components/sales/date-range'
 import { defaultRange } from '@/components/sales/shared'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -28,6 +30,7 @@ interface ConciliacionResponse {
 
 export default function ConciliacionPage() {
   const { isLoading } = useUser()
+  const tabs = useTabsPermitidas(MODULO.CONCILIACION)
   const [{ from, to }, setRange] = useState(defaultRange())
   const [sucursal, setSucursal] = useState('')
   const [umbral, setUmbral] = useState('15')
@@ -70,6 +73,17 @@ export default function ConciliacionPage() {
 
   const incidencias = data?.items.filter((i) => i.incidencia).length ?? 0
 
+  if (tabs.vacio) {
+    return (
+      <DashboardLayout>
+        <p className="text-sm text-slate-500">
+          No tenés acceso a ninguna sección de Conciliación.
+        </p>
+      </DashboardLayout>
+    )
+  }
+
+
   return (
     <DashboardLayout>
       <Header
@@ -103,14 +117,17 @@ export default function ConciliacionPage() {
         </label>
       </div>
 
-      <Tabs defaultValue="insumos">
+      <Tabs defaultValue={tabs.primera}>
         <TabsList>
-          <TabsTrigger value="insumos">
-            Por insumo {incidencias > 0 && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 rounded-full px-1.5">{incidencias}</span>}
-          </TabsTrigger>
-          <TabsTrigger value="margen">Margen por producto</TabsTrigger>
+          {tabs.puede('insumos') && (
+            <TabsTrigger value="insumos">
+              Por insumo {incidencias > 0 && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 rounded-full px-1.5">{incidencias}</span>}
+            </TabsTrigger>
+          )}
+          {tabs.puede('margen') && <TabsTrigger value="margen">Margen por producto</TabsTrigger>}
         </TabsList>
 
+        {tabs.puede('insumos') && (
         <TabsContent value="insumos" className="mt-6">
           <div className="mb-4 flex items-start gap-2 rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-[12px] text-slate-500">
             <HelpCircle className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
@@ -131,7 +148,9 @@ export default function ConciliacionPage() {
             {data?.cobertura && <CoberturaCard cobertura={data.cobertura} />}
           </div>
         </TabsContent>
+        )}
 
+        {tabs.puede('margen') && (
         <TabsContent value="margen" className="mt-6">
           {loadingMargen ? (
             <div className="bg-white border border-slate-200 rounded-lg p-12 text-center text-slate-400 text-sm">Cargando...</div>
@@ -139,6 +158,7 @@ export default function ConciliacionPage() {
             <MargenTable productos={margenData?.productos ?? []} />
           )}
         </TabsContent>
+        )}
       </Tabs>
     </DashboardLayout>
   )

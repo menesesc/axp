@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { clienteId, verImportes, error } = await requireModulo(MODULO.DOCUMENTOS)
+    const { clienteId, verImportes, error } = await requireSeccion(SECCION.DOC_COMPROBANTES)
     if (error) return error
     const json = importesJson(verImportes)
 
@@ -61,7 +61,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { user, clienteId, error } = await requireSeccion(SECCION.DOC_COMPROBANTES, 'edit')
     if (error) return error
 
     const { id } = await params
@@ -121,7 +121,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { user, clienteId, error } = await requireSeccion(SECCION.DOC_COMPROBANTES, 'edit')
     if (error) return error
 
     const { id: documentoId } = await params

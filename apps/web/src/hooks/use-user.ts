@@ -8,7 +8,9 @@ import {
   nivelDe,
   puedeEditar,
   puedeVer,
+  puedeVerModulo,
   veImportes,
+  veImportesModulo,
   type Matriz,
   type Modulo,
   type Nivel,
@@ -39,14 +41,18 @@ interface UserSession {
   permisos: string[]
   /** Matriz efectiva (ya resuelta para admin / fallback legacy). */
   matriz: Matriz
-  /** Nivel del usuario en un módulo. */
-  nivel: (modulo: Modulo) => Nivel
-  /** ¿Puede abrir el módulo? */
-  can: (modulo: Modulo) => boolean
-  /** ¿Puede crear/modificar/eliminar en el módulo? */
-  canEdit: (modulo: Modulo) => boolean
-  /** ¿Ve los importes en pesos del módulo, o solo cantidades? */
-  canSeeImportes: (modulo: Modulo) => boolean
+  /** Nivel del usuario en una sección (id de SECCION). */
+  nivel: (seccion: string) => Nivel
+  /** ¿Puede abrir la sección? */
+  can: (seccion: string) => boolean
+  /** ¿Puede crear/modificar/eliminar en la sección? */
+  canEdit: (seccion: string) => boolean
+  /** ¿Ve los importes en pesos de la sección, o solo cantidades? */
+  canSeeImportes: (seccion: string) => boolean
+  /** ¿Puede abrir alguna sección del módulo? Para grupos del menú. */
+  canModulo: (modulo: Modulo) => boolean
+  /** ¿Ve importes en alguna sección del módulo? */
+  canSeeImportesModulo: (modulo: Modulo) => boolean
   clienteId: string | null
   clienteNombre: string | null
   signOut: () => Promise<void>
@@ -137,10 +143,12 @@ export function useUser(): UserSession {
     isSuperAdmin: userData?.rol === 'SUPERADMIN',
     permisos,
     matriz: matrizDe(sujeto),
-    nivel: (modulo: Modulo) => nivelDe(sujeto, modulo),
-    can: (modulo: Modulo) => puedeVer(sujeto, modulo),
-    canEdit: (modulo: Modulo) => puedeEditar(sujeto, modulo),
-    canSeeImportes: (modulo: Modulo) => veImportes(sujeto, modulo),
+    nivel: (seccion: string) => nivelDe(sujeto, seccion),
+    can: (seccion: string) => puedeVer(sujeto, seccion),
+    canEdit: (seccion: string) => puedeEditar(sujeto, seccion),
+    canSeeImportes: (seccion: string) => veImportes(sujeto, seccion),
+    canModulo: (modulo: Modulo) => puedeVerModulo(sujeto, modulo),
+    canSeeImportesModulo: (modulo: Modulo) => veImportesModulo(sujeto, modulo),
     clienteId: userData?.clienteId ?? null,
     clienteNombre: userData?.clientes?.razonSocial ?? null,
     signOut,

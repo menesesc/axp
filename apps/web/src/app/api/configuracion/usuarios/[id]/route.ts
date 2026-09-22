@@ -29,10 +29,13 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { activo, tipo_acceso } = body
+    const { activo, tipo_acceso, nombre, telefono } = body
 
     const updates: any = { updatedAt: new Date() }
     if (typeof activo === 'boolean') updates.activo = activo
+    if (typeof nombre === 'string' && nombre.trim()) updates.nombre = nombre.trim()
+    // El teléfono se puede vaciar: string vacío = borrarlo.
+    if (typeof telefono === 'string') updates.telefono = telefono.trim() || null
 
     // Matriz de permisos por módulo. Los admin no la usan: tienen acceso total,
     // así que al promover a admin se limpia.

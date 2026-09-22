@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email/resend'
 import { renderTemplate } from '@/lib/email/templates/render'
 import { downloadFromR2 } from '@/lib/r2/client'
 import { PDFDocument } from 'pdf-lib'
 import { z } from 'zod'
+import { hoyAR } from '@/lib/fechas'
 
 const shareSchema = z.object({
   documentoIds: z.array(z.string().uuid()).min(1),
@@ -16,7 +17,7 @@ const shareSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { user, error } = await requireSeccion(SECCION.DOC_COMPROBANTES, 'edit')
     if (error) return error
     if (!user?.clienteId) {
       return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
       subject,
       html,
       attachments: [{
-        filename: `documentos-${new Date().toISOString().slice(0, 10)}.pdf`,
+        filename: `documentos-${hoyAR()}.pdf`,
         content: Buffer.from(mergedBytes),
       }],
     })

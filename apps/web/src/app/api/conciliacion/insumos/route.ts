@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { UNIDADES } from '@/lib/conciliacion/units'
 
 export const dynamic = 'force-dynamic'
 
 /** Lista de insumos del cliente con conteo de alias y de recetas que los usan. */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS)
   if (error) return error
 
   const sp = request.nextUrl.searchParams
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
 /** Crea un insumo. Solo admin. */
 export async function POST(request: NextRequest) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 

@@ -4,7 +4,7 @@ import { useUser } from '@/hooks/use-user'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RankingDashboard } from '@/components/sales/ranking-dashboard'
 import { ComprasPreciosDashboard } from '@/components/compras/precios-dashboard'
-import { MODULO } from '@/lib/permisos'
+import { MODULO, SECCION } from '@/lib/permisos'
 import { LogOut } from 'lucide-react'
 
 /**
@@ -12,12 +12,12 @@ import { LogOut } from 'lucide-react'
  * Ventas / Compras arriba hacen de navegación y de título. Pensado para móvil.
  */
 export default function PanelPage() {
-  const { isLoading, user, can, canSeeImportes, clienteNombre, signOut } = useUser()
+  const { isLoading, user, canModulo, canSeeImportes, clienteNombre, signOut } = useUser()
   if (isLoading) return null
   if (!user) return null
 
-  const hasVentas = can(MODULO.VENTAS)
-  const hasCompras = can(MODULO.INFORMES)
+  const hasVentas = canModulo(MODULO.VENTAS)
+  const hasCompras = canModulo(MODULO.INFORMES)
   const defaultTab = hasVentas ? 'ventas' : 'compras'
 
   return (
@@ -54,7 +54,7 @@ export default function PanelPage() {
 
           {hasVentas && (
             <TabsContent value="ventas" className="mt-0">
-              <RankingDashboard hideMontos={!canSeeImportes(MODULO.VENTAS)} />
+              <RankingDashboard hideMontos={!canSeeImportes(SECCION.VENTAS_RANKING)} />
             </TabsContent>
           )}
           {hasCompras && (

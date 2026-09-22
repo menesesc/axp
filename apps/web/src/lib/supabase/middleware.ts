@@ -2,11 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
 import {
-  cumple,
   esRutaComun,
   landingDe,
-  moduloDeRuta,
   nivelRequerido,
+  puedeAbrirRuta,
 } from '@/lib/permisos'
 
 type CookieToSet = { name: string; value: string; options?: Partial<ResponseCookie> }
@@ -115,13 +114,14 @@ export async function updateSession(request: NextRequest) {
     if (!esAdmin) {
       const permisos = ((usuario?.permisos as string[] | null) ?? []).filter(Boolean)
       const sujeto = { esAdmin, permisos }
-      const modulo = moduloDeRuta(pathname)
       const esApi = pathname.startsWith('/api/')
 
-      // Ruta no mapeada a ningún módulo: se deniega por defecto. Al agregar una
-      // sección nueva hay que declararla en MODULOS (o en las rutas comunes).
+      // Ruta no declarada en SECCIONES: se deniega por defecto. Al agregar una
+      // pestaña o página nueva hay que declararla (o en las rutas comunes).
+      // Una página que comparten varias secciones (las pestañas de /ventas) se
+      // abre con tener una sola; las APIs resuelven a una única sección.
       const minimo = esApi ? nivelRequerido(request.method) : 'view'
-      const permitido = modulo !== null && cumple(sujeto, modulo, minimo)
+      const permitido = puedeAbrirRuta(sujeto, pathname, minimo)
 
       if (!permitido) {
         if (esApi) {

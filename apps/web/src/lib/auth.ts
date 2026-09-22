@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import {
   cumple,
   veImportes,
-  type Modulo,
   type Nivel,
 } from '@/lib/permisos'
 
@@ -101,24 +100,24 @@ export function esAdminUsuario(user: Pick<AuthUser, 'rol' | 'tipo_acceso'> | nul
   return user.tipo_acceso === 'ADMIN' || user.rol === 'ADMIN' || user.rol === 'SUPERADMIN'
 }
 
-export interface ModuloResult extends AuthResult {
+export interface SeccionResult extends AuthResult {
   clienteId: string | null
-  /** ¿Puede ver los importes en pesos de este módulo? */
+  /** ¿Puede ver los importes en pesos de esta sección? */
   verImportes: boolean
 }
 
 /**
- * Verifica que el usuario alcanza `minimo` en `modulo` y que tiene empresa.
+ * Verifica que el usuario alcanza `minimo` en `seccion` y que tiene empresa.
  * Es el guard que usan las rutas: duplica a propósito el chequeo del
  * middleware, para que una ruta siga protegida si el matcher cambia.
  *
- *   const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
+ *   const { clienteId, verImportes, error } = await requireSeccion(SECCION.VENTAS_RANKING)
  *   if (error) return error
  */
-export async function requireModulo(
-  modulo: Modulo,
+export async function requireSeccion(
+  seccion: string,
   minimo: Nivel = 'view'
-): Promise<ModuloResult> {
+): Promise<SeccionResult> {
   const result = await getAuthUser()
   if (result.error) return { ...result, clienteId: null, verImportes: false }
 
@@ -137,7 +136,7 @@ export async function requireModulo(
     permisos: result.user?.permisos,
   }
 
-  if (!result.user || !cumple(sujeto, modulo, minimo)) {
+  if (!result.user || !cumple(sujeto, seccion, minimo)) {
     return {
       user: null,
       clienteId: null,
@@ -166,7 +165,7 @@ export async function requireModulo(
   return {
     ...result,
     clienteId: result.user.clienteId,
-    verImportes: veImportes(sujeto, modulo),
+    verImportes: veImportes(sujeto, seccion),
   }
 }
 

@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +11,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, clienteId, error } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { user, clienteId, error } = await requireSeccion(SECCION.DOC_ITEMS, 'edit')
     if (error) return error
 
     const { id } = await params

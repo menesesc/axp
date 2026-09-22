@@ -1,8 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { NextResponse, NextRequest } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ const LIMIT = 8000
  * El agrupado por item/proveedor y la búsqueda se resuelven en el cliente.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireModulo(MODULO.INFORMES)
+  const { clienteId, error } = await requireSeccion(SECCION.INFORMES_COMPRAS)
   if (error) return error
 
   const sp = new URL(request.url).searchParams

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { generatePaymentOrderPdf, formatNumeroOrden, layoutTwoUp, pdfProveedorPrefix } from '@/lib/pdf/generate-payment-order-pdf'
 
@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user, error } = await requireModulo(MODULO.FINANZAS)
+    const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS)
     if (error) return error
 
     if (!user?.clienteId) {

@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,7 +67,7 @@ function getVal(row: ImportRow, colName: string | undefined): string | undefined
 
 export async function POST(request: NextRequest) {
   try {
-    const { clienteId, error } = await requireModulo(MODULO.VENTAS, 'edit')
+    const { clienteId, error } = await requireSeccion(SECCION.VENTAS_CSV, 'edit')
     if (error) return error
 
     if (!clienteId) {

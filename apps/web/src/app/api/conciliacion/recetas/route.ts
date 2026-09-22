@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { UNIDADES, sameDimension } from '@/lib/conciliacion/units'
 
 export const dynamic = 'force-dynamic'
 
 /** Receta activa de un producto (?productMasterId=) con sus ingredientes. */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_RECETAS)
   if (error) return error
 
   const productMasterId = request.nextUrl.searchParams.get('productMasterId')
@@ -67,7 +67,7 @@ interface ItemInput {
  * sea compatible con la unidadBase de su insumo. Solo admin.
  */
 export async function POST(request: NextRequest) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_RECETAS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 

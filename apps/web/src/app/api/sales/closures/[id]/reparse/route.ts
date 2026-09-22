@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { reparseClosure } from '@/lib/sales/maxirest-ingest'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +14,7 @@ export const maxDuration = 60
  * Útil para aplicar mejoras del parser a cierres viejos sin reenviar PDFs.
  */
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireModulo(MODULO.VENTAS, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.VENTAS_CIERRES, 'edit')
   if (error) return error
 
   // Verificar que el cierre pertenezca al cliente

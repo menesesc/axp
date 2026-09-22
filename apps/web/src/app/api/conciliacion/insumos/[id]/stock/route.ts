@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ async function getInsumo(insumoId: string, clienteId: string) {
 
 /** Conteos físicos de stock del insumo, en su unidadBase, ordenados por fecha. */
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION)
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS)
   if (error) return error
 
   const insumo = await getInsumo(params.id, clienteId!)
@@ -38,7 +38,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
 /** Registra un conteo de stock (fecha, cantidad en unidadBase, nota?). Solo admin. */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 /** Borra un conteo (?stockId=). Solo admin. */
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const { clienteId, error } = await requireModulo(MODULO.CONCILIACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 

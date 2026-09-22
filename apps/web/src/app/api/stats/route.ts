@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { hoyAR, sumarDias } from '@/lib/fechas'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
     // Verificar autenticación
-    const { clienteId, verImportes, error } = await requireModulo(MODULO.DASHBOARD)
+    const { clienteId, verImportes, error } = await requireSeccion(SECCION.DASHBOARD)
     if (error) return error
     const json = importesJson(verImportes)
 
@@ -255,11 +256,12 @@ export async function GET() {
     }
 
     const documentosPorDia: { date: string; count: number; amount: number }[] = []
+    // Las claves salen del calendario argentino: `fechaEmision` es @db.Date, o
+    // sea el día tal cual se guardó, y con UTC el bucket de hoy se corría al
+    // día siguiente después de las 21:00.
+    const hoyIso = hoyAR()
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      d.setHours(0, 0, 0, 0)
-      const key = d.toISOString().slice(0, 10)
+      const key = sumarDias(hoyIso, -i)
       documentosPorDia.push({
         date: key,
         count: countsByDate.get(key) || 0,
@@ -279,10 +281,7 @@ export async function GET() {
     }
     const confidencePorDia: { date: string; score: number }[] = []
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      d.setHours(0, 0, 0, 0)
-      const key = d.toISOString().slice(0, 10)
+      const key = sumarDias(hoyIso, -i)
       const score = confidenceByDate.get(key)
       if (score !== undefined) {
         confidencePorDia.push({ date: key, score })

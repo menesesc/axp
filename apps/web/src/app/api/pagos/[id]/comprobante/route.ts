@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { uploadToR2 } from '@/lib/r2/client'
 
@@ -15,7 +15,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
+  const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -77,7 +77,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, error } = await requireModulo(MODULO.FINANZAS, 'edit')
+  const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS, 'edit')
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })

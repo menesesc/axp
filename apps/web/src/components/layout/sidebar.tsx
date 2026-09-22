@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useUser } from '@/hooks/use-user'
 import { useSubscription } from '@/hooks/use-subscription'
 import { cn } from '@/lib/utils'
-import { esRutaComun, moduloDeRuta, type Modulo, type Nivel } from '@/lib/permisos'
+import { esRutaComun, seccionesDeRuta, type Nivel } from '@/lib/permisos'
 import {
   LayoutDashboard,
   FileText,
@@ -45,8 +45,8 @@ interface NavItem {
   logsBadge?: boolean
   annotationsBadge?: boolean
   /**
-   * Nivel mínimo en el módulo de la ruta para ver el ítem. Por defecto 'view':
-   * el módulo al que pertenece el href se resuelve solo (ver MODULOS).
+   * Nivel mínimo para ver el ítem. Por defecto 'view': las secciones a las que
+   * pertenece el href se resuelven solas (ver SECCIONES).
    */
   minimo?: Nivel
 }
@@ -126,8 +126,8 @@ interface SidebarContentProps {
   pathname: string
   user: { nombre?: string } | null
   isAdmin: boolean
-  can: (modulo: Modulo) => boolean
-  canEdit: (modulo: Modulo) => boolean
+  can: (seccion: string) => boolean
+  canEdit: (seccion: string) => boolean
   subscription: { plan_nombre?: string } | null
   signOut: () => void
   pendingCount?: number
@@ -149,12 +149,18 @@ function SidebarContent({
   collapsed = false,
   onCollapse,
 }: SidebarContentProps) {
-  /** Un ítem se ve si el usuario alcanza el nivel pedido en el módulo del href. */
+  /**
+   * Un ítem se ve si el usuario alcanza el nivel pedido en alguna de las
+   * secciones del href. `/ventas` lo comparten las ocho pestañas: alcanza con
+   * tener una para que el ítem aparezca en el menú.
+   */
   const puedeVerItem = (item: NavItem) => {
     if (esRutaComun(item.href)) return true
-    const modulo = moduloDeRuta(item.href)
-    if (!modulo) return false
-    return item.minimo === 'edit' ? canEdit(modulo) : can(modulo)
+    const secciones = seccionesDeRuta(item.href)
+    if (secciones.length === 0) return false
+    return secciones.some((s) =>
+      item.minimo === 'edit' ? canEdit(s.value) : can(s.value)
+    )
   }
 
   return (

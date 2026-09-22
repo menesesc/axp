@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
@@ -29,7 +29,7 @@ export async function GET(
 ) {
   try {
     // Verificar autenticación
-    const { clienteId, verImportes, error: authError } = await requireModulo(MODULO.DOCUMENTOS)
+    const { clienteId, verImportes, error: authError } = await requireSeccion(SECCION.DOC_COMPROBANTES)
     if (authError) return authError
     const json = importesJson(verImportes)
 
@@ -128,7 +128,7 @@ export async function PATCH(
 ) {
   try {
     // Requiere permisos de administrador
-    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { clienteId, error: authError } = await requireSeccion(SECCION.DOC_COMPROBANTES, 'edit')
     if (authError) return authError
 
 
@@ -329,7 +329,7 @@ export async function DELETE(
 ) {
   try {
     // Requiere permisos de administrador
-    const { clienteId, error: authError } = await requireModulo(MODULO.DOCUMENTOS, 'edit')
+    const { clienteId, error: authError } = await requireSeccion(SECCION.DOC_COMPROBANTES, 'edit')
     if (authError) return authError
 
 

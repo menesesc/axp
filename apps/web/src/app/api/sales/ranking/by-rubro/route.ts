@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import { requireModulo } from '@/lib/auth'
-import { MODULO } from '@/lib/permisos'
+import { requireSeccion } from '@/lib/auth'
+import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 import { fetchRankingByRubro } from '@/lib/sales/ranking-by-rubro-query'
 
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
  * Query: from, to, sucursal?, topN?, search?
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, verImportes, error } = await requireModulo(MODULO.VENTAS)
+  const { clienteId, verImportes, error } = await requireSeccion(SECCION.VENTAS_RANKING)
   if (error) return error
   const json = importesJson(verImportes)
 
