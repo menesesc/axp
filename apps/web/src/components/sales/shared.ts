@@ -1,3 +1,5 @@
+import { ayerAR, hoyAR, ultimosDiasAR } from '@/lib/fechas'
+
 export function fmtAR(n: number | string | null | undefined): string {
   if (n == null || n === '') return '—'
   const num = typeof n === 'string' ? parseFloat(n) : n
@@ -67,10 +69,7 @@ export function fmtCompactAR(n: number): string {
  * Devuelve rango de fechas por defecto (últimos 30 días en formato YYYY-MM-DD).
  */
 export function defaultRange(): { from: string; to: string } {
-  const now = new Date()
-  const to = now.toISOString().slice(0, 10)
-  const from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  return { from, to }
+  return ultimosDiasAR(30)
 }
 
 /**
@@ -78,7 +77,7 @@ export function defaultRange(): { from: string; to: string } {
  * lo primero que mira el operador es el cierre del día anterior.
  */
 export function yesterdayRange(): { from: string; to: string } {
-  const y = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  const y = ayerAR()
   return { from: y, to: y }
 }
 
@@ -87,8 +86,8 @@ export function yesterdayRange(): { from: string; to: string } {
  * Un solo día → "Hoy" / "Ayer" / "DD/MM"; rango → "DD/MM → DD/MM".
  */
 export function fmtRangeLabel(from: string, to: string): string {
-  const today = new Date().toISOString().slice(0, 10)
-  const yest = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  const today = hoyAR()
+  const yest = ayerAR()
   if (from === to) {
     if (from === today) return 'Hoy'
     if (from === yest) return 'Ayer'

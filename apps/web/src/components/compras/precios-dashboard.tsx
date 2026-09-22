@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fmtAR, fmtNumAR, fmtFecha, fmtFechaShort, useSort, type SortDir } from '@/components/sales/shared'
 import { Search, X, ArrowUp, ArrowDown, ChevronDown, ChevronUp, Package, Truck } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
+import { isoAR, ultimosDiasAR } from '@/lib/fechas'
 
 interface Line {
   fecha: string | null
@@ -35,9 +36,7 @@ interface ItemAgg {
 }
 
 function isoWeekAgo(): { from: string; to: string } {
-  const now = new Date()
-  const to = now.toISOString().slice(0, 10)
-  const from = new Date(now.getTime() - 6 * 86400000).toISOString().slice(0, 10)
+  const { from, to } = ultimosDiasAR(7)
   return { from, to }
 }
 
@@ -482,7 +481,7 @@ function VarBadge({ pct, single }: { pct: number; single?: boolean }) {
 }
 
 function ComprasDateRange({ from, to, onChange }: { from: string; to: string; onChange: (r: { from: string; to: string }) => void }) {
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const iso = (d: Date) => isoAR(d)
   const today = () => iso(new Date())
   const daysAgo = (n: number) => iso(new Date(Date.now() - n * 86400000))
   const startOfMonth = () => { const d = new Date(); return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))) }

@@ -20,6 +20,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
+import { ayerAR } from '@/lib/fechas'
 
 type Frec = 'DIARIA' | 'SEMANAL' | 'MENSUAL' | 'CUSTOM'
 
@@ -63,7 +64,7 @@ interface ApiResponse {
 }
 
 function ayer(): string {
-  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  return ayerAR()
 }
 
 export default function InformeVentasPage() {

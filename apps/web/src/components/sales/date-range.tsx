@@ -2,6 +2,7 @@
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { hoyAR, inicioDeMesAR, mesAnteriorAR, sumarDias } from '@/lib/fechas'
 
 interface Props {
   from: string
@@ -12,23 +13,19 @@ interface Props {
   onSucursalChange?: ((s: string) => void) | undefined
 }
 
-function fmtIso(d: Date): string {
-  return d.toISOString().slice(0, 10)
+// Todos los presets se calculan sobre el calendario argentino: con UTC, entre
+// las 21:00 y la medianoche "Hoy" caía en el día siguiente.
+function startOfMonth(): string {
+  return inicioDeMesAR()
 }
-
-function startOfMonth(d = new Date()): string {
-  return fmtIso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)))
-}
-function startOfPrevMonth(d = new Date()): { from: string; to: string } {
-  const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1))
-  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0))
-  return { from: fmtIso(first), to: fmtIso(last) }
+function startOfPrevMonth(): { from: string; to: string } {
+  return mesAnteriorAR()
 }
 function todayIso(): string {
-  return fmtIso(new Date())
+  return hoyAR()
 }
 function daysAgo(n: number): string {
-  return fmtIso(new Date(Date.now() - n * 24 * 60 * 60 * 1000))
+  return sumarDias(hoyAR(), -n)
 }
 
 export function DateRange({ from, to, onChange, sucursales, sucursal, onSucursalChange }: Props) {

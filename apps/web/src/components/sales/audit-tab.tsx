@@ -7,6 +7,7 @@ import { DateRange } from './date-range'
 import { fmtAR, fmtNumAR, fmtFecha, useSort, type SortDir } from './shared'
 import { AlertTriangle, Trash2, Tag, FileText, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
+import { ultimosDiasAR } from '@/lib/fechas'
 
 interface SummaryResp {
   totals: Record<string, { count: number; totalMonto: number }>
@@ -42,9 +43,7 @@ interface EventsResp {
 }
 
 function defaultRange() {
-  const now = new Date()
-  const to = now.toISOString().slice(0, 10)
-  const from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const { from, to } = ultimosDiasAR(30)
   return { from, to }
 }
 

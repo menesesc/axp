@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Plus, Trash2, ClipboardList } from 'lucide-react'
 import { toast } from 'sonner'
 import { fmtNumAR } from '@/components/sales/shared'
+import { hoyAR } from '@/lib/fechas'
 
 interface Insumo { id: string; nombre: string; unidadBase: string }
 interface Conteo { id: string; fecha: string; cantidad: number; nota: string | null }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+  return hoyAR()
 }
 
 export function InsumoStockPanel({ insumo, canEdit }: { insumo: Insumo; canEdit: boolean }) {
