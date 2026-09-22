@@ -147,7 +147,7 @@ export default function UsuariosPage() {
                 Invitar usuario
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Invitar nuevo usuario</DialogTitle>
               </DialogHeader>
@@ -243,7 +243,7 @@ export default function UsuariosPage() {
 
         {/* Edit user dialog */}
         <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Editar usuario</DialogTitle>
             </DialogHeader>
