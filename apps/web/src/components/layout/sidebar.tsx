@@ -29,6 +29,8 @@ import {
   Carrot,
   ClipboardCheck,
   ClipboardList,
+  PackageCheck,
+  Warehouse,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -84,6 +86,7 @@ const navigationSections: NavSection[] = [
     items: [
       { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot },
       { name: 'Stock', href: '/conciliacion/stock', icon: ClipboardList },
+      { name: 'Pedidos internos', href: '/pedidos', icon: PackageCheck },
       { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
     ],
   },
@@ -119,6 +122,7 @@ const navigationSections: NavSection[] = [
       { name: 'Usuarios', href: '/configuracion/usuarios', icon: UserCog },
       { name: 'Canales', href: '/configuracion/canales', icon: Mail },
       { name: 'Informes por mail', href: '/configuracion/informes', icon: MailPlus },
+      { name: 'Depósitos', href: '/configuracion/depositos', icon: Warehouse },
       { name: 'Mi Plan', href: '/configuracion/plan', icon: Sparkles },
     ],
   },

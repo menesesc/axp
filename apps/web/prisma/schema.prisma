@@ -31,6 +31,9 @@ model clientes {
   ventas           ventas[]
   compra_categorias     compra_categorias[]
   compra_item_categoria compra_item_categoria[]
+  depositos             depositos[]
+  pedidos_internos      pedidos_internos[]
+  pedido_plantillas     pedido_plantillas[]
 }
 
 model ventas {
@@ -576,6 +579,8 @@ model sales_product_master {
   createdAt       DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
 
+  depositoId     String?   @db.Uuid // depósito de salida por defecto (null = central)
+  deposito       depositos? @relation(fields: [depositoId], references: [id], onDelete: SetNull)
   clientes        clientes                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   closureItems    sales_closure_items[]
   recipes         sales_recipes[]
@@ -632,6 +637,9 @@ model insumos {
   clientes    clientes             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   alias       insumo_alias[]
   recipeItems sales_recipe_items[]
+  depositos     insumo_deposito[]
+  pedidoItems   pedido_interno_items[]
+  plantillaItems pedido_plantilla_items[]
   stock       insumo_stock[]
 
   @@unique([clienteId, nombre])
@@ -661,9 +669,11 @@ model insumo_stock {
   nota      String?  @db.Text
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
+  depositoId String   @db.Uuid
+  deposito   depositos @relation(fields: [depositoId], references: [id], onDelete: Cascade)
   insumo insumos @relation(fields: [insumoId], references: [id], onDelete: Cascade)
 
-  @@unique([insumoId, fecha])
+  @@unique([insumoId, depositoId, fecha])
   @@index([insumoId, fecha])
 }
 
@@ -768,4 +778,113 @@ model compra_item_categoria {
 
   @@unique([clienteId, descripcionNorm])
   @@index([categoriaId])
+}
+
+// =====================================================
+// DEPÓSITOS Y PEDIDOS INTERNOS
+// =====================================================
+
+// Depósito físico. Uno es el central (recibe las compras y despacha a los demás).
+model depositos {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String   @db.Uuid
+  nombre    String   @db.VarChar(60)
+  esCentral Boolean  @default(false)
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes          clientes               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  productos         sales_product_master[]
+  conteos           insumo_stock[]
+  insumos           insumo_deposito[]
+  pedidosDespacha   pedidos_internos[]     @relation("PedidoOrigen")
+  pedidosRecibe     pedidos_internos[]     @relation("PedidoDestino")
+  plantillas        pedido_plantillas[]
+
+  @@unique([clienteId, nombre])
+}
+
+// Stock seguro de un insumo en un depósito (umbral de alerta de reposición).
+model insumo_deposito {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  insumoId    String   @db.Uuid
+  depositoId  String   @db.Uuid
+  stockSeguro Decimal? @db.Decimal(14, 4)
+
+  insumo   insumos   @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  deposito depositos @relation(fields: [depositoId], references: [id], onDelete: Cascade)
+
+  @@unique([insumoId, depositoId])
+}
+
+// Pedido de un depósito al central. origen 'ventas' = generado desde los
+// cierres del día (uno por depósito y fecha); 'manual' = cargado a mano.
+// Al enviarse (estado 'enviado'), cantidadEnviada sale del central en
+// fechaEnvio y entra al destino.
+model pedidos_internos {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId   String    @db.Uuid
+  numero      Int       @default(autoincrement())
+  origenId    String    @db.Uuid
+  destinoId   String    @db.Uuid
+  fechaVentas DateTime? @db.Date
+  origen      String    @db.VarChar(10)
+  estado      String    @default("pendiente") @db.VarChar(12)
+  nota        String?   @db.Text
+  creadoPor   String?   @db.Uuid
+  enviadoPor  String?   @db.Uuid
+  fechaEnvio  DateTime? @db.Date
+  enviadoAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes clientes               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  origenDeposito  depositos       @relation("PedidoOrigen", fields: [origenId], references: [id], onDelete: Restrict)
+  destinoDeposito depositos       @relation("PedidoDestino", fields: [destinoId], references: [id], onDelete: Restrict)
+  items    pedido_interno_items[]
+
+  @@index([clienteId, estado])
+}
+
+model pedido_interno_items {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pedidoId        String   @db.Uuid
+  insumoId        String   @db.Uuid
+  cantidadVendida Decimal? @db.Decimal(14, 4)
+  cantidadPedida  Decimal  @db.Decimal(14, 4)
+  cantidadEnviada Decimal? @db.Decimal(14, 4)
+  manual          Boolean  @default(false)
+
+  pedido pedidos_internos @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  insumo insumos          @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([pedidoId, insumoId])
+}
+
+// Pedido tipo para lo que no sale de recetas (limpieza, descartables…).
+model pedido_plantillas {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String   @db.Uuid
+  nombre    String   @db.VarChar(80)
+  destinoId String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes clientes                 @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  destino  depositos?               @relation(fields: [destinoId], references: [id], onDelete: SetNull)
+  items    pedido_plantilla_items[]
+
+  @@unique([clienteId, nombre])
+}
+
+model pedido_plantilla_items {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plantillaId String  @db.Uuid
+  insumoId    String  @db.Uuid
+  cantidad    Decimal @db.Decimal(14, 4)
+
+  plantilla pedido_plantillas @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+  insumo    insumos           @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([plantillaId, insumoId])
 }

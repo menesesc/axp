@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { uploadToR2 } from '@/lib/r2/client'
 import { parseMaxirestClosure, ParsedClosure } from './maxirest-parser'
+import { sincronizarPedidosVentas } from '@/lib/stock/pedidos'
 
 /**
  * Senders reconocidos como origen oficial de cierres Maxirest.
@@ -168,6 +169,14 @@ export async function ingestMaxirestPdf(
     source,
     rawText: text,
   })
+
+  // Pedidos internos automáticos del día (ventas × receta por depósito).
+  // Best-effort: un error acá no debe invalidar el cierre ya guardado.
+  try {
+    await sincronizarPedidosVentas(clienteId, fechaIso)
+  } catch (err) {
+    console.error('Error generando pedidos internos desde el cierre:', err)
+  }
 
   return {
     status: 'OK',

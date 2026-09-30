@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
+import { getCentral } from '@/lib/stock/depositos'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ async function getInsumo(insumoId: string, clienteId: string) {
   })
 }
 
-/** Conteos físicos de stock del insumo, en su unidadBase, ordenados por fecha. */
+/** Conteos físicos de stock del insumo (todos los depósitos), en su unidadBase, ordenados por fecha. */
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS)
   if (error) return error
@@ -23,6 +24,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   const stock = await prisma.insumo_stock.findMany({
     where: { insumoId: params.id },
     orderBy: { fecha: 'desc' },
+    include: { deposito: { select: { nombre: true } } },
   })
 
   return NextResponse.json({
@@ -32,11 +34,15 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       fecha: s.fecha.toISOString().slice(0, 10),
       cantidad: Number(s.cantidad),
       nota: s.nota,
+      deposito: s.deposito.nombre,
     })),
   })
 }
 
-/** Registra un conteo de stock (fecha, cantidad en unidadBase, nota?). Solo admin. */
+/**
+ * Registra un conteo de stock (fecha, cantidad en unidadBase, nota?,
+ * depositoId?). Sin depósito, el conteo es del central.
+ */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
@@ -60,10 +66,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 })
   }
 
+  const depositoId = body.depositoId ? String(body.depositoId) : (await getCentral(clienteId)).id
+  if (!(await prisma.depositos.findFirst({ where: { id: depositoId, clienteId } }))) {
+    return NextResponse.json({ error: 'Depósito no encontrado' }, { status: 404 })
+  }
+
   try {
     const stock = await prisma.insumo_stock.upsert({
-      where: { insumoId_fecha: { insumoId: params.id, fecha: new Date(fecha) } },
-      create: { insumoId: params.id, fecha: new Date(fecha), cantidad, nota },
+      where: { insumoId_depositoId_fecha: { insumoId: params.id, depositoId, fecha: new Date(fecha) } },
+      create: { insumoId: params.id, depositoId, fecha: new Date(fecha), cantidad, nota },
       update: { cantidad, nota },
     })
     return NextResponse.json({ stock }, { status: 201 })

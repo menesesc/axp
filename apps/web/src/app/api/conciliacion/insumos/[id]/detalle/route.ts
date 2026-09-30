@@ -270,15 +270,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   })
   const mermaRecetaConfigurada = Number(mermaAgg._max.mermaPct ?? 0) > 0
 
-  const conteos = await prisma.insumo_stock.findMany({
+  // El cuadre del insumo es global (compras y consumo de todo el local), así
+  // que el conteo de una fecha es la suma de lo contado en todos los depósitos.
+  const conteosPorDep = await prisma.insumo_stock.findMany({
     where: { insumoId: insumo.id },
     orderBy: { fecha: 'asc' },
     select: { id: true, fecha: true, cantidad: true, nota: true },
   })
+  const conteosPorFecha = new Map<string, { id: string; fecha: Date; cantidad: number; nota: string | null }>()
+  for (const c of conteosPorDep) {
+    const k = c.fecha.toISOString().slice(0, 10)
+    const prev = conteosPorFecha.get(k)
+    if (prev) prev.cantidad += Number(c.cantidad)
+    else conteosPorFecha.set(k, { id: c.id, fecha: c.fecha, cantidad: Number(c.cantidad), nota: c.nota })
+  }
+  const conteos = [...conteosPorFecha.values()]
   const conteosOut = conteos.map((c) => ({
     id: c.id,
     fecha: c.fecha.toISOString().slice(0, 10),
-    cantidad: Number(c.cantidad),
+    cantidad: c.cantidad,
     nota: c.nota,
   }))
 
