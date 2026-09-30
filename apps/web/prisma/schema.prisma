@@ -34,6 +34,7 @@ model clientes {
   depositos             depositos[]
   pedidos_internos      pedidos_internos[]
   pedido_plantillas     pedido_plantillas[]
+  pedidos_proveedor     pedidos_proveedor[]
 }
 
 model ventas {
@@ -245,6 +246,7 @@ model proveedores {
   @@index([clienteId])
   @@index([clienteId, razonSocial])
   @@index([email])
+  pedidos_proveedor pedidos_proveedor[]
 }
 
 model usuarios {
@@ -640,6 +642,7 @@ model insumos {
   depositos     insumo_deposito[]
   pedidoItems   pedido_interno_items[]
   plantillaItems pedido_plantilla_items[]
+  pedidoProveedorItems pedido_proveedor_items[]
   stock       insumo_stock[]
 
   @@unique([clienteId, nombre])
@@ -752,6 +755,7 @@ model compra_categorias {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clienteId String   @db.Uuid
   nombre    String   @db.VarChar(60)
+  abreviatura String? @db.VarChar(6) // badge corto (ej. CAR, LAC)
   orden     Int      @default(0)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
@@ -887,4 +891,42 @@ model pedido_plantilla_items {
   insumo    insumos           @relation(fields: [insumoId], references: [id], onDelete: Cascade)
 
   @@unique([plantillaId, insumoId])
+}
+
+// Pedido de compra a un proveedor (armado desde Compras sugeridas). Mientras
+// está 'enviado' suma como "en camino" al stock proyectado del central.
+model pedidos_proveedor {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId     String    @db.Uuid
+  numero        Int       @default(autoincrement())
+  proveedorId   String    @db.Uuid
+  estado        String    @default("enviado") @db.VarChar(12)
+  fecha         DateTime  @db.Date
+  fechaEsperada DateTime? @db.Date
+  nota          String?   @db.Text
+  creadoPor     String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes    clientes                 @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  proveedores proveedores              @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  items       pedido_proveedor_items[]
+
+  @@index([clienteId, estado])
+}
+
+model pedido_proveedor_items {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pedidoId       String   @db.Uuid
+  insumoId       String?  @db.Uuid
+  descripcion    String   @db.VarChar(255)
+  cantidad       Decimal  @db.Decimal(14, 4)
+  factorBase     Decimal  @default(1) @db.Decimal(14, 4)
+  cantidadBase   Decimal  @db.Decimal(14, 4)
+  precioUnitario Decimal? @db.Decimal(14, 2)
+
+  pedido pedidos_proveedor @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  insumo insumos?          @relation(fields: [insumoId], references: [id], onDelete: SetNull)
+
+  @@index([pedidoId])
 }

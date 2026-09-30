@@ -19,26 +19,26 @@ export function normDesc(descripcion: string): string {
   return descripcion.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
-export const CATEGORIAS_DEFAULT: Array<{ nombre: string; orden: number }> = [
-  { nombre: 'Carnes', orden: 10 },
-  { nombre: 'Aves', orden: 20 },
-  { nombre: 'Pescados y mariscos', orden: 30 },
-  { nombre: 'Fiambres', orden: 40 },
-  { nombre: 'Lácteos y quesos', orden: 50 },
-  { nombre: 'Verduras y frutas', orden: 60 },
-  { nombre: 'Almacén', orden: 70 },
-  { nombre: 'Panificados y pastas', orden: 80 },
-  { nombre: 'Congelados', orden: 90 },
-  { nombre: 'Bebidas', orden: 100 },
-  { nombre: 'Vinos', orden: 110 },
-  { nombre: 'Cervezas', orden: 120 },
-  { nombre: 'Limpieza', orden: 130 },
-  { nombre: 'Descartables', orden: 140 },
-  { nombre: 'Mantenimiento', orden: 150 },
-  { nombre: 'Bazar y vajilla', orden: 155 },
-  { nombre: 'Indumentaria y blanquería', orden: 160 },
-  { nombre: 'Servicios', orden: 170 },
-  { nombre: 'Otros', orden: 999 },
+export const CATEGORIAS_DEFAULT: Array<{ nombre: string; abreviatura: string; orden: number }> = [
+  { nombre: 'Carnes', abreviatura: 'CAR', orden: 10 },
+  { nombre: 'Aves', abreviatura: 'AVE', orden: 20 },
+  { nombre: 'Pescados y mariscos', abreviatura: 'PES', orden: 30 },
+  { nombre: 'Fiambres', abreviatura: 'FIA', orden: 40 },
+  { nombre: 'Lácteos y quesos', abreviatura: 'LAC', orden: 50 },
+  { nombre: 'Verduras y frutas', abreviatura: 'VER', orden: 60 },
+  { nombre: 'Almacén', abreviatura: 'ALM', orden: 70 },
+  { nombre: 'Panificados y pastas', abreviatura: 'PAN', orden: 80 },
+  { nombre: 'Congelados', abreviatura: 'CONG', orden: 90 },
+  { nombre: 'Bebidas', abreviatura: 'BEB', orden: 100 },
+  { nombre: 'Vinos', abreviatura: 'VIN', orden: 110 },
+  { nombre: 'Cervezas', abreviatura: 'CERV', orden: 120 },
+  { nombre: 'Limpieza', abreviatura: 'LIM', orden: 130 },
+  { nombre: 'Descartables', abreviatura: 'DESC', orden: 140 },
+  { nombre: 'Mantenimiento', abreviatura: 'MANT', orden: 150 },
+  { nombre: 'Bazar y vajilla', abreviatura: 'BAZ', orden: 155 },
+  { nombre: 'Indumentaria y blanquería', abreviatura: 'IND', orden: 160 },
+  { nombre: 'Servicios', abreviatura: 'SERV', orden: 170 },
+  { nombre: 'Otros', abreviatura: 'OTR', orden: 999 },
 ]
 
 /** Devuelve las categorías del cliente, creando las iniciales si no tiene ninguna. */

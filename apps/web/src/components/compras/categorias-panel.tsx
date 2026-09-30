@@ -14,10 +14,12 @@ import {
 } from '@/components/ui/dialog'
 import { formatCurrency } from '@/lib/utils'
 import { Check, Loader2, Pencil, Plus, Settings2, Sparkles, Tags, Trash2, X } from 'lucide-react'
+import { CategoriaBadge, CategoriaPicker } from './categoria-badge'
 
 export interface CategoriaResumen {
   id: string
   nombre: string
+  abreviatura: string | null
   orden: number
   lineas: number
   descripciones: number
@@ -131,7 +133,10 @@ export function CategoriasPanel({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className={`truncate ${activa ? 'font-semibold text-emerald-800' : 'font-medium'}`}>{c.nombre}</span>
+                  <span className={`truncate flex items-center gap-1.5 ${activa ? 'font-semibold text-emerald-800' : 'font-medium'}`}>
+                    <CategoriaBadge categoria={c} />
+                    {c.nombre}
+                  </span>
                   <span className="shrink-0 tabular-nums text-slate-600">
                     {verImportes ? formatCurrency(c.subtotal) : `${c.lineas} líneas`}
                   </span>
@@ -196,7 +201,7 @@ export function CategoriasPanel({
   )
 }
 
-/** Selector compacto de categoría para una línea. Cambia todas las líneas con esa descripción. */
+/** Badge de categoría de una línea; al tocarlo se cambia (afecta todas las líneas con esa descripción). */
 export function CategoriaCell({
   descripcion,
   categoria,
@@ -204,8 +209,8 @@ export function CategoriaCell({
   canEdit,
 }: {
   descripcion: string
-  categoria: { id: string; nombre: string | null; fuente: string | null } | null
-  categorias: Array<{ id: string; nombre: string }>
+  categoria: { id: string; nombre: string | null; abreviatura?: string | null; fuente: string | null } | null
+  categorias: Array<{ id: string; nombre: string; abreviatura?: string | null }>
   canEdit: boolean
 }) {
   const queryClient = useQueryClient()
@@ -227,31 +232,14 @@ export function CategoriaCell({
     onError: (e: Error) => toast.error(e.message),
   })
 
-  if (!canEdit) {
-    return categoria ? (
-      <span className="text-xs text-slate-600">{categoria.nombre}</span>
-    ) : (
-      <span className="text-xs text-slate-300">—</span>
-    )
-  }
-
   return (
-    <select
-      value={categoria?.id ?? ''}
-      disabled={asignar.isPending}
-      onChange={(e) => e.target.value && asignar.mutate(e.target.value)}
-      title={categoria?.fuente === 'ia' ? 'Asignada por IA. Cambiala si no es correcta.' : 'Asignada a mano'}
-      className={`max-w-[140px] text-xs rounded border px-1.5 py-1 bg-white cursor-pointer ${
-        !categoria ? 'border-amber-300 text-amber-700' : categoria.fuente === 'ia' ? 'border-slate-200 text-slate-600' : 'border-emerald-300 text-emerald-800'
-      }`}
-    >
-      {!categoria && <option value="">Sin categoría</option>}
-      {categorias.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.nombre}
-        </option>
-      ))}
-    </select>
+    <CategoriaPicker
+      categoria={categoria}
+      fuente={categoria?.fuente ?? null}
+      categorias={categorias}
+      canEdit={canEdit}
+      onChange={(id) => asignar.mutateAsync(id).catch(() => undefined)}
+    />
   )
 }
 
@@ -266,7 +254,8 @@ function GestionarCategoriasDialog({
 }) {
   const queryClient = useQueryClient()
   const [nueva, setNueva] = useState('')
-  const [editando, setEditando] = useState<{ id: string; nombre: string } | null>(null)
+  const [editando, setEditando] = useState<{ id: string; nombre: string; abreviatura: string } | null>(null)
+  const [nuevaAbrev, setNuevaAbrev] = useState('')
 
   const refrescar = () => {
     queryClient.invalidateQueries({ queryKey: ['compra-categorias'] })
@@ -287,8 +276,9 @@ function GestionarCategoriasDialog({
   const crear = async () => {
     if (!nueva.trim()) return
     try {
-      await llamar('/api/items/categorias', 'POST', { nombre: nueva })
+      await llamar('/api/items/categorias', 'POST', { nombre: nueva, abreviatura: nuevaAbrev })
       setNueva('')
+      setNuevaAbrev('')
       refrescar()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
@@ -298,7 +288,7 @@ function GestionarCategoriasDialog({
   const renombrar = async () => {
     if (!editando) return
     try {
-      await llamar(`/api/items/categorias/${editando.id}`, 'PATCH', { nombre: editando.nombre })
+      await llamar(`/api/items/categorias/${editando.id}`, 'PATCH', { nombre: editando.nombre, abreviatura: editando.abreviatura })
       setEditando(null)
       refrescar()
     } catch (e) {
@@ -322,7 +312,7 @@ function GestionarCategoriasDialog({
         <DialogHeader>
           <DialogTitle>Categorías de compra</DialogTitle>
           <DialogDescription>
-            La IA usa esta lista para clasificar los items nuevos. Al eliminar una categoría, sus items pasan a Otros.
+            La IA usa esta lista para clasificar los items nuevos. La abreviatura es el badge que se ve en Items y en cada documento. Al eliminar una categoría, sus items pasan a Otros.
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[50vh] overflow-y-auto divide-y border rounded-md">
@@ -331,9 +321,16 @@ function GestionarCategoriasDialog({
               {editando?.id === c.id ? (
                 <>
                   <Input
+                    value={editando.abreviatura}
+                    onChange={(e) => setEditando({ ...editando, abreviatura: e.target.value.toUpperCase().slice(0, 6) })}
+                    onKeyDown={(e) => e.key === 'Enter' && renombrar()}
+                    placeholder="ABR"
+                    className="h-8 w-20 uppercase"
+                  />
+                  <Input
                     autoFocus
                     value={editando.nombre}
-                    onChange={(e) => setEditando({ id: c.id, nombre: e.target.value })}
+                    onChange={(e) => setEditando({ ...editando, nombre: e.target.value })}
                     onKeyDown={(e) => e.key === 'Enter' && renombrar()}
                     className="h-8"
                   />
@@ -346,9 +343,10 @@ function GestionarCategoriasDialog({
                 </>
               ) : (
                 <>
+                  <CategoriaBadge categoria={c} className="w-12 justify-center" />
                   <span className="flex-1 text-sm">{c.nombre}</span>
                   <span className="text-xs text-slate-400">{c.descripciones || ''}</span>
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditando({ id: c.id, nombre: c.nombre })}>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditando({ id: c.id, nombre: c.nombre, abreviatura: c.abreviatura ?? '' })}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   {c.nombre.toLowerCase() !== 'otros' && (
@@ -362,6 +360,12 @@ function GestionarCategoriasDialog({
           ))}
         </div>
         <div className="flex gap-2">
+          <Input
+            placeholder="ABR"
+            value={nuevaAbrev}
+            onChange={(e) => setNuevaAbrev(e.target.value.toUpperCase().slice(0, 6))}
+            className="w-20 uppercase"
+          />
           <Input
             placeholder="Nueva categoría"
             value={nueva}

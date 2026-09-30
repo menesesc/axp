@@ -112,6 +112,7 @@ interface Item {
   categoria: {
     id: string
     nombre: string | null
+    abreviatura: string | null
     fuente: string | null
   } | null
   insumo: { id: string; nombre: string } | null

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useUser } from '@/hooks/use-user'
+import { SECCION } from '@/lib/permisos'
+import { CategoriaPicker, type CategoriaLite } from '@/components/compras/categoria-badge'
 
 import { DocumentAnnotations } from '@/components/documents/document-annotations'
 import { AIReviewCard } from '@/components/documents/ai-review-card'
@@ -46,6 +48,7 @@ interface DocumentoItem {
   unidad: string | null
   precioUnitario: number | null
   subtotal: number | null
+  categoria: { id: string; nombre: string; abreviatura: string | null; fuente: string } | null
 }
 
 interface Documento {
@@ -91,7 +94,8 @@ export default function DocumentoPage() {
   const params = useParams()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAdmin } = useUser()
+  const { isAdmin, canEdit } = useUser()
+  const editaCategoria = canEdit(SECCION.DOC_COMPROBANTES)
   const documentoId = params.id as string
 
   const [isEditing, setIsEditing] = useState(false)
@@ -105,7 +109,7 @@ export default function DocumentoPage() {
     subtotal: string
   }>({ descripcion: '', cantidad: '', precioUnitario: '', subtotal: '' })
 
-  const { data, isLoading, error } = useQuery<{ documento: Documento; items: DocumentoItem[] }>({
+  const { data, isLoading, error } = useQuery<{ documento: Documento; items: DocumentoItem[]; categorias: CategoriaLite[] }>({
     queryKey: ['documento', documentoId],
     queryFn: async () => {
       const res = await fetch(`/api/documentos/${documentoId}`)
@@ -627,10 +631,32 @@ export default function DocumentoPage() {
                                   className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500"
                                 />
                               ) : (
-                                <>
-                                  <p className="text-gray-900">{item.descripcion}</p>
-                                  {item.codigo && <p className="text-xs text-gray-400">{item.codigo}</p>}
-                                </>
+                                <div className="flex items-start gap-2">
+                                  <CategoriaPicker
+                                    categoria={item.categoria}
+                                    fuente={item.categoria?.fuente ?? null}
+                                    categorias={data.categorias ?? []}
+                                    canEdit={editaCategoria}
+                                    onChange={async (categoriaId) => {
+                                      const res = await fetch(`/api/documentos/${documentoId}/categoria`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ itemId: item.id, categoriaId }),
+                                      })
+                                      if (!res.ok) {
+                                        toast.error((await res.json().catch(() => ({}))).error || 'No se pudo cambiar la categoría')
+                                        return
+                                      }
+                                      queryClient.invalidateQueries({ queryKey: ['documento', documentoId] })
+                                      queryClient.invalidateQueries({ queryKey: ['items'] })
+                                      queryClient.invalidateQueries({ queryKey: ['compra-categorias'] })
+                                    }}
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-gray-900">{item.descripcion}</p>
+                                    {item.codigo && <p className="text-xs text-gray-400">{item.codigo}</p>}
+                                  </div>
+                                </div>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right text-gray-600">

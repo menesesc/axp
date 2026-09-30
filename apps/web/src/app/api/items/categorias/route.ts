@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
       return {
         id: c.id,
         nombre: c.nombre,
+        abreviatura: c.abreviatura,
         orden: c.orden,
         lineas: Number(r?.lineas ?? 0),
         descripciones: Number(r?.descripciones ?? 0),
@@ -88,11 +89,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const nombre = String(body?.nombre || '').trim().slice(0, 60)
   if (!nombre) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+  const abreviatura = String(body?.abreviatura || '').trim().toUpperCase().slice(0, 6) || null
 
   const max = await prisma.compra_categorias.aggregate({ where: { clienteId, orden: { lt: 999 } }, _max: { orden: true } })
   try {
     const categoria = await prisma.compra_categorias.create({
-      data: { clienteId, nombre, orden: (max._max.orden ?? 0) + 10 },
+      data: { clienteId, nombre, abreviatura, orden: (max._max.orden ?? 0) + 10 },
     })
     return NextResponse.json({ categoria }, { status: 201 })
   } catch (e: any) {

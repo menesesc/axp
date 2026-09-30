@@ -308,6 +308,14 @@ export const SECCIONES: SeccionDef[] = [
     apis: ['/api/pedidos/despacho'],
   },
   {
+    value: 'conciliacion.compras',
+    modulo: MODULO.CONCILIACION,
+    label: 'Compras sugeridas',
+    paginas: ['/compras'],
+    apis: ['/api/compras'],
+    importes: true,
+  },
+  {
     value: 'conciliacion.margen',
     modulo: MODULO.CONCILIACION,
     label: 'Margen por producto',
@@ -447,6 +455,7 @@ export const SECCION = {
   CONCILIACION_STOCK: 'conciliacion.stock',
   CONCILIACION_PEDIDOS: 'conciliacion.pedidos',
   CONCILIACION_DESPACHO: 'conciliacion.despacho',
+  CONCILIACION_COMPRAS: 'conciliacion.compras',
   FINANZAS_PAGOS: 'finanzas.pagos',
   FINANZAS_CALENDARIO: 'finanzas.calendario',
   FINANZAS_ESTADISTICAS: 'finanzas.estadisticas',

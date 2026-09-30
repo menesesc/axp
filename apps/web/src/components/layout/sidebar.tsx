@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation'
 import { useUser } from '@/hooks/use-user'
 import { useSubscription } from '@/hooks/use-subscription'
 import { cn } from '@/lib/utils'
-import { esRutaComun, seccionesDeRuta, type Nivel } from '@/lib/permisos'
+import { esRutaComun, seccionesDeRuta, SECCION, type Nivel } from '@/lib/permisos'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard,
   FileText,
@@ -30,6 +31,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   PackageCheck,
+  ShoppingBasket,
   Warehouse,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -47,6 +49,8 @@ interface NavItem {
   badge?: boolean
   logsBadge?: boolean
   annotationsBadge?: boolean
+  /** Cantidad de insumos a pedir ya (Compras sugeridas). */
+  comprasBadge?: boolean
   /**
    * Nivel mínimo para ver el ítem. Por defecto 'view': las secciones a las que
    * pertenece el href se resuelven solas (ver SECCIONES).
@@ -87,6 +91,7 @@ const navigationSections: NavSection[] = [
       { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot },
       { name: 'Stock', href: '/conciliacion/stock', icon: ClipboardList },
       { name: 'Pedidos internos', href: '/pedidos', icon: PackageCheck },
+      { name: 'Compras sugeridas', href: '/compras', icon: ShoppingBasket, comprasBadge: true },
       { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
     ],
   },
@@ -160,6 +165,21 @@ function SidebarContent({
    * secciones del href. `/ventas` lo comparten las ocho pestañas: alcanza con
    * tener una para que el ítem aparezca en el menú.
    */
+  // Alertas de compra (insumos en o bajo el stock seguro del central). El
+  // cálculo es pesado: se cachea unos minutos y solo si puede ver la sección.
+  const { data: alertasCompra } = useQuery({
+    queryKey: ['compras-alertas'],
+    queryFn: async () => {
+      const res = await fetch('/api/compras/alertas')
+      if (!res.ok) return { pedir: 0 }
+      return res.json() as Promise<{ pedir: number }>
+    },
+    enabled: can(SECCION.CONCILIACION_COMPRAS),
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+  })
+  const comprasCount = alertasCompra?.pedir ?? 0
+
   const puedeVerItem = (item: NavItem) => {
     if (esRutaComun(item.href)) return true
     const secciones = seccionesDeRuta(item.href)
@@ -224,8 +244,8 @@ function SidebarContent({
                   const isActive = pathname === item.href
                   const Icon = item.icon
                   const showBadge = item.badge && pendingCount > 0
-                  const showLogsBadge = item.logsBadge && unreadLogsCount > 0
-                  const badgeCount = showBadge ? pendingCount : showLogsBadge ? unreadLogsCount : 0
+                  const showLogsBadge = (item.logsBadge && unreadLogsCount > 0) || (item.comprasBadge && comprasCount > 0)
+                  const badgeCount = showBadge ? pendingCount : item.comprasBadge ? comprasCount : showLogsBadge ? unreadLogsCount : 0
                   const badgeColor = showLogsBadge ? 'bg-red-500' : 'bg-amber-500'
 
                   return (

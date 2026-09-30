@@ -5,20 +5,27 @@ import { SECCION } from '@/lib/permisos'
 
 export const dynamic = 'force-dynamic'
 
-/** Renombra una categoría. */
+/** Edita nombre y/o abreviatura de una categoría. Body: { nombre?, abreviatura? } */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { clienteId, error } = await requireSeccion(SECCION.DOC_ITEMS, 'edit')
   if (error) return error
   const { id } = await params
 
   const body = await request.json().catch(() => null)
-  const nombre = String(body?.nombre || '').trim().slice(0, 60)
-  if (!nombre) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+  const data: { nombre?: string; abreviatura?: string | null } = {}
+  if (body?.nombre !== undefined) {
+    const nombre = String(body.nombre).trim().slice(0, 60)
+    if (!nombre) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+    data.nombre = nombre
+  }
+  if (body?.abreviatura !== undefined) {
+    data.abreviatura = String(body.abreviatura || '').trim().toUpperCase().slice(0, 6) || null
+  }
 
   const cat = await prisma.compra_categorias.findFirst({ where: { id, clienteId: clienteId! } })
   if (!cat) return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
   try {
-    const categoria = await prisma.compra_categorias.update({ where: { id }, data: { nombre } })
+    const categoria = await prisma.compra_categorias.update({ where: { id }, data })
     return NextResponse.json({ categoria })
   } catch (e: any) {
     if (e?.code === 'P2002') return NextResponse.json({ error: 'Ya existe una categoría con ese nombre' }, { status: 409 })

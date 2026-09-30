@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { getCategorias, normDesc } from '@/lib/compras/categorias'
 import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
@@ -104,13 +105,33 @@ export async function GET(
       }).catch(err => console.error('Error auto-healing estadoRevision:', err))
     }
 
+    // Categoría de compra de cada línea (por descripción normalizada).
+    const items = documento.documento_items || []
+    const [categorias, asignadas] = await Promise.all([
+      getCategorias(clienteId),
+      prisma.compra_item_categoria.findMany({
+        where: { clienteId, descripcionNorm: { in: [...new Set(items.map((i) => normDesc(i.descripcion)))] } },
+        select: { descripcionNorm: true, categoriaId: true, fuente: true },
+      }),
+    ])
+    const catPorId = new Map(categorias.map((c) => [c.id, c]))
+    const asignadaDe = new Map(asignadas.map((a) => [a.descripcionNorm, a]))
+
     return json({
       documento: {
         ...documento,
         missingFields: actualMissing,
         estadoRevision: needsEstadoUpdate ? correctEstado : documento.estadoRevision,
       },
-      items: documento.documento_items || [],
+      items: items.map((i) => {
+        const a = asignadaDe.get(normDesc(i.descripcion))
+        const c = a ? catPorId.get(a.categoriaId) : undefined
+        return {
+          ...i,
+          categoria: c ? { id: c.id, nombre: c.nombre, abreviatura: c.abreviatura, fuente: a!.fuente } : null,
+        }
+      }),
+      categorias: categorias.map((c) => ({ id: c.id, nombre: c.nombre, abreviatura: c.abreviatura })),
     })
   } catch (error) {
     console.error('Error fetching documento:', error)

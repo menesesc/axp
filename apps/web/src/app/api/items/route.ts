@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
       prov_razon: string | null
       cat_id: string | null
       cat_nombre: string | null
+      cat_abrev: string | null
       cat_fuente: string | null
       ins_id: string | null
       ins_nombre: string | null
@@ -132,6 +133,7 @@ export async function GET(request: NextRequest) {
         p."razonSocial" as prov_razon,
         cc.id as cat_id,
         cc.nombre as cat_nombre,
+        cc.abreviatura as cat_abrev,
         cic.fuente as cat_fuente,
         ins.id as ins_id,
         ins.nombre as ins_nombre
@@ -197,6 +199,7 @@ export async function GET(request: NextRequest) {
         categoria: item.cat_id ? {
           id: item.cat_id,
           nombre: item.cat_nombre,
+          abreviatura: item.cat_abrev,
           fuente: item.cat_fuente,
         } : null,
         insumo: item.ins_id ? { id: item.ins_id, nombre: item.ins_nombre } : null,
