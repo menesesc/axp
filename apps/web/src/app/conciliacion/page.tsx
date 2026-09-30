@@ -6,7 +6,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { useUser } from '@/hooks/use-user'
 import { useTabsPermitidas } from '@/components/layout/tabs-permitidas'
-import { MODULO } from '@/lib/permisos'
+import { MODULO, SECCION } from '@/lib/permisos'
 import { DateRange } from '@/components/sales/date-range'
 import { defaultRange } from '@/components/sales/shared'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,6 +14,7 @@ import { HelpCircle } from 'lucide-react'
 import { CoberturaCard } from '@/components/conciliacion/cobertura-card'
 import { ConciliacionTable, type ConciliacionItem } from '@/components/conciliacion/conciliacion-table'
 import { MargenTable, type MargenProducto } from '@/components/conciliacion/margen-table'
+import { CoberturaTab } from '@/components/conciliacion/cobertura-tab'
 
 interface ConciliacionResponse {
   items: ConciliacionItem[]
@@ -29,7 +30,7 @@ interface ConciliacionResponse {
 }
 
 export default function ConciliacionPage() {
-  const { isLoading } = useUser()
+  const { isLoading, canEdit } = useUser()
   const tabs = useTabsPermitidas(MODULO.CONCILIACION)
   const [{ from, to }, setRange] = useState(defaultRange())
   const [sucursal, setSucursal] = useState('')
@@ -125,6 +126,7 @@ export default function ConciliacionPage() {
             </TabsTrigger>
           )}
           {tabs.puede('margen') && <TabsTrigger value="margen">Margen por producto</TabsTrigger>}
+          {tabs.puede('cobertura') && <TabsTrigger value="cobertura">Cobertura</TabsTrigger>}
         </TabsList>
 
         {tabs.puede('insumos') && (
@@ -147,6 +149,16 @@ export default function ConciliacionPage() {
             </div>
             {data?.cobertura && <CoberturaCard cobertura={data.cobertura} />}
           </div>
+        </TabsContent>
+        )}
+
+        {tabs.puede('cobertura') && (
+        <TabsContent value="cobertura" className="mt-6">
+          <CoberturaTab
+            params={margenParams}
+            veImportes={tabs.veImportes('cobertura')}
+            editaInsumos={canEdit(SECCION.CONCILIACION_INSUMOS)}
+          />
         </TabsContent>
         )}
 

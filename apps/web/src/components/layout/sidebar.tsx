@@ -28,6 +28,7 @@ import {
   ShoppingCart,
   Carrot,
   ClipboardCheck,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -82,6 +83,7 @@ const navigationSections: NavSection[] = [
     title: 'Conciliación',
     items: [
       { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot },
+      { name: 'Stock', href: '/conciliacion/stock', icon: ClipboardList },
       { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
     ],
   },

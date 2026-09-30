@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const fechaDesde = searchParams.get('fechaDesde') || ''
     const fechaHasta = searchParams.get('fechaHasta') || ''
     const categoriaId = searchParams.get('categoriaId') || ''
+    const insumo = searchParams.get('insumo') || '' // 'con' | 'sin'
     const offset = (page - 1) * limit
 
     // Build dynamic SQL filters
@@ -72,10 +73,19 @@ export async function GET(request: NextRequest) {
       paramIndex++
     }
 
+    // Insumo cuyo alias matchea la línea (la línea entra al cuadre de stock).
+    if (insumo === 'con') filters += ` AND ins.id IS NOT NULL`
+    if (insumo === 'sin') filters += ` AND ins.id IS NULL`
+
     const catJoin = `
       LEFT JOIN compra_item_categoria cic
              ON cic."clienteId" = d."clienteId" AND cic."descripcionNorm" = ${descNormSql('di.descripcion')}
-      LEFT JOIN compra_categorias cc ON cc.id = cic."categoriaId"`
+      LEFT JOIN compra_categorias cc ON cc.id = cic."categoriaId"
+      LEFT JOIN LATERAL (
+        SELECT i.id, i.nombre FROM insumo_alias a JOIN insumos i ON i.id = a."insumoId"
+         WHERE i."clienteId" = d."clienteId" AND di.descripcion ILIKE '%' || a.patron || '%'
+         LIMIT 1
+      ) ins ON true`
 
     // Get items with pagination
     const itemsRaw = await prisma.$queryRawUnsafe<Array<{
@@ -99,6 +109,8 @@ export async function GET(request: NextRequest) {
       cat_id: string | null
       cat_nombre: string | null
       cat_fuente: string | null
+      ins_id: string | null
+      ins_nombre: string | null
     }>>(`
       SELECT
         di.id,
@@ -120,7 +132,9 @@ export async function GET(request: NextRequest) {
         p."razonSocial" as prov_razon,
         cc.id as cat_id,
         cc.nombre as cat_nombre,
-        cic.fuente as cat_fuente
+        cic.fuente as cat_fuente,
+        ins.id as ins_id,
+        ins.nombre as ins_nombre
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
       LEFT JOIN proveedores p ON d."proveedorId" = p.id${catJoin}
@@ -185,6 +199,7 @@ export async function GET(request: NextRequest) {
           nombre: item.cat_nombre,
           fuente: item.cat_fuente,
         } : null,
+        insumo: item.ins_id ? { id: item.ins_id, nombre: item.ins_nombre } : null,
       })),
       pagination: {
         page,

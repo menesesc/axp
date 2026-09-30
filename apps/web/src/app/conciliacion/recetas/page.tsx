@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
@@ -22,10 +23,20 @@ interface Producto {
 type Filter = 'all' | 'sin' | 'con'
 
 export default function RecetasPage() {
+  return (
+    <Suspense>
+      <RecetasPageContent />
+    </Suspense>
+  )
+}
+
+function RecetasPageContent() {
+  // ?producto=<id> abre directo ese producto (viene de Conciliación → Cobertura).
+  const productoInicial = useSearchParams().get('producto')
   const { isAdmin, isLoading } = useUser()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(productoInicial)
 
   const { data, isLoading: loading } = useQuery({
     queryKey: ['conciliacion-productos'],

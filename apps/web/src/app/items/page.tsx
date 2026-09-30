@@ -44,6 +44,7 @@ import {
   Loader2,
   ArrowUpRight,
   ArrowDownRight,
+  Carrot,
 } from 'lucide-react'
 
 function PdfButton({ pdfKey }: { pdfKey: string | null }) {
@@ -113,6 +114,7 @@ interface Item {
     nombre: string | null
     fuente: string | null
   } | null
+  insumo: { id: string; nombre: string } | null
 }
 
 interface ItemsResponse {
@@ -322,6 +324,7 @@ function ItemsPageContent() {
   const [inputValue, setInputValue] = useState('')
   const [proveedorId, setProveedorId] = useState<string>('')
   const [categoriaId, setCategoriaId] = useState<string>(urlParams.get('categoriaId') || '')
+  const [insumoFiltro, setInsumoFiltro] = useState<'' | 'con' | 'sin'>('')
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('all')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
@@ -398,8 +401,9 @@ function ItemsPageContent() {
     if (fechaDesde) params.set('fechaDesde', fechaDesde)
     if (fechaHasta) params.set('fechaHasta', fechaHasta)
     if (categoriaId) params.set('categoriaId', categoriaId)
+    if (insumoFiltro) params.set('insumo', insumoFiltro)
     return params.toString()
-  }, [page, pageSize, debouncedQ, proveedorId, fechaDesde, fechaHasta, categoriaId])
+  }, [page, pageSize, debouncedQ, proveedorId, fechaDesde, fechaHasta, categoriaId, insumoFiltro])
 
   // Fetch items
   const { data, isLoading, isFetching } = useQuery<ItemsResponse>({
@@ -457,13 +461,14 @@ function ItemsPageContent() {
     setDebouncedInput('')
     setProveedorId('')
     setCategoriaId('')
+    setInsumoFiltro('')
     setQuickDateFilter('all')
     setFechaDesde('')
     setFechaHasta('')
     setPage(1)
   }
 
-  const hasFilters = searchTags.length > 0 || debouncedInput || proveedorId || categoriaId || fechaDesde || fechaHasta
+  const hasFilters = searchTags.length > 0 || debouncedInput || proveedorId || categoriaId || insumoFiltro || fechaDesde || fechaHasta
   const proveedores = proveedoresData?.proveedores?.filter((p: Proveedor) => p) || []
 
   if (!clienteId) {
@@ -604,7 +609,7 @@ function ItemsPageContent() {
           </div>
 
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-4 border-t">
               <div>
                 <label className="text-sm font-medium text-slate-700 mb-1 block">
                   Proveedor
@@ -639,6 +644,21 @@ function ItemsPageContent() {
                       </SelectItem>
                     ))}
                     <SelectItem value="sin">Sin categoría</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">
+                  Insumo
+                </label>
+                <Select value={insumoFiltro || 'all'} onValueChange={(v) => { setInsumoFiltro(v === 'all' ? '' : (v as 'con' | 'sin')); setPage(1) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="con">Asignados a un insumo</SelectItem>
+                    <SelectItem value="sin">Sin insumo (no computan stock)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -723,6 +743,12 @@ function ItemsPageContent() {
                           <div className="truncate font-medium" title={item.descripcion}>
                             {item.descripcion}
                           </div>
+                          {item.insumo && (
+                            <div className="inline-flex items-center gap-1 text-[11px] text-emerald-700" title="Computa en stock y conciliación como este insumo">
+                              <Carrot className="h-3 w-3" />
+                              {item.insumo.nombre}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-slate-600 max-w-[150px] truncate">
                           {item.proveedor ? (
