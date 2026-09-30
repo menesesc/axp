@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendSalesReport, resolvePublicBaseUrl } from '@/lib/sales/send-report'
 import { computeReportRange } from '@/lib/sales/report-period'
+import { categorizarEnSegundoPlano } from '@/lib/compras/categorias'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,9 @@ export async function POST(request: NextRequest) {
   if (auth !== `Bearer ${SCHEDULER_TOKEN}`) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
+
+  // Aprovecha el tick para categorizar con IA los items de compra nuevos.
+  categorizarEnSegundoPlano()
 
   const now = new Date()
   // En prod el contenedor escucha en localhost:8080, así que ni el origin ni

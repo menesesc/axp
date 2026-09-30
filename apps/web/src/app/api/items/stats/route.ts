@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { descNormSql } from '@/lib/compras/categorias'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +25,15 @@ export async function GET(request: NextRequest) {
     const proveedorId = searchParams.get('proveedorId') || ''
     const fechaDesde = searchParams.get('fechaDesde') || ''
     const fechaHasta = searchParams.get('fechaHasta') || ''
+    const categoriaId = searchParams.get('categoriaId') || ''
+
+    // Filtro por categoría de compra sobre la línea `alias` ('sin' = sin categoría).
+    const catFilter = (alias: string, idx: number) => {
+      const existe = `EXISTS (SELECT 1 FROM compra_item_categoria cic
+        WHERE cic."clienteId" = $1::uuid AND cic."descripcionNorm" = ${descNormSql(`${alias}.descripcion`)}`
+      return categoriaId === 'sin' ? ` AND NOT ${existe})` : ` AND ${existe} AND cic."categoriaId" = $${idx}::uuid)`
+    }
+    const catUsaParam = !!categoriaId && categoriaId !== 'sin'
 
     // Build date filter for raw query
     let dateFilter = ''
@@ -50,6 +60,13 @@ export async function GET(request: NextRequest) {
       for (const term of terms) {
         dateFilter += ` AND (di.descripcion ILIKE $${paramIndex} OR p."razonSocial" ILIKE $${paramIndex})`
         params.push(`%${term}%`)
+        paramIndex++
+      }
+    }
+    if (categoriaId) {
+      dateFilter += catFilter('di', paramIndex)
+      if (catUsaParam) {
+        params.push(categoriaId)
         paramIndex++
       }
     }
@@ -249,6 +266,13 @@ export async function GET(request: NextRequest) {
     let poFilter = ''
     let poi = 2
 
+    if (categoriaId) {
+      poFilter += catFilter('di', poi)
+      if (catUsaParam) {
+        poParams.push(categoriaId)
+        poi++
+      }
+    }
     if (proveedorId) {
       poFilter += ` AND d."proveedorId" = $${poi}::uuid`
       poParams.push(proveedorId)
@@ -378,6 +402,15 @@ export async function GET(request: NextRequest) {
         docFilterParts.push(`AND d."proveedorId" = $${dpi}::uuid`)
         docParams.push(proveedorId)
         dpi++
+      }
+      if (categoriaId) {
+        docFilterParts.push(
+          `AND EXISTS (SELECT 1 FROM documento_items di3 WHERE di3."documentoId" = d.id${catFilter('di3', dpi)})`
+        )
+        if (catUsaParam) {
+          docParams.push(categoriaId)
+          dpi++
+        }
       }
       // Si hay búsqueda por texto, restringir a documentos con al menos un item que matchea
       if (q) {

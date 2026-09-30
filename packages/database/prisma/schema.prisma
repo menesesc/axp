@@ -29,6 +29,8 @@ model clientes {
   sales_product_master       sales_product_master[]
   sales_report_subscriptions sales_report_subscriptions[]
   insumos                    insumos[]
+  compra_categorias          compra_categorias[]
+  compra_item_categoria      compra_item_categoria[]
 }
 
 model documento_items {
@@ -184,20 +186,28 @@ model pagos {
 }
 
 model proveedores {
-  id          String       @id @db.Uuid
-  clienteId   String       @db.Uuid
-  razonSocial String       @db.VarChar(255)
-  cuit        String?      @db.VarChar(11)
-  letra       String?      @db.VarChar(1) // Letra de factura por defecto (A, B, C, etc.)
-  alias       Json         @default("[]")
-  email       String?      @db.VarChar(255)
-  telefono    String?      @db.VarChar(20)
-  activo      Boolean      @default(true)
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime     @db.Timestamptz(3)
-  documentos  documentos[]
-  pagos       pagos[]
-  clientes    clientes     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  id               String       @id @db.Uuid
+  clienteId        String       @db.Uuid
+  razonSocial      String       @db.VarChar(255)
+  cuit             String?      @db.VarChar(11)
+  letra            String?      @db.VarChar(1) // Letra de factura por defecto (A, B, C, etc.)
+  alias            Json         @default("[]")
+  email            String?      @db.VarChar(255)
+  telefono         String?      @db.VarChar(20)
+  // Contactos: dos para pedidos y uno de administración (pagos). `telefono` es legado.
+  pedidos1Nombre   String?      @db.VarChar(100)
+  pedidos1Telefono String?      @db.VarChar(30)
+  pedidos2Nombre   String?      @db.VarChar(100)
+  pedidos2Telefono String?      @db.VarChar(30)
+  adminNombre      String?      @db.VarChar(100)
+  adminTelefono    String?      @db.VarChar(30)
+  diasEntrega      Int? // días desde el pedido hasta la entrega (0 = en el día)
+  activo           Boolean      @default(true)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @db.Timestamptz(3)
+  documentos       documentos[]
+  pagos            pagos[]
+  clientes         clientes     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@unique([clienteId, cuit])
   @@index([clienteId])
@@ -769,4 +779,41 @@ enum StatusInformeRun {
   OK
   FAIL
   SKIP
+}
+
+// =====================================================
+// CATEGORÍAS DE COMPRA
+// =====================================================
+
+// Categoría de compra (Carnes, Lácteos, Limpieza…). Editables por cliente.
+model compra_categorias {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String   @db.Uuid
+  nombre    String   @db.VarChar(60)
+  orden     Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes clientes                @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  items    compra_item_categoria[]
+
+  @@unique([clienteId, nombre])
+}
+
+// Categoría asignada a una descripción de item de factura, normalizada con
+// lower(btrim(regexp_replace(descripcion, '\s+', ' ', 'g'))). La asigna la IA
+// (fuente 'ia') o un usuario (fuente 'manual', que la IA nunca pisa).
+model compra_item_categoria {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId       String   @db.Uuid
+  descripcionNorm String   @db.VarChar(500)
+  categoriaId     String   @db.Uuid
+  fuente          String   @default("ia") @db.VarChar(10)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes  clientes          @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  categoria compra_categorias @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, descripcionNorm])
+  @@index([categoriaId])
 }

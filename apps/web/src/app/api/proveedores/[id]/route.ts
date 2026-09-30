@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { contactosDesde } from '@/lib/proveedores/contactos'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -11,7 +12,13 @@ const updateProveedorSchema = z.object({
   alias: z.array(z.string()).optional(),
   letra: z.enum(['A', 'B', 'C']).nullable().optional(),
   email: z.string().email().nullable().optional(),
-  telefono: z.string().nullable().optional(),
+  pedidos1Nombre: z.string().max(100).nullable().optional(),
+  pedidos1Telefono: z.string().max(30).nullable().optional(),
+  pedidos2Nombre: z.string().max(100).nullable().optional(),
+  pedidos2Telefono: z.string().max(30).nullable().optional(),
+  adminNombre: z.string().max(100).nullable().optional(),
+  adminTelefono: z.string().max(30).nullable().optional(),
+  diasEntrega: z.number().int().min(0).max(60).nullable().optional(),
   activo: z.boolean().optional(),
 })
 
@@ -127,7 +134,7 @@ export async function PATCH(
         ...(data.alias !== undefined && { alias: data.alias }),
         ...(data.letra !== undefined && { letra: data.letra }),
         ...(data.email !== undefined && { email: data.email }),
-        ...(data.telefono !== undefined && { telefono: data.telefono }),
+        ...contactosDesde(data),
         ...(data.activo !== undefined && { activo: data.activo }),
         updatedAt: new Date(),
       },

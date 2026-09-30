@@ -28,6 +28,8 @@ import {
 } from '@/components/ui/table'
 import { useUser } from '@/hooks/use-user'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { SECCION } from '@/lib/permisos'
+import { CategoriaCell, CategoriasPanel, useCategorias } from '@/components/compras/categorias-panel'
 import {
   Search,
   ChevronLeft,
@@ -105,6 +107,11 @@ interface Item {
   proveedor: {
     id: string
     razonSocial: string
+  } | null
+  categoria: {
+    id: string
+    nombre: string | null
+    fuente: string | null
   } | null
 }
 
@@ -305,13 +312,16 @@ export default function ItemsPage() {
 }
 
 function ItemsPageContent() {
-  const { clienteId } = useUser()
+  const { clienteId, canEdit, canSeeImportes } = useUser()
+  const editaItems = canEdit(SECCION.DOC_ITEMS)
+  const veImportes = canSeeImportes(SECCION.DOC_ITEMS)
   const urlParams = useSearchParams()
   const initialQ = urlParams.get('q') || ''
   const [page, setPage] = useState(1)
   const [searchTags, setSearchTags] = useState<string[]>(initialQ ? [initialQ] : [])
   const [inputValue, setInputValue] = useState('')
   const [proveedorId, setProveedorId] = useState<string>('')
+  const [categoriaId, setCategoriaId] = useState<string>(urlParams.get('categoriaId') || '')
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('all')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
@@ -387,8 +397,9 @@ function ItemsPageContent() {
     if (proveedorId) params.set('proveedorId', proveedorId)
     if (fechaDesde) params.set('fechaDesde', fechaDesde)
     if (fechaHasta) params.set('fechaHasta', fechaHasta)
+    if (categoriaId) params.set('categoriaId', categoriaId)
     return params.toString()
-  }, [page, pageSize, debouncedQ, proveedorId, fechaDesde, fechaHasta])
+  }, [page, pageSize, debouncedQ, proveedorId, fechaDesde, fechaHasta, categoriaId])
 
   // Fetch items
   const { data, isLoading, isFetching } = useQuery<ItemsResponse>({
@@ -410,8 +421,23 @@ function ItemsPageContent() {
     if (proveedorId) params.set('proveedorId', proveedorId)
     if (fechaDesde) params.set('fechaDesde', fechaDesde)
     if (fechaHasta) params.set('fechaHasta', fechaHasta)
+    if (categoriaId) params.set('categoriaId', categoriaId)
     return params.toString()
-  }, [debouncedQ, proveedorId, fechaDesde, fechaHasta])
+  }, [debouncedQ, proveedorId, fechaDesde, fechaHasta, categoriaId])
+
+  // Resumen por categoría: mismo período/proveedor, sin el filtro de categoría
+  // (así se ve el reparto completo y se puede saltar entre categorías).
+  const categoriasFiltro = useMemo(() => {
+    const params = new URLSearchParams()
+    if (proveedorId) params.set('proveedorId', proveedorId)
+    if (fechaDesde) params.set('fechaDesde', fechaDesde)
+    if (fechaHasta) params.set('fechaHasta', fechaHasta)
+    return params.toString()
+  }, [proveedorId, fechaDesde, fechaHasta])
+  const { data: categoriasData } = useCategorias(categoriasFiltro, !!clienteId)
+  const categoriasLista = categoriasData?.categorias ?? []
+  const categoriaActiva =
+    categoriaId === 'sin' ? 'Sin categoría' : categoriasLista.find((c) => c.id === categoriaId)?.nombre
 
   // Fetch stats
   const { data: stats } = useQuery<ItemStats>({
@@ -430,13 +456,14 @@ function ItemsPageContent() {
     setInputValue('')
     setDebouncedInput('')
     setProveedorId('')
+    setCategoriaId('')
     setQuickDateFilter('all')
     setFechaDesde('')
     setFechaHasta('')
     setPage(1)
   }
 
-  const hasFilters = searchTags.length > 0 || debouncedInput || proveedorId || fechaDesde || fechaHasta
+  const hasFilters = searchTags.length > 0 || debouncedInput || proveedorId || categoriaId || fechaDesde || fechaHasta
   const proveedores = proveedoresData?.proveedores?.filter((p: Proveedor) => p) || []
 
   if (!clienteId) {
@@ -556,10 +583,18 @@ function ItemsPageContent() {
               Más filtros
               {hasFilters && (
                 <Badge variant="outline" className="ml-1">
-                  {[searchTags.length > 0 || debouncedInput ? 'q' : '', proveedorId, fechaDesde, fechaHasta].filter(Boolean).length}
+                  {[searchTags.length > 0 || debouncedInput ? 'q' : '', proveedorId, categoriaId, fechaDesde, fechaHasta].filter(Boolean).length}
                 </Badge>
               )}
             </Button>
+            {categoriaActiva && (
+              <Badge className="gap-1 self-center bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                {categoriaActiva}
+                <button type="button" onClick={() => { setCategoriaId(''); setPage(1) }} className="hover:text-red-600">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
                 <X className="h-4 w-4" />
@@ -569,7 +604,7 @@ function ItemsPageContent() {
           </div>
 
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t">
               <div>
                 <label className="text-sm font-medium text-slate-700 mb-1 block">
                   Proveedor
@@ -585,6 +620,25 @@ function ItemsPageContent() {
                         {p.razonSocial}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">
+                  Categoría
+                </label>
+                <Select value={categoriaId || 'all'} onValueChange={(v) => { setCategoriaId(v === 'all' ? '' : v); setPage(1) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas las categorías" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las categorías</SelectItem>
+                    {categoriasLista.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nombre}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="sin">Sin categoría</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -647,6 +701,7 @@ function ItemsPageContent() {
                       <TableHead>Documento</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead>Proveedor</TableHead>
+                      <TableHead>Categoría</TableHead>
                       <TableHead className="text-right">Cant.</TableHead>
                       <TableHead className="text-right">P. Unit.</TableHead>
                       <TableHead className="text-right">Subtotal</TableHead>
@@ -681,6 +736,14 @@ function ItemsPageContent() {
                           ) : (
                             '-'
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <CategoriaCell
+                            descripcion={item.descripcion}
+                            categoria={item.categoria}
+                            categorias={categoriasLista}
+                            canEdit={editaItems}
+                          />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {item.cantidad?.toLocaleString() || '-'}
@@ -738,6 +801,14 @@ function ItemsPageContent() {
 
           {/* Sidebar - Stats */}
           <div className="space-y-6">
+            <CategoriasPanel
+              data={categoriasData}
+              categoriaId={categoriaId}
+              onSelect={(id) => { setCategoriaId(id); setPage(1) }}
+              canEdit={editaItems}
+              verImportes={veImportes}
+            />
+
             {/* Top Providers */}
             <div className="bg-white border rounded-lg p-4">
               <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">

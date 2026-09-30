@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { descNormSql } from '@/lib/compras/categorias'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
     const proveedorId = searchParams.get('proveedorId') || ''
     const fechaDesde = searchParams.get('fechaDesde') || ''
     const fechaHasta = searchParams.get('fechaHasta') || ''
+    const categoriaId = searchParams.get('categoriaId') || ''
     const offset = (page - 1) * limit
 
     // Build dynamic SQL filters
@@ -61,6 +63,20 @@ export async function GET(request: NextRequest) {
       paramIndex++
     }
 
+    // categoriaId = 'sin' filtra las líneas todavía sin categoría.
+    if (categoriaId === 'sin') {
+      filters += ` AND cic.id IS NULL`
+    } else if (categoriaId) {
+      filters += ` AND cic."categoriaId" = $${paramIndex}::uuid`
+      params.push(categoriaId)
+      paramIndex++
+    }
+
+    const catJoin = `
+      LEFT JOIN compra_item_categoria cic
+             ON cic."clienteId" = d."clienteId" AND cic."descripcionNorm" = ${descNormSql('di.descripcion')}
+      LEFT JOIN compra_categorias cc ON cc.id = cic."categoriaId"`
+
     // Get items with pagination
     const itemsRaw = await prisma.$queryRawUnsafe<Array<{
       id: string
@@ -80,6 +96,9 @@ export async function GET(request: NextRequest) {
       doc_pdf_raw: string | null
       prov_id: string | null
       prov_razon: string | null
+      cat_id: string | null
+      cat_nombre: string | null
+      cat_fuente: string | null
     }>>(`
       SELECT
         di.id,
@@ -98,10 +117,13 @@ export async function GET(request: NextRequest) {
         d."pdfFinalKey" as doc_pdf_final,
         d."pdfRawKey" as doc_pdf_raw,
         p.id as prov_id,
-        p."razonSocial" as prov_razon
+        p."razonSocial" as prov_razon,
+        cc.id as cat_id,
+        cc.nombre as cat_nombre,
+        cic.fuente as cat_fuente
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
-      LEFT JOIN proveedores p ON d."proveedorId" = p.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id${catJoin}
       WHERE d."clienteId" = $1::uuid ${filters}
       ORDER BY d."fechaEmision" DESC NULLS LAST, di.linea ASC
       LIMIT ${limit} OFFSET ${offset}
@@ -112,7 +134,7 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*)::bigint as count
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
-      LEFT JOIN proveedores p ON d."proveedorId" = p.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id${catJoin}
       WHERE d."clienteId" = $1::uuid ${filters}
     `, ...params)
 
@@ -130,7 +152,7 @@ export async function GET(request: NextRequest) {
         COUNT(*)::bigint as total_count
       FROM documento_items di
       JOIN documentos d ON di."documentoId" = d.id
-      LEFT JOIN proveedores p ON d."proveedorId" = p.id
+      LEFT JOIN proveedores p ON d."proveedorId" = p.id${catJoin}
       WHERE d."clienteId" = $1::uuid ${filters}
     `, ...params)
 
@@ -157,6 +179,11 @@ export async function GET(request: NextRequest) {
         proveedor: item.prov_id ? {
           id: item.prov_id,
           razonSocial: item.prov_razon,
+        } : null,
+        categoria: item.cat_id ? {
+          id: item.cat_id,
+          nombre: item.cat_nombre,
+          fuente: item.cat_fuente,
         } : null,
       })),
       pagination: {

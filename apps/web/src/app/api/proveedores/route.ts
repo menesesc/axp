@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { contactosDesde } from '@/lib/proveedores/contactos'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { razonSocial, cuit, letra, alias, email, telefono } = body
+    const { razonSocial, cuit, letra, alias, email } = body
+    const contactos = contactosDesde(body)
 
     // Validaciones
     if (!razonSocial || razonSocial.trim().length === 0) {
@@ -113,7 +115,7 @@ export async function POST(request: Request) {
         letra: letra || null,
         alias: alias || [],
         email: email || null,
-        telefono: telefono || null,
+        ...contactos,
         updatedAt: new Date(),
       },
     })

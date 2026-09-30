@@ -39,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { waPhone } from '@/lib/whatsapp'
 
 interface Documento {
   id: string
@@ -95,21 +96,6 @@ function proveedorPrefix(razonSocial: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 30) || 'PROVEEDOR'
   )
-}
-
-/** Normaliza un teléfono argentino a formato wa.me (54 9 + área + número). */
-function waPhone(telefono: string | null): string | null {
-  if (!telefono) return null
-  let d = telefono.replace(/\D/g, '')
-  if (!d) return null
-  d = d.replace(/^0+/, '') // sacar 0 inicial (área)
-  // Quitar el 15 de celular si quedó pegado tras el área no lo detectamos bien;
-  // asumimos números ya sin 0 y con área. Prefijo país 54 + 9 (celular).
-  if (d.startsWith('54')) {
-    const rest = d.slice(2)
-    return rest.startsWith('9') ? d : `549${rest}`
-  }
-  return `549${d}`
 }
 
 /** Saludo según la hora local. */

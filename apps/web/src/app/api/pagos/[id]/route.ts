@@ -4,6 +4,7 @@ import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { sendPaymentOrderEmail } from '@/lib/email/send-payment-order'
+import { telefonoAdmin } from '@/lib/whatsapp'
 
 const paymentAttachmentSchema = z.object({
   key: z.string(),
@@ -55,6 +56,8 @@ export async function GET(
             cuit: true,
             email: true,
             telefono: true,
+            adminTelefono: true,
+            pedidos1Telefono: true,
           },
         },
         pago_metodos: true,
@@ -90,7 +93,8 @@ export async function GET(
         montoTotal: Number(pago.montoTotal),
         nota: pago.nota,
         comprobanteKey: pago.comprobanteKey,
-        proveedor: pago.proveedores,
+        // El comprobante va al contacto de administración (o Pedidos 1 si no hay).
+        proveedor: { ...pago.proveedores, telefono: telefonoAdmin(pago.proveedores) },
         metodos: pago.pago_metodos.map((m) => {
           const meta = (m.meta || {}) as Record<string, unknown>
           return {

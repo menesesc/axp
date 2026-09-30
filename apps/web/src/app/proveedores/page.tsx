@@ -55,7 +55,10 @@ import {
   Hash,
   Mail,
   Phone,
+  MessageCircle,
+  Truck,
 } from 'lucide-react'
+import { waLink } from '@/lib/whatsapp'
 
 interface Proveedor {
   id: string
@@ -65,8 +68,71 @@ interface Proveedor {
   letra: string | null
   email: string | null
   telefono: string | null
+  pedidos1Nombre: string | null
+  pedidos1Telefono: string | null
+  pedidos2Nombre: string | null
+  pedidos2Telefono: string | null
+  adminNombre: string | null
+  adminTelefono: string | null
+  diasEntrega: number | null
   activo: boolean
   documentosCount: number
+}
+
+const FORM_VACIO = {
+  razonSocial: '',
+  cuit: '',
+  alias: '',
+  letra: '',
+  email: '',
+  pedidos1Nombre: '',
+  pedidos1Telefono: '',
+  pedidos2Nombre: '',
+  pedidos2Telefono: '',
+  adminNombre: '',
+  adminTelefono: '',
+  diasEntrega: '',
+}
+
+type FormProveedor = typeof FORM_VACIO
+
+const CONTACTOS: Array<{ label: string; hint: string; nombre: keyof FormProveedor; telefono: keyof FormProveedor }> = [
+  { label: 'Pedidos 1', hint: 'Contacto principal para pedidos', nombre: 'pedidos1Nombre', telefono: 'pedidos1Telefono' },
+  { label: 'Pedidos 2', hint: 'Alternativo para pedidos', nombre: 'pedidos2Nombre', telefono: 'pedidos2Telefono' },
+  { label: 'Administración', hint: 'Para informar pagos', nombre: 'adminNombre', telefono: 'adminTelefono' },
+]
+
+function textoEntrega(dias: number | null): string | null {
+  if (dias === null) return null
+  if (dias === 0) return 'Entrega en el día'
+  if (dias === 1) return 'Entrega al día siguiente'
+  return `Entrega en ${dias} días`
+}
+
+/** Teléfono con acceso directo a WhatsApp. */
+function ContactoLink({ tipo, nombre, telefono }: { tipo: string; nombre: string | null; telefono: string | null }) {
+  if (!telefono && !nombre) return null
+  const href = waLink(telefono)
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
+      <span className="text-slate-400 w-12 shrink-0">{tipo}</span>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-emerald-700 hover:underline"
+          title="Abrir WhatsApp"
+        >
+          <MessageCircle className="h-3 w-3" />
+          {nombre ? `${nombre} · ` : ''}{telefono}
+        </a>
+      ) : (
+        <span>{nombre}</span>
+      )}
+    </div>
+  )
 }
 
 // Badge de estado del proveedor
@@ -120,14 +186,7 @@ export default function ProveedoresPage() {
   const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null)
-  const [formData, setFormData] = useState({
-    razonSocial: '',
-    cuit: '',
-    alias: '',
-    letra: '',
-    email: '',
-    telefono: '',
-  })
+  const [formData, setFormData] = useState<FormProveedor>(FORM_VACIO)
 
   const { data, isLoading } = useQuery<{ proveedores: Proveedor[] }>({
     queryKey: ['proveedores', clienteId],
@@ -140,7 +199,7 @@ export default function ProveedoresPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (data: { razonSocial: string; cuit: string; alias: string[]; letra: string | null; email?: string | null; telefono?: string | null }) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await fetch('/api/proveedores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,7 +223,7 @@ export default function ProveedoresPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { razonSocial: string; cuit: string | null; alias: string[]; letra: string | null; email?: string | null; telefono?: string | null } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
       const res = await fetch(`/api/proveedores/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -230,7 +289,7 @@ export default function ProveedoresPage() {
   })
 
   const resetForm = () => {
-    setFormData({ razonSocial: '', cuit: '', alias: '', letra: '', email: '', telefono: '' })
+    setFormData(FORM_VACIO)
     setEditingProveedor(null)
   }
 
@@ -244,7 +303,13 @@ export default function ProveedoresPage() {
         alias: proveedor.alias.join(', '),
         letra: proveedor.letra || '',
         email: proveedor.email || '',
-        telefono: proveedor.telefono || '',
+        pedidos1Nombre: proveedor.pedidos1Nombre || '',
+        pedidos1Telefono: proveedor.pedidos1Telefono || '',
+        pedidos2Nombre: proveedor.pedidos2Nombre || '',
+        pedidos2Telefono: proveedor.pedidos2Telefono || '',
+        adminNombre: proveedor.adminNombre || '',
+        adminTelefono: proveedor.adminTelefono || '',
+        diasEntrega: proveedor.diasEntrega === null ? '' : String(proveedor.diasEntrega),
       })
     } else {
       resetForm()
@@ -255,6 +320,15 @@ export default function ProveedoresPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const aliasArray = formData.alias.split(',').map(a => a.trim()).filter(a => a.length > 0)
+    const contactos = {
+      pedidos1Nombre: formData.pedidos1Nombre || null,
+      pedidos1Telefono: formData.pedidos1Telefono || null,
+      pedidos2Nombre: formData.pedidos2Nombre || null,
+      pedidos2Telefono: formData.pedidos2Telefono || null,
+      adminNombre: formData.adminNombre || null,
+      adminTelefono: formData.adminTelefono || null,
+      diasEntrega: formData.diasEntrega === '' ? null : Number(formData.diasEntrega),
+    }
 
     if (editingProveedor) {
       updateMutation.mutate({
@@ -265,7 +339,7 @@ export default function ProveedoresPage() {
           alias: aliasArray,
           letra: formData.letra || null,
           email: formData.email || null,
-          telefono: formData.telefono || null,
+          ...contactos,
         },
       })
     } else {
@@ -275,7 +349,7 @@ export default function ProveedoresPage() {
         alias: aliasArray,
         letra: formData.letra || null,
         email: formData.email || null,
-        telefono: formData.telefono || null,
+        ...contactos,
       })
     }
   }
@@ -359,7 +433,7 @@ export default function ProveedoresPage() {
                 <TableHead className="font-medium">Proveedor</TableHead>
                 <TableHead className="font-medium">CUIT</TableHead>
                 <TableHead className="font-medium text-center">Letra</TableHead>
-                <TableHead className="font-medium">Email</TableHead>
+                <TableHead className="font-medium">Contactos</TableHead>
                 <TableHead className="font-medium text-center">Documentos</TableHead>
                 <TableHead className="font-medium">Estado</TableHead>
                 {isAdmin && <TableHead className="w-12"></TableHead>}
@@ -428,11 +502,21 @@ export default function ProveedoresPage() {
                       <LetraBadge letra={proveedor.letra} />
                     </TableCell>
                     <TableCell>
-                      {proveedor.email ? (
-                        <span className="text-sm text-slate-600">{proveedor.email}</span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
+                      <div className="space-y-0.5">
+                        <ContactoLink tipo="Pedidos" nombre={proveedor.pedidos1Nombre} telefono={proveedor.pedidos1Telefono} />
+                        <ContactoLink tipo="Pedidos" nombre={proveedor.pedidos2Nombre} telefono={proveedor.pedidos2Telefono} />
+                        <ContactoLink tipo="Admin." nombre={proveedor.adminNombre} telefono={proveedor.adminTelefono} />
+                        {proveedor.email && <div className="text-xs text-slate-500 truncate max-w-[220px]">{proveedor.email}</div>}
+                        {textoEntrega(proveedor.diasEntrega) && (
+                          <div className="text-xs text-slate-400 flex items-center gap-1">
+                            <Truck className="h-3 w-3" />
+                            {textoEntrega(proveedor.diasEntrega)}
+                          </div>
+                        )}
+                        {!proveedor.pedidos1Telefono && !proveedor.pedidos2Telefono && !proveedor.adminTelefono && !proveedor.email && (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="inline-flex items-center gap-1.5 text-slate-600">
@@ -503,7 +587,7 @@ export default function ProveedoresPage() {
             resetForm()
           }
         }}>
-          <DialogContent>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {editingProveedor ? (
@@ -573,32 +657,72 @@ export default function ProveedoresPage() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Email</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="proveedor@email.com"
-                      className="pl-9"
-                    />
-                  </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="proveedor@email.com"
+                    className="pl-9"
+                  />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Teléfono</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input
-                      value={formData.telefono}
-                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                      placeholder="+54 11 1234-5678"
-                      className="pl-9"
-                    />
-                  </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Contactos</label>
+                <div className="rounded-lg border divide-y">
+                  {CONTACTOS.map((c) => (
+                    <div key={c.label} className="p-3 space-y-2">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-sm font-medium text-slate-700">{c.label}</span>
+                        <span className="text-xs text-slate-400">{c.hint}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Input
+                          value={formData[c.nombre]}
+                          onChange={(e) => setFormData({ ...formData, [c.nombre]: e.target.value })}
+                          placeholder="Nombre"
+                        />
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <Input
+                            value={formData[c.telefono]}
+                            onChange={(e) => setFormData({ ...formData, [c.telefono]: e.target.value })}
+                            placeholder="11 1234-5678"
+                            inputMode="tel"
+                            className="pl-9"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Tiempo de entrega</label>
+                <Select
+                  value={formData.diasEntrega === '' ? 'none' : formData.diasEntrega}
+                  onValueChange={(v) => setFormData({ ...formData, diasEntrega: v === 'none' ? '' : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin definir" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin definir</SelectItem>
+                    <SelectItem value="0">En el día</SelectItem>
+                    <SelectItem value="1">Al día siguiente</SelectItem>
+                    {[2, 3, 4, 5, 7, 10, 15].map((d) => (
+                      <SelectItem key={d} value={String(d)}>{d} días</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Se usa para sugerir cuándo pedir según el stock y las ventas.
+                </p>
               </div>
 
               <div className="space-y-2">
