@@ -81,16 +81,12 @@ export async function calcularSugerencias(
     }),
     // Consumo por ventas en la ventana: total y el que sale directo del central.
     prisma.$queryRawUnsafe<Array<{ insumo_id: string; unidad: string; total: number; central: number }>>(
-      `SELECT ri."insumoId" AS insumo_id, ri.unidad,
-              SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::float8 AS total,
-              SUM(CASE WHEN COALESCE(pm."depositoId", $4::uuid) = $4::uuid
-                       THEN ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0) ELSE 0 END)::float8 AS central
-         FROM sales_closure_items ci
-         JOIN sales_closures c ON c.id = ci."closureId"
-         JOIN sales_product_master pm ON pm.id = ci."productMasterId"
-         JOIN sales_recipes r ON r."productMasterId" = pm.id AND r.activa = true
-         JOIN sales_recipe_items ri ON ri."recipeId" = r.id
-        WHERE c."clienteId" = $1::uuid AND c.fecha >= $2::date AND c.fecha < $3::date
+      `SELECT cv.insumo_id, cv.unidad,
+              SUM(cv.qty)::float8 AS total,
+              SUM(CASE WHEN COALESCE(cv.deposito_id, $4::uuid) = $4::uuid
+                       THEN cv.qty ELSE 0 END)::float8 AS central
+         FROM insumo_consumo_linea cv
+        WHERE cv.cliente_id = $1::uuid AND cv.fecha >= $2::date AND cv.fecha < $3::date
         GROUP BY 1, 2`,
       clienteId,
       desde,
@@ -140,26 +136,26 @@ export async function calcularSugerencias(
       precio_base: number | null
       compras: bigint
     }>>(
+      // Las notas de crédito no sirven para fijar el precio de referencia ni
+      // para elegir proveedor: son devoluciones, no compras.
       `WITH lineas AS (
-         SELECT a."insumoId" AS insumo_id, p.id AS proveedor_id, p."razonSocial" AS razon_social,
+         SELECT co.insumo_id, p.id AS proveedor_id, p."razonSocial" AS razon_social,
                 p."diasEntrega" AS dias_entrega,
                 COALESCE(p."pedidos1Telefono", p."pedidos2Telefono", p.telefono) AS telefono,
                 CASE WHEN p."pedidos1Telefono" IS NOT NULL THEN p."pedidos1Nombre" ELSE p."pedidos2Nombre" END AS contacto,
-                d."fechaEmision" AS fecha, di.descripcion, a."factorBase"::float8 AS factor,
-                di."precioUnitario"::float8 AS precio_unitario,
-                CASE WHEN di.cantidad > 0 AND di.subtotal IS NOT NULL
-                     THEN (di.subtotal / (di.cantidad * a."factorBase"))::float8
-                     WHEN di."precioUnitario" IS NOT NULL THEN (di."precioUnitario" / a."factorBase")::float8
+                co.fecha AS fecha, co.descripcion, co.factor_base::float8 AS factor,
+                co.precio_unitario::float8 AS precio_unitario,
+                CASE WHEN co.qty_base > 0 AND co.subtotal IS NOT NULL
+                     THEN (co.subtotal / co.qty_base)::float8
+                     WHEN co.precio_unitario IS NOT NULL THEN (co.precio_unitario / co.factor_base)::float8
                 END AS precio_base,
-                ROW_NUMBER() OVER (PARTITION BY a."insumoId", p.id ORDER BY d."fechaEmision" DESC, di.linea) AS rn,
-                COUNT(*) OVER (PARTITION BY a."insumoId", p.id) AS compras
-           FROM documento_items di
-           JOIN documentos d ON d.id = di."documentoId"
-           JOIN proveedores p ON p.id = d."proveedorId"
-           JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-           JOIN insumos i ON i.id = a."insumoId" AND i."clienteId" = d."clienteId"
-          WHERE d."clienteId" = $1::uuid AND d."fechaEmision" >= $2::date
-            AND d."estadoRevision"::text = ANY($3::text[])
+                ROW_NUMBER() OVER (PARTITION BY co.insumo_id, p.id ORDER BY co.fecha DESC, co.linea) AS rn,
+                COUNT(*) OVER (PARTITION BY co.insumo_id, p.id) AS compras
+           FROM insumo_compra_linea co
+           JOIN proveedores p ON p.id = co.proveedor_id
+          WHERE co.cliente_id = $1::uuid AND co.fecha >= $2::date
+            AND co.estado_revision::text = ANY($3::text[])
+            AND co.tipo <> 'NOTA_CREDITO'
        )
        SELECT insumo_id, proveedor_id, razon_social, dias_entrega, telefono, contacto,
               to_char(fecha, 'YYYY-MM-DD') AS fecha, descripcion, factor, precio_unitario, precio_base, compras

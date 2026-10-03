@@ -610,6 +610,7 @@ model sales_product_master {
   clientes     clientes              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   closureItems sales_closure_items[]
   recipes      sales_recipes[]
+  insumoDirecto insumos?             @relation("InsumoVentaDirecta")
 
   @@unique([clienteId, codigoMaxirest])
   @@index([clienteId])
@@ -666,6 +667,13 @@ model insumos {
   clienteId  String   @db.Uuid
   nombre     String   @db.VarChar(255)
   unidadBase String   @db.VarChar(10) // g, kg, ml, l, u
+
+  /// Venta directa (1 a 1): este insumo ES un producto vendido, sin receta de
+  /// por medio. El consumo son las unidades vendidas del producto. Exige
+  /// unidadBase = 'u'. Si el producto llega a tener una receta activa, la
+  /// receta tiene precedencia (ver la vista insumo_consumo_linea).
+  productMasterId String?               @unique @db.Uuid
+  productMaster   sales_product_master? @relation("InsumoVentaDirecta", fields: [productMasterId], references: [id], onDelete: SetNull)
   categoria  String?  @db.VarChar(100)
   activo     Boolean  @default(true)
   notas      String?  @db.Text

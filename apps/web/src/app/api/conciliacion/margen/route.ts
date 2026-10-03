@@ -33,17 +33,14 @@ export async function GET(request: NextRequest) {
     qty_base: number
     costo_total: number | null
   }>>(`
-    SELECT a."insumoId" AS insumo_id,
-           SUM(di.cantidad * a."factorBase")::numeric AS qty_base,
-           SUM(di.subtotal)::numeric AS costo_total
-    FROM documento_items di
-    JOIN documentos d ON d.id = di."documentoId"
-    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-    JOIN insumos i ON i.id = a."insumoId"
-    WHERE d."clienteId" = $1::uuid AND i."clienteId" = $1::uuid
-      AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
-      AND d."estadoRevision"::text = ANY($4::text[])
-    GROUP BY a."insumoId"
+    SELECT co.insumo_id,
+           SUM(co.qty_base)::numeric AS qty_base,
+           SUM(co.subtotal)::numeric AS costo_total
+    FROM insumo_compra_linea co
+    WHERE co.cliente_id = $1::uuid
+      AND co.fecha >= $2::date AND co.fecha <= $3::date
+      AND co.estado_revision::text = ANY($4::text[])
+    GROUP BY co.insumo_id
   `, clienteId, from, to, estadosFinal)
   const costoUnitarioByInsumo = new Map<string, number>()
   for (const r of compradoRows) {
@@ -54,17 +51,15 @@ export async function GET(request: NextRequest) {
   // Último costo conocido por insumo (compra más reciente ≤ to): fallback cuando
   // no hubo compras del insumo dentro del período seleccionado.
   const lastCostRows = await prisma.$queryRawUnsafe<Array<{ insumo_id: string; costo_unit: number | null }>>(`
-    SELECT DISTINCT ON (a."insumoId") a."insumoId" AS insumo_id,
-           (di.subtotal / NULLIF(di.cantidad * a."factorBase", 0))::numeric AS costo_unit
-    FROM documento_items di
-    JOIN documentos d ON d.id = di."documentoId"
-    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-    JOIN insumos i ON i.id = a."insumoId"
-    WHERE d."clienteId" = $1::uuid AND i."clienteId" = $1::uuid
-      AND d."fechaEmision" <= $2::date
-      AND d."estadoRevision"::text = ANY($3::text[])
-      AND di.cantidad IS NOT NULL AND di.subtotal IS NOT NULL
-    ORDER BY a."insumoId", d."fechaEmision" DESC
+    SELECT DISTINCT ON (co.insumo_id) co.insumo_id,
+           (co.subtotal / NULLIF(co.qty_base, 0))::numeric AS costo_unit
+    FROM insumo_compra_linea co
+    WHERE co.cliente_id = $1::uuid
+      AND co.fecha <= $2::date
+      AND co.estado_revision::text = ANY($3::text[])
+      AND co.cantidad IS NOT NULL AND co.subtotal IS NOT NULL
+      AND co.tipo <> 'NOTA_CREDITO'
+    ORDER BY co.insumo_id, co.fecha DESC
   `, clienteId, to, estadosFinal)
   const lastCostByInsumo = new Map<string, number>()
   for (const r of lastCostRows) { if (r.costo_unit != null) lastCostByInsumo.set(r.insumo_id, Number(r.costo_unit)) }

@@ -256,7 +256,9 @@ export const SECCIONES: SeccionDef[] = [
     label: 'Insumos',
     tab: 'insumos',
     paginas: ['/conciliacion/insumos'],
-    apis: ['/api/conciliacion/insumos'],
+    // venta-directa crea insumos atados a un producto: es la misma sección,
+    // y así el middleware exige lo mismo que el guard de la ruta.
+    apis: ['/api/conciliacion/insumos', '/api/conciliacion/venta-directa'],
     importes: true,
   },
   {

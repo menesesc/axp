@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { fmtAR, fmtNumAR } from '@/components/sales/shared'
 import { UNIDADES } from '@/lib/conciliacion/units'
-import { BookOpen, Carrot, CheckCircle2, Loader2, Plus, ShoppingBag, UtensilsCrossed } from 'lucide-react'
+import { BookOpen, Carrot, CheckCircle2, Boxes, Loader2, Plus, ShoppingBag, UtensilsCrossed } from 'lucide-react'
 
 interface VentaCobertura {
   id: string
@@ -25,6 +25,7 @@ interface VentaCobertura {
   unidades: number
   importe: number
   conReceta: boolean
+  ventaDirecta: boolean
 }
 
 interface CompraCobertura {
@@ -95,6 +96,43 @@ export function CoberturaTab({
   veImportes: boolean
   editaInsumos: boolean
 }) {
+  const qcPrincipal = useQueryClient()
+
+  /**
+   * Venta directa: crea el insumo atado al producto, sin receta. Para lo que se
+   * compra y se vende en la misma unidad (vinos por botella, latas, aguas).
+   */
+  const marcarDirecta = useMutation({
+    mutationFn: async (payload: { productMasterIds?: string[]; rubroCodigo?: string }) => {
+      const res = await fetch('/api/conciliacion/venta-directa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'No se pudo marcar')
+      return json as {
+        creados: number
+        reactivados: number
+        yaEstaban: number
+        saltadosPorReceta: number
+      }
+    },
+    onSuccess: (r) => {
+      const hechos = r.creados + r.reactivados
+      const partes = [
+        hechos > 0 ? `${hechos} producto${hechos === 1 ? '' : 's'} a stock directo` : null,
+        r.saltadosPorReceta > 0
+          ? `${r.saltadosPorReceta} con receta quedaron como estaban`
+          : null,
+      ].filter(Boolean)
+      toast.success(partes.join(' · ') || 'No había nada para marcar')
+      qcPrincipal.invalidateQueries({ queryKey: ['cobertura'] })
+      qcPrincipal.invalidateQueries({ queryKey: ['conciliacion'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const [filtroVentas, setFiltroVentas] = useState<Filtro>('sin')
   const [filtroCompras, setFiltroCompras] = useState<Filtro>('sin')
   const [categoria, setCategoria] = useState('')
@@ -161,7 +199,14 @@ export function CoberturaTab({
         <div className="bg-white border border-slate-200 rounded-lg">
           <div className="flex items-center justify-between gap-2 p-3 border-b">
             <h3 className="text-sm font-medium text-slate-700">Productos vendidos</h3>
-            <Toggle value={filtroVentas} onChange={setFiltroVentas} labels={{ sin: 'Sin receta', con: 'Con receta', todos: 'Todos' }} />
+            <div className="flex items-center gap-2">
+              <RubroDirecto
+                ventas={data.ventas}
+                pendiente={marcarDirecta.isPending}
+                onMarcar={(rubroCodigo) => marcarDirecta.mutate({ rubroCodigo })}
+              />
+              <Toggle value={filtroVentas} onChange={setFiltroVentas} labels={{ sin: 'Sin cubrir', con: 'Cubiertos', todos: 'Todos' }} />
+            </div>
           </div>
           <ul className="divide-y max-h-[60vh] overflow-y-auto">
             {ventas.map((v) => (
@@ -171,17 +216,36 @@ export function CoberturaTab({
                   {v.rubro && <p className="text-[11px] text-slate-400">{v.rubro}</p>}
                 </div>
                 <span className="text-xs text-slate-500 tabular-nums shrink-0">{fmtNumAR(v.unidades)} u</span>
-                {v.conReceta ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-emerald-700 shrink-0 w-24 justify-end">
+                {v.ventaDirecta ? (
+                  <span
+                    title="Se compra y se vende en la misma unidad: el consumo son las unidades vendidas"
+                    className="inline-flex items-center gap-1 text-xs text-sky-700 shrink-0 w-32 justify-end"
+                  >
+                    <Boxes className="h-3.5 w-3.5" /> Stock directo
+                  </span>
+                ) : v.conReceta ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-700 shrink-0 w-32 justify-end">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Receta
                   </span>
                 ) : (
-                  <Link
-                    href={`/conciliacion/recetas?producto=${v.id}`}
-                    className="inline-flex items-center gap-1 text-xs text-amber-700 hover:underline shrink-0 w-24 justify-end"
-                  >
-                    <BookOpen className="h-3.5 w-3.5" /> Cargar receta
-                  </Link>
+                  <span className="inline-flex items-center gap-2 shrink-0 w-32 justify-end">
+                    <button
+                      type="button"
+                      disabled={marcarDirecta.isPending}
+                      onClick={() => marcarDirecta.mutate({ productMasterIds: [v.id] })}
+                      title="1 a 1: una unidad vendida descuenta una unidad comprada"
+                      className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline disabled:opacity-50"
+                    >
+                      <Boxes className="h-3.5 w-3.5" /> 1 a 1
+                    </button>
+                    <Link
+                      href={`/conciliacion/recetas?producto=${v.id}`}
+                      className="inline-flex items-center gap-1 text-xs text-amber-700 hover:underline"
+                      title="Se arma con varios insumos"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                    </Link>
+                  </span>
                 )}
               </li>
             ))}
@@ -406,5 +470,85 @@ function AsignarInsumoDialog({ compra, onClose }: { compra: CompraCobertura; onC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Marca un rubro entero como venta directa. Pensado para bebidas: los vinos,
+ * las gaseosas y las aguas se compran y se venden en la misma unidad, y crear
+ * un insumo por cada etiqueta a mano no escala.
+ *
+ * Solo lista rubros que tengan algo pendiente, y aclara cuántos productos de
+ * ese rubro quedarían afuera por tener receta — el bag in box que se sirve por
+ * copa, por ejemplo, que debe seguir descontando por fórmula.
+ */
+function RubroDirecto({
+  ventas,
+  pendiente,
+  onMarcar,
+}: {
+  ventas: VentaCobertura[]
+  pendiente: boolean
+  onMarcar: (rubroCodigo: string) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+
+  const rubros = useMemo(() => {
+    const m = new Map<string, { sinCubrir: number; conReceta: number }>()
+    for (const v of ventas) {
+      if (!v.rubro) continue
+      const e = m.get(v.rubro) ?? { sinCubrir: 0, conReceta: 0 }
+      if (v.conReceta && !v.ventaDirecta) e.conReceta++
+      else if (!v.conReceta) e.sinCubrir++
+      m.set(v.rubro, e)
+    }
+    return [...m.entries()]
+      .filter(([, e]) => e.sinCubrir > 0)
+      .sort((a, b) => b[1].sinCubrir - a[1].sinCubrir)
+  }, [ventas])
+
+  if (rubros.length === 0) return null
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        disabled={pendiente}
+        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+      >
+        {pendiente ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
+        Rubro 1 a 1
+      </button>
+
+      {abierto && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setAbierto(false)} />
+          <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+            <p className="px-2 py-1.5 text-[11px] leading-snug text-slate-400">
+              Marca todo el rubro como stock directo. Los productos con receta no
+              se tocan.
+            </p>
+            {rubros.map(([rubro, e]) => (
+              <button
+                key={rubro}
+                type="button"
+                onClick={() => {
+                  onMarcar(rubro)
+                  setAbierto(false)
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-slate-50"
+              >
+                <span className="min-w-0 truncate text-slate-700">{rubro}</span>
+                <span className="shrink-0 text-slate-400">
+                  {e.sinCubrir} sin cubrir
+                  {e.conReceta > 0 && <span className="text-amber-600"> · {e.conReceta} con receta</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   )
 }

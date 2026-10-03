@@ -52,18 +52,17 @@ export async function stockEsperadoPorInsumo(
 
   const [compras, consumos, transferencias] = await Promise.all([
     // Comprado (unidadBase) entre el ancla y `fecha`: solo entra al central.
+    // La vista ya trae las notas de crédito en negativo.
     esCentral
       ? prisma.$queryRawUnsafe<Array<{ insumo_id: string; qty: number | null }>>(
           `${ANCLA}
-           SELECT a."insumoId" AS insumo_id, SUM(di.cantidad * a."factorBase")::float8 AS qty
+           SELECT co.insumo_id, SUM(co.qty_base)::float8 AS qty
              FROM ancla an
-             JOIN insumo_alias a ON a."insumoId" = an.insumo_id
-             JOIN documento_items di ON di.descripcion ILIKE '%' || a.patron || '%'
-             JOIN documentos d ON d.id = di."documentoId"
-            WHERE d."clienteId" = $1::uuid
-              AND d."fechaEmision" >= an.desde AND d."fechaEmision" < $4::date
-              AND d."estadoRevision"::text = ANY($5::text[])
-            GROUP BY a."insumoId"`,
+             JOIN insumo_compra_linea co ON co.insumo_id = an.insumo_id
+            WHERE co.cliente_id = $1::uuid
+              AND co.fecha >= an.desde AND co.fecha < $4::date
+              AND co.estado_revision::text = ANY($5::text[])
+            GROUP BY co.insumo_id`,
           clienteId,
           ids,
           desdes,
@@ -71,20 +70,16 @@ export async function stockEsperadoPorInsumo(
           [...ESTADOS_COMPRA]
         )
       : Promise.resolve([]),
-    // Consumo teórico de los productos que salen de este depósito.
+    // Consumo teórico de los productos que salen de este depósito. La vista
+    // cubre tanto las recetas como los productos de venta directa (1 a 1).
     prisma.$queryRawUnsafe<Array<{ insumo_id: string; unidad: string; qty: number }>>(
       `${ANCLA}
-       SELECT ri."insumoId" AS insumo_id, ri.unidad,
-              SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::float8 AS qty
+       SELECT cv.insumo_id, cv.unidad, SUM(cv.qty)::float8 AS qty
          FROM ancla an
-         JOIN sales_recipe_items ri ON ri."insumoId" = an.insumo_id
-         JOIN sales_recipes r ON r.id = ri."recipeId" AND r.activa = true
-         JOIN sales_product_master pm ON pm.id = r."productMasterId"
-         JOIN sales_closure_items ci ON ci."productMasterId" = pm.id
-         JOIN sales_closures c ON c.id = ci."closureId"
-        WHERE c."clienteId" = $1::uuid AND c.fecha >= an.desde AND c.fecha < $4::date
-          AND COALESCE(pm."depositoId", $5::uuid) = $6::uuid
-        GROUP BY ri."insumoId", ri.unidad`,
+         JOIN insumo_consumo_linea cv ON cv.insumo_id = an.insumo_id
+        WHERE cv.cliente_id = $1::uuid AND cv.fecha >= an.desde AND cv.fecha < $4::date
+          AND COALESCE(cv.deposito_id, $5::uuid) = $6::uuid
+        GROUP BY cv.insumo_id, cv.unidad`,
       clienteId,
       ids,
       desdes,

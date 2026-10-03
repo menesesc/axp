@@ -35,23 +35,21 @@ export async function GET(request: NextRequest) {
   })
   const insumoMap = new Map(insumos.map((i) => [i.id, i]))
 
-  // 1) Consumo teórico por (insumo, unidad de receta).
+  // 1) Consumo teórico por (insumo, unidad). La vista suma recetas y
+  //    productos de venta directa (1 a 1, sin receta).
   const consumoRows = await prisma.$queryRawUnsafe<Array<{
     insumo_id: string
     unidad_receta: string
     qty: number
   }>>(`
-    SELECT ri."insumoId" AS insumo_id,
-           ri.unidad AS unidad_receta,
-           SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
-    FROM sales_closure_items ci
-    JOIN sales_closures c ON c.id = ci."closureId"
-    JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
-    JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" IS NOT NULL
-    WHERE c."clienteId" = $1::uuid
-      AND c.fecha >= $2::date AND c.fecha <= $3::date
-      AND ($4::text IS NULL OR c.sucursal = $4)
-    GROUP BY ri."insumoId", ri.unidad
+    SELECT cv.insumo_id,
+           cv.unidad AS unidad_receta,
+           SUM(cv.qty)::numeric AS qty
+    FROM insumo_consumo_linea cv
+    WHERE cv.cliente_id = $1::uuid
+      AND cv.fecha >= $2::date AND cv.fecha <= $3::date
+      AND ($4::text IS NULL OR cv.sucursal = $4)
+    GROUP BY cv.insumo_id, cv.unidad
   `, clienteId, from, to, sucursal)
 
   const consumoByInsumo = new Map<string, number>()
@@ -68,23 +66,21 @@ export async function GET(request: NextRequest) {
     consumoByInsumo.set(row.insumo_id, (consumoByInsumo.get(row.insumo_id) ?? 0) + qtyBase)
   }
 
-  // 2) Comprado por insumo (líneas de factura matcheadas por alias × factorBase).
+  // 2) Comprado por insumo (alias × factorBase). La vista trae las notas
+  //    de crédito en negativo: una devolución resta, no suma.
   const compradoRows = await prisma.$queryRawUnsafe<Array<{
     insumo_id: string
     qty_base: number
     costo_total: number | null
   }>>(`
-    SELECT a."insumoId" AS insumo_id,
-           SUM(di.cantidad * a."factorBase")::numeric AS qty_base,
-           SUM(di.subtotal)::numeric AS costo_total
-    FROM documento_items di
-    JOIN documentos d ON d.id = di."documentoId"
-    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-    JOIN insumos i ON i.id = a."insumoId"
-    WHERE d."clienteId" = $1::uuid AND i."clienteId" = $1::uuid
-      AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
-      AND d."estadoRevision"::text = ANY($4::text[])
-    GROUP BY a."insumoId"
+    SELECT co.insumo_id,
+           SUM(co.qty_base)::numeric AS qty_base,
+           SUM(co.subtotal)::numeric AS costo_total
+    FROM insumo_compra_linea co
+    WHERE co.cliente_id = $1::uuid
+      AND co.fecha >= $2::date AND co.fecha <= $3::date
+      AND co.estado_revision::text = ANY($4::text[])
+    GROUP BY co.insumo_id
   `, clienteId, from, to, estadosFinal)
 
   const compradoByInsumo = new Map<string, { qty: number; costo: number }>()

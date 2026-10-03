@@ -38,17 +38,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     unidad_receta: string
     qty: number
   }>>(`
-    SELECT to_char(date_trunc('week', c.fecha), 'YYYY-MM-DD') AS semana,
-           ri.unidad AS unidad_receta,
-           SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
-    FROM sales_closure_items ci
-    JOIN sales_closures c ON c.id = ci."closureId"
-    JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
-    JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
-    WHERE c."clienteId" = $1::uuid
-      AND c.fecha >= $2::date AND c.fecha <= $3::date
-      AND ($4::text IS NULL OR c.sucursal = $4)
-    GROUP BY semana, ri.unidad
+    SELECT to_char(date_trunc('week', cv.fecha), 'YYYY-MM-DD') AS semana,
+           cv.unidad AS unidad_receta,
+           SUM(cv.qty)::numeric AS qty
+    FROM insumo_consumo_linea cv
+    WHERE cv.insumo_id = $5::uuid AND cv.cliente_id = $1::uuid
+      AND cv.fecha >= $2::date AND cv.fecha <= $3::date
+      AND ($4::text IS NULL OR cv.sucursal = $4)
+    GROUP BY semana, cv.unidad
     ORDER BY semana
   `, clienteId, from, to, sucursal, insumo.id)
 
@@ -66,16 +63,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     qty_base: number
     costo: number | null
   }>>(`
-    SELECT to_char(date_trunc('week', d."fechaEmision"), 'YYYY-MM-DD') AS semana,
-           SUM(di.cantidad * a."factorBase")::numeric AS qty_base,
-           SUM(di.subtotal)::numeric AS costo
-    FROM documento_items di
-    JOIN documentos d ON d.id = di."documentoId"
-    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-    WHERE a."insumoId" = $5::uuid
-      AND d."clienteId" = $1::uuid
-      AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
-      AND d."estadoRevision"::text = ANY($4::text[])
+    SELECT to_char(date_trunc('week', co.fecha), 'YYYY-MM-DD') AS semana,
+           SUM(co.qty_base)::numeric AS qty_base,
+           SUM(co.subtotal)::numeric AS costo
+    FROM insumo_compra_linea co
+    WHERE co.insumo_id = $5::uuid
+      AND co.cliente_id = $1::uuid
+      AND co.fecha >= $2::date AND co.fecha <= $3::date
+      AND co.estado_revision::text = ANY($4::text[])
     GROUP BY semana
     ORDER BY semana
   `, clienteId, from, to, [...ESTADOS_COMPRA], insumo.id)
@@ -114,15 +109,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // Último costo conocido ANTES del período (para sembrar el relleno cuando no
   // hubo compras dentro del rango seleccionado).
   const costoPrevioRows = await prisma.$queryRawUnsafe<Array<{ costo_unit: number | null }>>(`
-    SELECT (di.subtotal / NULLIF(di.cantidad * a."factorBase", 0))::numeric AS costo_unit
-    FROM documento_items di
-    JOIN documentos d ON d.id = di."documentoId"
-    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-    WHERE a."insumoId" = $4::uuid AND d."clienteId" = $1::uuid
-      AND d."fechaEmision" < $2::date
-      AND d."estadoRevision"::text = ANY($3::text[])
-      AND di.cantidad IS NOT NULL AND di.subtotal IS NOT NULL
-    ORDER BY d."fechaEmision" DESC
+    SELECT (co.subtotal / NULLIF(co.qty_base, 0))::numeric AS costo_unit
+    FROM insumo_compra_linea co
+    WHERE co.insumo_id = $4::uuid AND co.cliente_id = $1::uuid
+      AND co.fecha < $2::date
+      AND co.estado_revision::text = ANY($3::text[])
+      AND co.cantidad IS NOT NULL AND co.subtotal IS NOT NULL
+      AND co.tipo <> 'NOTA_CREDITO'
+    ORDER BY co.fecha DESC
     LIMIT 1
   `, clienteId, from, [...ESTADOS_COMPRA], insumoId)
   const costoPrevio = costoPrevioRows[0]?.costo_unit != null ? Number(costoPrevioRows[0].costo_unit) : null
@@ -143,20 +137,19 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     unidad_receta: string
     qty: number
   }>>(`
-    SELECT ci."productMasterId" AS pid,
+    SELECT cv.product_master_id AS pid,
            MAX(pm.nombre) AS nombre,
            SUM(ci.unidades)::numeric AS unidades,
-           ri.unidad AS unidad_receta,
-           SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
-    FROM sales_closure_items ci
-    JOIN sales_closures c ON c.id = ci."closureId"
-    JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
-    JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
-    JOIN sales_product_master pm ON pm.id = ci."productMasterId"
-    WHERE c."clienteId" = $1::uuid
-      AND c.fecha >= $2::date AND c.fecha <= $3::date
-      AND ($4::text IS NULL OR c.sucursal = $4)
-    GROUP BY ci."productMasterId", ri.unidad
+           cv.unidad AS unidad_receta,
+           SUM(cv.qty)::numeric AS qty
+    FROM insumo_consumo_linea cv
+    JOIN sales_product_master pm ON pm.id = cv.product_master_id
+    JOIN sales_closures c2 ON c2."clienteId" = cv.cliente_id AND c2.fecha = cv.fecha
+    JOIN sales_closure_items ci ON ci."closureId" = c2.id AND ci."productMasterId" = cv.product_master_id
+    WHERE cv.insumo_id = $5::uuid AND cv.cliente_id = $1::uuid
+      AND cv.fecha >= $2::date AND cv.fecha <= $3::date
+      AND ($4::text IS NULL OR cv.sucursal = $4)
+    GROUP BY cv.product_master_id, cv.unidad
   `, clienteId, from, to, sucursal, insumo.id)
 
   const prodMap = new Map<string, { nombre: string; unidades: number; consumo: number }>()
@@ -174,17 +167,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   // Consumo teórico por día (evolución diaria, en unidadBase).
   const consumoDiaRows = await prisma.$queryRawUnsafe<Array<{ dia: string; unidad_receta: string; qty: number }>>(`
-    SELECT to_char(c.fecha, 'YYYY-MM-DD') AS dia,
-           ri.unidad AS unidad_receta,
-           SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
-    FROM sales_closure_items ci
-    JOIN sales_closures c ON c.id = ci."closureId"
-    JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
-    JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
-    WHERE c."clienteId" = $1::uuid
-      AND c.fecha >= $2::date AND c.fecha <= $3::date
-      AND ($4::text IS NULL OR c.sucursal = $4)
-    GROUP BY dia, ri.unidad
+    SELECT to_char(cv.fecha, 'YYYY-MM-DD') AS dia,
+           cv.unidad AS unidad_receta,
+           SUM(cv.qty)::numeric AS qty
+    FROM insumo_consumo_linea cv
+    WHERE cv.insumo_id = $5::uuid AND cv.cliente_id = $1::uuid
+      AND cv.fecha >= $2::date AND cv.fecha <= $3::date
+      AND ($4::text IS NULL OR cv.sucursal = $4)
+    GROUP BY dia, cv.unidad
     ORDER BY dia
   `, clienteId, from, to, sucursal, insumo.id)
   const consumoDiaMap = new Map<string, number>()
@@ -197,14 +187,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   // Comprado por día (en unidadBase), para el gráfico combinado y la serie de stock.
   const compradoDiaRows = await prisma.$queryRawUnsafe<Array<{ dia: string; qty: number | null }>>(`
-    SELECT to_char(d."fechaEmision", 'YYYY-MM-DD') AS dia,
-           SUM(di.cantidad * a."factorBase")::numeric AS qty
-    FROM documento_items di
-    JOIN documentos d ON d.id = di."documentoId"
-    JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-    WHERE a."insumoId" = $5::uuid AND d."clienteId" = $1::uuid
-      AND d."fechaEmision" >= $2::date AND d."fechaEmision" <= $3::date
-      AND d."estadoRevision"::text = ANY($4::text[])
+    SELECT to_char(co.fecha, 'YYYY-MM-DD') AS dia,
+           SUM(co.qty_base)::numeric AS qty
+    FROM insumo_compra_linea co
+    WHERE co.insumo_id = $5::uuid AND co.cliente_id = $1::uuid
+      AND co.fecha >= $2::date AND co.fecha <= $3::date
+      AND co.estado_revision::text = ANY($4::text[])
     GROUP BY dia
     ORDER BY dia
   `, clienteId, from, to, [...ESTADOS_COMPRA], insumo.id)
@@ -233,15 +221,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // Consumo teórico (en unidadBase) en [d1, d2).
   async function consumoBetween(d1: string, d2: string): Promise<number> {
     const rows = await prisma.$queryRawUnsafe<Array<{ unidad_receta: string; qty: number }>>(`
-      SELECT ri.unidad AS unidad_receta,
-             SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::numeric AS qty
-      FROM sales_closure_items ci
-      JOIN sales_closures c ON c.id = ci."closureId"
-      JOIN sales_recipes r ON r."productMasterId" = ci."productMasterId" AND r.activa = true
-      JOIN sales_recipe_items ri ON ri."recipeId" = r.id AND ri."insumoId" = $5::uuid
-      WHERE c."clienteId" = $1::uuid AND c.fecha >= $2::date AND c.fecha < $3::date
-        AND ($4::text IS NULL OR c.sucursal = $4)
-      GROUP BY ri.unidad
+      SELECT cv.unidad AS unidad_receta,
+             SUM(cv.qty)::numeric AS qty
+      FROM insumo_consumo_linea cv
+      WHERE cv.insumo_id = $5::uuid AND cv.cliente_id = $1::uuid
+        AND cv.fecha >= $2::date AND cv.fecha < $3::date
+        AND ($4::text IS NULL OR cv.sucursal = $4)
+      GROUP BY cv.unidad
     `, clienteId, d1, d2, sucursal, insumoId)
     let total = 0
     for (const r of rows) { try { total += convert(Number(r.qty), r.unidad_receta, base) } catch { /* unidad legada */ } }
@@ -250,18 +236,18 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   // Comprado (en unidadBase) entre dos fechas (d1 exclusivo, d2 inclusivo).
   async function compradoBetween(d1: string, d2: string): Promise<number> {
     const rows = await prisma.$queryRawUnsafe<Array<{ qty: number | null }>>(`
-      SELECT SUM(di.cantidad * a."factorBase")::numeric AS qty
-      FROM documento_items di
-      JOIN documentos d ON d.id = di."documentoId"
-      JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
-      WHERE a."insumoId" = $4::uuid AND d."clienteId" = $1::uuid
-        AND d."fechaEmision" >= $2::date AND d."fechaEmision" < $3::date
-        AND d."estadoRevision"::text = ANY($5::text[])
+      SELECT SUM(co.qty_base)::numeric AS qty
+      FROM insumo_compra_linea co
+      WHERE co.insumo_id = $4::uuid AND co.cliente_id = $1::uuid
+        AND co.fecha >= $2::date AND co.fecha < $3::date
+        AND co.estado_revision::text = ANY($5::text[])
     `, clienteId, d1, d2, insumoId, [...ESTADOS_COMPRA])
     return Number(rows[0]?.qty) || 0
   }
 
   // ¿Las recetas activas que usan este insumo tienen merma esperada configurada?
+  // Un insumo de venta directa no pasa por receta, así que no tiene merma: el
+  // agregado da 0 y el desvío se lee como merma real, que es lo correcto.
   // Si no, el desvío de stock incluye la merma esperada (recortes/cocción) y no
   // es "merma real" todavía.
   const mermaAgg = await prisma.sales_recipe_items.aggregate({

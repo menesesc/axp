@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic'
  * receta y qué parte de lo comprado está asignado a un insumo. Lo que queda
  * afuera no entra en el cuadre compra-venta ni en el stock.
  *
- * - ventas: productos vendidos, con/sin receta activa (con ingredientes).
+ * - ventas: productos vendidos, cubiertos o no. Un producto está cubierto si
+ *   tiene receta activa con ingredientes, o si es de venta directa (1 a 1).
  * - compras: descripciones de factura (confirmadas/pagadas), con su categoría
  *   y el insumo cuyo alias las matchea (o null).
  *
@@ -38,12 +39,15 @@ export async function GET(request: NextRequest) {
       unidades: number
       importe: number
       ingredientes: number
+      venta_directa: boolean
     }>>(
       `SELECT pm.id, pm.nombre, pm."rubroNombre" AS rubro,
               SUM(ci.unidades)::float8 AS unidades, SUM(ci.importe)::float8 AS importe,
               COALESCE((SELECT COUNT(*) FROM sales_recipes r
                          JOIN sales_recipe_items ri ON ri."recipeId" = r.id
-                        WHERE r."productMasterId" = pm.id AND r.activa = true), 0)::int AS ingredientes
+                        WHERE r."productMasterId" = pm.id AND r.activa = true), 0)::int AS ingredientes,
+              EXISTS (SELECT 1 FROM insumos i
+                       WHERE i."productMasterId" = pm.id AND i.activo = true) AS venta_directa
          FROM sales_closure_items ci
          JOIN sales_closures c ON c.id = ci."closureId"
          JOIN sales_product_master pm ON pm.id = ci."productMasterId"
@@ -104,7 +108,9 @@ export async function GET(request: NextRequest) {
       rubro: v.rubro,
       unidades: Number(v.unidades),
       importe: Number(v.importe),
-      conReceta: v.ingredientes > 0,
+      // Un producto de venta directa (1 a 1) está cubierto sin receta.
+      conReceta: v.ingredientes > 0 || v.venta_directa,
+      ventaDirecta: v.venta_directa,
     })),
     compras: compras.map((c) => ({
       descripcion: c.descripcion,

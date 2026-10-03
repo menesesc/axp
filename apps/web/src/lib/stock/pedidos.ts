@@ -15,16 +15,12 @@ export async function consumoVentasPorDeposito(
   const rows = await prisma.$queryRawUnsafe<
     Array<{ deposito_id: string; insumo_id: string; unidad: string; base: string; qty: number }>
   >(
-    `SELECT COALESCE(pm."depositoId", $3::uuid) AS deposito_id,
-            ri."insumoId" AS insumo_id, ri.unidad, i."unidadBase" AS base,
-            SUM(ci.unidades * ri.cantidad * (1 + ri."mermaPct" / 100.0))::float8 AS qty
-       FROM sales_closure_items ci
-       JOIN sales_closures c ON c.id = ci."closureId"
-       JOIN sales_product_master pm ON pm.id = ci."productMasterId"
-       JOIN sales_recipes r ON r."productMasterId" = pm.id AND r.activa = true
-       JOIN sales_recipe_items ri ON ri."recipeId" = r.id
-       JOIN insumos i ON i.id = ri."insumoId" AND i.activo = true
-      WHERE c."clienteId" = $1::uuid AND c.fecha = $2::date
+    `SELECT COALESCE(cv.deposito_id, $3::uuid) AS deposito_id,
+            cv.insumo_id, cv.unidad, i."unidadBase" AS base,
+            SUM(cv.qty)::float8 AS qty
+       FROM insumo_consumo_linea cv
+       JOIN insumos i ON i.id = cv.insumo_id AND i.activo = true
+      WHERE cv.cliente_id = $1::uuid AND cv.fecha = $2::date
       GROUP BY 1, 2, 3, 4`,
     clienteId,
     fecha,
