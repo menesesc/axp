@@ -22,7 +22,11 @@ export async function GET(request: NextRequest) {
       ...(q ? { nombre: { contains: q, mode: 'insensitive' } } : {}),
     },
     orderBy: { nombre: 'asc' },
-    include: { _count: { select: { alias: true, recipeItems: true } } },
+    include: {
+      _count: { select: { alias: true, recipeItems: true } },
+      // Para mostrar de qué rubro hereda la categoría un insumo de venta directa.
+      productMaster: { select: { rubroNombre: true } },
+    },
   })
 
   return NextResponse.json({
@@ -31,6 +35,8 @@ export async function GET(request: NextRequest) {
       nombre: i.nombre,
       unidadBase: i.unidadBase,
       categoria: i.categoria,
+      subcategoria: i.subcategoria,
+      categoriaHeredada: i.productMaster?.rubroNombre ?? null,
       activo: i.activo,
       notas: i.notas,
       aliasCount: i._count.alias,
@@ -51,6 +57,7 @@ export async function POST(request: NextRequest) {
   const nombre = String(body.nombre || '').trim()
   const unidadBase = String(body.unidadBase || '').trim()
   const categoria = body.categoria ? String(body.categoria).trim() : null
+  const subcategoria = body.subcategoria ? String(body.subcategoria).trim() : null
   const notas = body.notas ? String(body.notas).trim() : null
 
   if (!nombre) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
@@ -63,7 +70,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const insumo = await prisma.insumos.create({
-      data: { clienteId, nombre, unidadBase, categoria, notas },
+      data: { clienteId, nombre, unidadBase, categoria, subcategoria, notas },
     })
     return NextResponse.json({ insumo }, { status: 201 })
   } catch (e: any) {

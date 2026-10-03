@@ -18,6 +18,7 @@ interface FilaStock {
   nombre: string
   unidadBase: string
   categoria: string | null
+  subcategoria: string | null
   conteo: number | null
   nota: string | null
   ultimoConteoFecha: string | null
@@ -135,6 +136,7 @@ export default function StockPage() {
   if (isLoading) return null
 
   const [cerradas, setCerradas] = useState<Set<string>>(new Set())
+  const [subCerradas, setSubCerradas] = useState<Set<string>>(new Set())
   const q = search.trim().toLowerCase()
   const filas = (data?.insumos ?? [])
     .filter((i) => !q || i.nombre.toLowerCase().includes(q))
@@ -156,20 +158,49 @@ export default function StockPage() {
    * un grupo cerrado.
    */
   const SIN_CATEGORIA = 'Sin categoría'
+
+  /**
+   * Dos niveles: categoría y, opcionalmente, subcategoría (la bodega dentro de
+   * vinos). Los insumos sin subcategoría cuelgan directo de la categoría en vez
+   * de inventarles un grupo "Sin subcategoría", que agregaría un nivel vacío a
+   * todo lo que no lo usa.
+   */
   const grupos = useMemo(() => {
-    const m = new Map<string, FilaStock[]>()
+    const porCategoria = new Map<string, FilaStock[]>()
     for (const i of filas) {
       const k = i.categoria?.trim() || SIN_CATEGORIA
-      const arr = m.get(k)
+      const arr = porCategoria.get(k)
       if (arr) arr.push(i)
-      else m.set(k, [i])
+      else porCategoria.set(k, [i])
     }
-    return [...m.entries()]
-      .map(([categoria, items]) => ({
-        categoria,
-        items,
-        contados: items.filter((i) => i.conteo !== null).length,
-      }))
+    return [...porCategoria.entries()]
+      .map(([categoria, items]) => {
+        const sueltos: FilaStock[] = []
+        const porSub = new Map<string, FilaStock[]>()
+        for (const i of items) {
+          const sub = i.subcategoria?.trim()
+          if (!sub) {
+            sueltos.push(i)
+            continue
+          }
+          const arr = porSub.get(sub)
+          if (arr) arr.push(i)
+          else porSub.set(sub, [i])
+        }
+        return {
+          categoria,
+          items,
+          sueltos,
+          contados: items.filter((i) => i.conteo !== null).length,
+          subgrupos: [...porSub.entries()]
+            .map(([subcategoria, subItems]) => ({
+              subcategoria,
+              items: subItems,
+              contados: subItems.filter((i) => i.conteo !== null).length,
+            }))
+            .sort((a, b) => a.subcategoria.localeCompare(b.subcategoria)),
+        }
+      })
       // Sin categoría al final; el resto alfabético.
       .sort((a, b) =>
         a.categoria === SIN_CATEGORIA ? 1 : b.categoria === SIN_CATEGORIA ? -1 : a.categoria.localeCompare(b.categoria)
@@ -183,6 +214,39 @@ export default function StockPage() {
       const next = new Set(prev)
       if (next.has(c)) next.delete(c)
       else next.add(c)
+      return next
+    })
+  /**
+   * Aplana un grupo a una lista de marcadores para recorrerla en un solo map:
+   * primero los insumos sin subcategoría, después cada subgrupo con su
+   * cabecera. Evita repetir el JSX de la fila en los dos niveles.
+   */
+  type Item =
+    | { k: 'fila'; i: FilaStock }
+    | { k: 'sub'; categoria: string; subcategoria: string; total: number; contados: number }
+  const aplanar = (g: (typeof grupos)[number]): Item[] => [
+    ...g.sueltos.map((i): Item => ({ k: 'fila', i })),
+    ...g.subgrupos.flatMap((sg): Item[] => [
+      {
+        k: 'sub',
+        categoria: g.categoria,
+        subcategoria: sg.subcategoria,
+        total: sg.items.length,
+        contados: sg.contados,
+      },
+      ...(subAbierta(g.categoria, sg.subcategoria)
+        ? sg.items.map((i): Item => ({ k: 'fila', i }))
+        : []),
+    ]),
+  ]
+
+  const subAbierta = (c: string, sub: string) => buscando || !subCerradas.has(`${c}\u0000${sub}`)
+  const toggleSub = (c: string, sub: string) =>
+    setSubCerradas((prev) => {
+      const next = new Set(prev)
+      const k = `${c}\u0000${sub}`
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
       return next
     })
 
@@ -317,7 +381,19 @@ export default function StockPage() {
               abierta={estaAbierta(g.categoria)}
               onToggle={() => toggleCategoria(g.categoria)}
             />
-            {estaAbierta(g.categoria) && g.items.map((i) => {
+            {estaAbierta(g.categoria) && aplanar(g).map((it) => {
+            if (it.k === 'sub')
+              return (
+                <CabeceraSubcategoria
+                  key={`sub-${it.subcategoria}`}
+                  subcategoria={it.subcategoria}
+                  total={it.total}
+                  contados={it.contados}
+                  abierta={subAbierta(it.categoria, it.subcategoria)}
+                  onToggle={() => toggleSub(it.categoria, it.subcategoria)}
+                />
+              )
+            const i = it.i
             const v = parseCantidad(draft[i.id] ?? '')
             const dif = typeof v === 'number' && i.esperado !== null ? v - i.esperado : null
             const tol = Math.max(0.5, Math.abs(i.esperado ?? 0) * 0.05)
@@ -390,7 +466,19 @@ export default function StockPage() {
               abierta={estaAbierta(g.categoria)}
               onToggle={() => toggleCategoria(g.categoria)}
             />
-            {estaAbierta(g.categoria) && g.items.map((i) => {
+            {estaAbierta(g.categoria) && aplanar(g).map((it) => {
+            if (it.k === 'sub')
+              return (
+                <CabeceraSubcategoria
+                  key={`sub-${it.subcategoria}`}
+                  subcategoria={it.subcategoria}
+                  total={it.total}
+                  contados={it.contados}
+                  abierta={subAbierta(it.categoria, it.subcategoria)}
+                  onToggle={() => toggleSub(it.categoria, it.subcategoria)}
+                />
+              )
+            const i = it.i
             const v = parseCantidad(draftSeguro[i.id] ?? '')
             const seguro = typeof v === 'number' ? v : v === null ? null : i.stockSeguro
             const bajo = bajoSeguro({ actual: i.actual, stockSeguro: seguro })
@@ -485,6 +573,37 @@ function CabeceraCategoria({
           completa ? 'bg-emerald-50 text-emerald-700' : contados > 0 ? 'bg-amber-50 text-amber-700' : 'text-slate-400'
         }`}
       >
+        {contados}/{total}
+      </span>
+    </button>
+  )
+}
+
+/** Cabecera de subcategoría: un nivel más adentro, visualmente subordinada. */
+function CabeceraSubcategoria({
+  subcategoria,
+  total,
+  contados,
+  abierta,
+  onToggle,
+}: {
+  subcategoria: string
+  total: number
+  contados: number
+  abierta: boolean
+  onToggle: () => void
+}) {
+  const completa = contados === total
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={abierta}
+      className="flex w-full items-center gap-2 border-l-2 border-slate-200 bg-white py-1.5 pl-6 pr-4 text-left transition-colors hover:bg-slate-50"
+    >
+      <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-300 transition-transform ${abierta ? 'rotate-90' : ''}`} />
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-500">{subcategoria}</span>
+      <span className={`shrink-0 text-[11px] tabular-nums ${completa ? 'text-emerald-600' : 'text-slate-400'}`}>
         {contados}/{total}
       </span>
     </button>

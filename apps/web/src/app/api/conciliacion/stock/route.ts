@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
         nombre: true,
         unidadBase: true,
         categoria: true,
+        subcategoria: true,
         // Los insumos de venta directa heredan el rubro del producto, así la
         // planilla se agrupa sin tener que cargar la categoría a mano en 133
         // vinos y bebidas.
@@ -84,6 +85,7 @@ export async function GET(request: NextRequest) {
         nombre: i.nombre,
         unidadBase: i.unidadBase,
         categoria: i.categoria ?? i.productMaster?.rubroNombre ?? null,
+        subcategoria: i.subcategoria,
         conteo: c ? Number(c.cantidad) : null,
         nota: c?.nota ?? null,
         ultimoConteoFecha: e?.ultimoConteoFecha ?? null,

@@ -31,6 +31,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     data.unidadBase = String(body.unidadBase)
   }
   if (body.categoria !== undefined) data.categoria = body.categoria ? String(body.categoria).trim() : null
+  if (body.subcategoria !== undefined)
+    data.subcategoria = body.subcategoria ? String(body.subcategoria).trim() : null
   if (body.notas !== undefined) data.notas = body.notas ? String(body.notas).trim() : null
   if (body.activo !== undefined) data.activo = Boolean(body.activo)
 

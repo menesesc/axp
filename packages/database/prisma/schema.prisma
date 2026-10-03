@@ -694,6 +694,10 @@ model insumos {
   productMasterId String?               @unique @db.Uuid
   productMaster   sales_product_master? @relation("InsumoVentaDirecta", fields: [productMasterId], references: [id], onDelete: SetNull)
   categoria  String?  @db.VarChar(100)
+  /// Segundo nivel opcional dentro de la categoría: la bodega en vinos, el
+  /// proveedor en bebidas. Sin subcategoría el insumo cuelga directo de su
+  /// categoría, no se arma un grupo vacío.
+  subcategoria String? @db.VarChar(100)
   activo     Boolean  @default(true)
   notas      String?  @db.Text
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
@@ -710,6 +714,7 @@ model insumos {
 
   @@unique([clienteId, nombre])
   @@index([clienteId])
+  @@index([clienteId, categoria, subcategoria])
   @@index([clienteId, activo])
 }
 

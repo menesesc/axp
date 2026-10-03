@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
@@ -8,6 +8,7 @@ import { useUser } from '@/hooks/use-user'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { InsumoDetalle } from '@/components/conciliacion/insumo-detalle'
+import { InsumoClasificacion } from '@/components/conciliacion/insumo-clasificacion'
 import { DateRange } from '@/components/sales/date-range'
 import { defaultRange } from '@/components/sales/shared'
 import { UNIDADES } from '@/lib/conciliacion/units'
@@ -19,6 +20,8 @@ interface Insumo {
   nombre: string
   unidadBase: string
   categoria: string | null
+  subcategoria: string | null
+  categoriaHeredada: string | null
   activo: boolean
   notas: string | null
   aliasCount: number
@@ -43,6 +46,19 @@ export default function InsumosPage() {
       return res.json() as Promise<{ insumos: Insumo[] }>
     },
   })
+
+  // Valores ya usados, para ofrecerlos en los desplegables y que no se escriba
+  // "Luigi Bosca" de tres formas distintas.
+  const sugerencias = useMemo(() => {
+    const cats = new Set<string>()
+    const subs = new Set<string>()
+    for (const i of data?.insumos ?? []) {
+      const c = i.categoria?.trim() || i.categoriaHeredada?.trim()
+      if (c) cats.add(c)
+      if (i.subcategoria?.trim()) subs.add(i.subcategoria.trim())
+    }
+    return { categorias: [...cats].sort(), subcategorias: [...subs].sort() }
+  }, [data])
 
   const create = useMutation({
     mutationFn: async (payload: { nombre: string; unidadBase: string }) => {
@@ -148,6 +164,12 @@ export default function InsumosPage() {
                       <span className="text-[11px] text-slate-400">
                         {i.unidadBase} · {i.aliasCount} alias · {i.recetasCount} en recetas
                       </span>
+                      {(i.subcategoria || i.categoria || i.categoriaHeredada) && (
+                        <span className="text-[11px] text-slate-400 block truncate">
+                          {i.categoria || i.categoriaHeredada}
+                          {i.subcategoria && <span className="text-slate-500"> › {i.subcategoria}</span>}
+                        </span>
+                      )}
                     </span>
                   </button>
                 </li>
@@ -160,7 +182,13 @@ export default function InsumosPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           {selected ? (
             <>
-              <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <InsumoClasificacion
+                  insumo={selected}
+                  canEdit={isAdmin}
+                  categoriaHeredada={selected.categoriaHeredada}
+                  sugerencias={sugerencias}
+                />
                 <DateRange from={from} to={to} onChange={setRange} />
               </div>
               <InsumoDetalle insumo={selected} canEdit={isAdmin} from={from} to={to} />
