@@ -11,7 +11,7 @@ import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { hoyAR } from '@/lib/fechas'
 import { fmtNumAR } from '@/components/sales/shared'
-import { AlertTriangle, CheckCircle2, ClipboardList, Loader2, Save, Search, Warehouse } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Loader2, Save, Search, Warehouse } from 'lucide-react'
 
 interface FilaStock {
   id: string
@@ -134,6 +134,7 @@ export default function StockPage() {
 
   if (isLoading) return null
 
+  const [cerradas, setCerradas] = useState<Set<string>>(new Set())
   const q = search.trim().toLowerCase()
   const filas = (data?.insumos ?? [])
     .filter((i) => !q || i.nombre.toLowerCase().includes(q))
@@ -143,6 +144,47 @@ export default function StockPage() {
   const contados = data?.insumos.filter((i) => i.conteo !== null).length ?? 0
   const bajos = data?.insumos.filter(bajoSeguro).length ?? 0
   const total = data?.insumos.length ?? 0
+
+
+  /**
+   * Agrupa por categoría para poder navegar: con 143 insumos la lista plana no
+   * se recorre. La categoría sale del insumo o, si es de venta directa, del
+   * rubro del producto (VINOS, BEBIDAS S/A, CERVEZAS), así no hay que cargarla
+   * a mano en 133 vinos y bebidas.
+   *
+   * Buscando se abren todas: si no, el resultado quedaría escondido adentro de
+   * un grupo cerrado.
+   */
+  const SIN_CATEGORIA = 'Sin categoría'
+  const grupos = useMemo(() => {
+    const m = new Map<string, FilaStock[]>()
+    for (const i of filas) {
+      const k = i.categoria?.trim() || SIN_CATEGORIA
+      const arr = m.get(k)
+      if (arr) arr.push(i)
+      else m.set(k, [i])
+    }
+    return [...m.entries()]
+      .map(([categoria, items]) => ({
+        categoria,
+        items,
+        contados: items.filter((i) => i.conteo !== null).length,
+      }))
+      // Sin categoría al final; el resto alfabético.
+      .sort((a, b) =>
+        a.categoria === SIN_CATEGORIA ? 1 : b.categoria === SIN_CATEGORIA ? -1 : a.categoria.localeCompare(b.categoria)
+      )
+  }, [filas])
+
+  const buscando = q.length > 0
+  const estaAbierta = (c: string) => buscando || !cerradas.has(c)
+  const toggleCategoria = (c: string) =>
+    setCerradas((prev) => {
+      const next = new Set(prev)
+      if (next.has(c)) next.delete(c)
+      else next.add(c)
+      return next
+    })
 
   const cambiarDeposito = (id: string) => {
     if (totalCambios > 0 && !window.confirm('Hay cambios sin guardar. ¿Descartarlos?')) return
@@ -266,7 +308,16 @@ export default function StockPage() {
             <span className="text-right">Conteo</span>
             <span className="text-right">Diferencia</span>
           </div>
-          {filas.map((i) => {
+          {grupos.map((g) => (
+          <div key={g.categoria} className="divide-y">
+            <CabeceraCategoria
+              categoria={g.categoria}
+              total={g.items.length}
+              contados={g.contados}
+              abierta={estaAbierta(g.categoria)}
+              onToggle={() => toggleCategoria(g.categoria)}
+            />
+            {estaAbierta(g.categoria) && g.items.map((i) => {
             const v = parseCantidad(draft[i.id] ?? '')
             const dif = typeof v === 'number' && i.esperado !== null ? v - i.esperado : null
             const tol = Math.max(0.5, Math.abs(i.esperado ?? 0) * 0.05)
@@ -318,6 +369,8 @@ export default function StockPage() {
               </div>
             )
           })}
+          </div>
+          ))}
           {filas.length === 0 && <p className="p-8 text-center text-sm text-slate-400">Nada para mostrar con este filtro.</p>}
         </div>
       ) : (
@@ -328,7 +381,16 @@ export default function StockPage() {
             <span className="text-right">Stock seguro</span>
             <span className="text-right">Estado</span>
           </div>
-          {filas.map((i) => {
+          {grupos.map((g) => (
+          <div key={g.categoria} className="divide-y">
+            <CabeceraCategoria
+              categoria={g.categoria}
+              total={g.items.length}
+              contados={g.contados}
+              abierta={estaAbierta(g.categoria)}
+              onToggle={() => toggleCategoria(g.categoria)}
+            />
+            {estaAbierta(g.categoria) && g.items.map((i) => {
             const v = parseCantidad(draftSeguro[i.id] ?? '')
             const seguro = typeof v === 'number' ? v : v === null ? null : i.stockSeguro
             const bajo = bajoSeguro({ actual: i.actual, stockSeguro: seguro })
@@ -371,6 +433,8 @@ export default function StockPage() {
               </div>
             )
           })}
+          </div>
+          ))}
           {filas.length === 0 && <p className="p-8 text-center text-sm text-slate-400">Nada para mostrar con este filtro.</p>}
         </div>
       )}
@@ -385,5 +449,44 @@ export default function StockPage() {
         </div>
       )}
     </DashboardLayout>
+  )
+}
+
+/**
+ * Encabezado de un grupo de la planilla. Muestra el avance del conteo de esa
+ * categoría, que es lo que uno quiere saber contando con el celular en la mano:
+ * cuánto falta de la heladera en la que está parado, no del total.
+ */
+function CabeceraCategoria({
+  categoria,
+  total,
+  contados,
+  abierta,
+  onToggle,
+}: {
+  categoria: string
+  total: number
+  contados: number
+  abierta: boolean
+  onToggle: () => void
+}) {
+  const completa = contados === total
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={abierta}
+      className="sticky top-0 z-10 flex w-full items-center gap-2 bg-slate-50 px-4 py-2 text-left transition-colors hover:bg-slate-100"
+    >
+      <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${abierta ? 'rotate-90' : ''}`} />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{categoria}</span>
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
+          completa ? 'bg-emerald-50 text-emerald-700' : contados > 0 ? 'bg-amber-50 text-amber-700' : 'text-slate-400'
+        }`}
+      >
+        {contados}/{total}
+      </span>
+    </button>
   )
 }

@@ -15,7 +15,8 @@ const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
  * (?fecha=YYYY-MM-DD, default hoy; ?depositoId=, default el central):
  * cada insumo activo con su conteo de ese día (si ya se cargó), el último
  * conteo anterior, el stock esperado a la mañana, el stock actual estimado
- * (incluye los movimientos del día) y el stock seguro. Además, las últimas
+ * (incluye los movimientos del día), el stock seguro y la categoría con la que
+ * se agrupa (la propia del insumo, o el rubro del producto si es venta directa). Además, las últimas
  * fechas con conteos del depósito. Solo cantidades.
  */
 export async function GET(request: NextRequest) {
@@ -34,7 +35,16 @@ export async function GET(request: NextRequest) {
   const [insumos, conteosDia, esperados, actuales, seguros, fechas] = await Promise.all([
     prisma.insumos.findMany({
       where: { clienteId, activo: true },
-      select: { id: true, nombre: true, unidadBase: true, categoria: true },
+      select: {
+        id: true,
+        nombre: true,
+        unidadBase: true,
+        categoria: true,
+        // Los insumos de venta directa heredan el rubro del producto, así la
+        // planilla se agrupa sin tener que cargar la categoría a mano en 133
+        // vinos y bebidas.
+        productMaster: { select: { rubroNombre: true } },
+      },
       orderBy: { nombre: 'asc' },
     }),
     prisma.insumo_stock.findMany({
@@ -73,7 +83,7 @@ export async function GET(request: NextRequest) {
         id: i.id,
         nombre: i.nombre,
         unidadBase: i.unidadBase,
-        categoria: i.categoria,
+        categoria: i.categoria ?? i.productMaster?.rubroNombre ?? null,
         conteo: c ? Number(c.cantidad) : null,
         nota: c?.nota ?? null,
         ultimoConteoFecha: e?.ultimoConteoFecha ?? null,
