@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
+import { crearPagoTx } from '@/lib/pagos/crear-pago'
 import { z } from 'zod'
 
 const paymentAttachmentSchema = z.object({
@@ -153,7 +154,6 @@ export async function POST(request: NextRequest) {
     // Calcular montos
     const montoDocumentos = data.documentos.reduce((sum, d) => sum + d.montoAplicado, 0)
     const totalMetodos = data.metodos.reduce((sum, m) => sum + m.monto, 0)
-    const montoTotal = montoDocumentos || totalMetodos || 0
 
     // Validaciones estrictas solo al emitir
     if (data.emitir) {
@@ -198,75 +198,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear la orden de pago con transacción
-    const pagoId = crypto.randomUUID()
-    const estadoInicial = data.emitir ? 'EMITIDA' : 'BORRADOR'
-
     const pago = await prisma.$transaction(async (tx) => {
-      // Obtener próximo número correlativo para este cliente
-      const lastPago = await tx.$queryRaw<Array<{ max_numero: number | null }>>`
-        SELECT MAX(numero) as max_numero FROM pagos WHERE "clienteId" = ${user.clienteId}::uuid
-      `
-      const numero = (lastPago[0]?.max_numero ?? 0) + 1
-
-      // Crear el pago usando SQL directo para evitar problemas con el enum
-      await tx.$executeRaw`
-        INSERT INTO pagos (id, "clienteId", "proveedorId", numero, fecha, estado, "montoTotal", nota, "updatedAt")
-        VALUES (
-          ${pagoId}::uuid,
-          ${user.clienteId}::uuid,
-          ${data.proveedorId}::uuid,
-          ${numero},
-          ${data.fecha},
-          ${estadoInicial}::"EstadoPago",
-          ${montoTotal},
-          ${data.nota || null},
-          NOW()
-        )
-      `
-
-      // Crear los documentos asociados
-      for (const doc of data.documentos) {
-        await tx.pago_documentos.create({
-          data: {
-            pagoId: pagoId,
-            documentoId: doc.documentoId,
-            montoAplicado: doc.montoAplicado,
-          },
-        })
-      }
-
-      // Crear los métodos de pago
-      for (const m of data.metodos) {
-        // Build meta object with optional fields
-        const meta: { fecha?: string; referencia?: string; attachments?: { key: string; filename: string }[] } = {}
-        if (m.fecha) meta.fecha = m.fecha
-        if (m.referencia) meta.referencia = m.referencia
-        if (m.attachments && m.attachments.length > 0) {
-          meta.attachments = m.attachments
-        }
-
-        await tx.pago_metodos.create({
-          data: {
-            id: crypto.randomUUID(),
-            pagoId: pagoId,
-            tipo: m.tipo as 'EFECTIVO' | 'TRANSFERENCIA' | 'CHEQUE',
-            monto: m.monto,
-            meta: meta as object,
-          },
-        })
-      }
-
-      // Si se emite la orden, marcar los documentos como PAGADO
-      if (data.emitir) {
-        const documentoIds = data.documentos.map((d) => d.documentoId)
-        await tx.$executeRaw`
-          UPDATE documentos
-          SET "estadoRevision" = 'PAGADO'::"EstadoRevision", "updatedAt" = NOW()
-          WHERE id = ANY(${documentoIds}::uuid[])
-        `
-      }
-
-      // Obtener el pago creado
+      const pagoId = await crearPagoTx(tx, {
+        clienteId: user.clienteId!,
+        proveedorId: data.proveedorId,
+        fecha: data.fecha,
+        nota: data.nota,
+        emitir: data.emitir,
+        documentos: data.documentos,
+        metodos: data.metodos,
+      })
       return tx.pagos.findUnique({ where: { id: pagoId } })
     })
 

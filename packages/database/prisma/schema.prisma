@@ -30,6 +30,7 @@ model clientes {
   sales_report_subscriptions sales_report_subscriptions[]
   insumos                    insumos[]
   compra_categorias          compra_categorias[]
+  pago_lotes                 pago_lotes[]
   compra_item_categoria      compra_item_categoria[]
   depositos             depositos[]
   pedidos_internos      pedidos_internos[]
@@ -155,6 +156,20 @@ model pago_documentos {
   @@id([pagoId, documentoId])
 }
 
+// Lote de transferencias: un grupo de órdenes que sale en un mismo archivo para
+// el banco (Galicia) y cuyos comprobantes se suben juntos.
+model pago_lotes {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String   @db.Uuid
+  numero    Int
+  fecha     DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  clientes  clientes @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  pagos     pagos[]
+
+  @@unique([clienteId, numero])
+}
+
 model pago_metodos {
   id     String         @id @db.Uuid
   pagoId String         @db.Uuid
@@ -177,8 +192,10 @@ model pagos {
   montoTotal      Decimal           @db.Decimal(14, 2)
   nota            String?
   comprobanteKey  String?           @db.VarChar(500)
+  loteId          String?           @db.Uuid // lote de transferencias (archivo Galicia) que la incluye
   createdAt       DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime          @db.Timestamptz(3)
+  pago_lotes      pago_lotes?       @relation(fields: [loteId], references: [id], onDelete: SetNull)
   pago_documentos pago_documentos[]
   pago_metodos    pago_metodos[]
   clientes        clientes          @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -187,6 +204,7 @@ model pagos {
   @@unique([clienteId, numero])
   @@index([clienteId, fecha])
   @@index([clienteId, proveedorId])
+  @@index([loteId])
 }
 
 model proveedores {
@@ -206,6 +224,7 @@ model proveedores {
   adminNombre      String?      @db.VarChar(100)
   adminTelefono    String?      @db.VarChar(30)
   diasEntrega      Int? // días desde el pedido hasta la entrega (0 = en el día)
+  cbu              String?      @db.VarChar(22) // cuenta destino para transferencias (archivo Galicia)
   activo           Boolean      @default(true)
   createdAt        DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime     @db.Timestamptz(3)

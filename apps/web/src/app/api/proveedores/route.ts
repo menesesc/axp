@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
+import { cbusDelCliente, guardarCbu, parseCbuInput } from '@/lib/proveedores/cbu'
 import { contactosDesde } from '@/lib/proveedores/contactos'
 
 export const dynamic = 'force-dynamic'
@@ -39,9 +40,12 @@ export async function GET() {
       },
     })
 
+    const cbus = await cbusDelCliente(clienteId)
+
     return json({
       proveedores: proveedores.map((p) => ({
         ...p,
+        cbu: cbus.get(p.id) ?? null,
         documentosCount: p._count.documentos,
       })),
     })
@@ -71,6 +75,10 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { razonSocial, cuit, letra, alias, email } = body
     const contactos = contactosDesde(body)
+    const cbuIn = parseCbuInput(body.cbu)
+    if (cbuIn.error) {
+      return NextResponse.json({ error: cbuIn.error }, { status: 400 })
+    }
 
     // Validaciones
     if (!razonSocial || razonSocial.trim().length === 0) {
@@ -120,7 +128,9 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json({ proveedor }, { status: 201 })
+    if (cbuIn.cbu) await guardarCbu(clienteId, proveedor.id, cbuIn.cbu)
+
+    return NextResponse.json({ proveedor: { ...proveedor, cbu: cbuIn.cbu ?? null } }, { status: 201 })
   } catch (error) {
     console.error('Error en POST /api/proveedores:', error)
     return NextResponse.json(

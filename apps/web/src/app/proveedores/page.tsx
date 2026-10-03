@@ -57,6 +57,7 @@ import {
   Phone,
   MessageCircle,
   Truck,
+  Landmark,
 } from 'lucide-react'
 import { waLink } from '@/lib/whatsapp'
 
@@ -75,6 +76,7 @@ interface Proveedor {
   adminNombre: string | null
   adminTelefono: string | null
   diasEntrega: number | null
+  cbu: string | null
   activo: boolean
   documentosCount: number
 }
@@ -92,6 +94,7 @@ const FORM_VACIO = {
   adminNombre: '',
   adminTelefono: '',
   diasEntrega: '',
+  cbu: '',
 }
 
 type FormProveedor = typeof FORM_VACIO
@@ -310,6 +313,7 @@ export default function ProveedoresPage() {
         adminNombre: proveedor.adminNombre || '',
         adminTelefono: proveedor.adminTelefono || '',
         diasEntrega: proveedor.diasEntrega === null ? '' : String(proveedor.diasEntrega),
+        cbu: proveedor.cbu || '',
       })
     } else {
       resetForm()
@@ -328,6 +332,7 @@ export default function ProveedoresPage() {
       adminNombre: formData.adminNombre || null,
       adminTelefono: formData.adminTelefono || null,
       diasEntrega: formData.diasEntrega === '' ? null : Number(formData.diasEntrega),
+      cbu: formData.cbu.trim() || null,
     }
 
     if (editingProveedor) {
@@ -507,6 +512,12 @@ export default function ProveedoresPage() {
                         <ContactoLink tipo="Pedidos" nombre={proveedor.pedidos2Nombre} telefono={proveedor.pedidos2Telefono} />
                         <ContactoLink tipo="Admin." nombre={proveedor.adminNombre} telefono={proveedor.adminTelefono} />
                         {proveedor.email && <div className="text-xs text-slate-500 truncate max-w-[220px]">{proveedor.email}</div>}
+                        {proveedor.cbu && (
+                          <div className="text-xs text-slate-400 flex items-center gap-1 font-mono" title="CBU para transferencias">
+                            <Landmark className="h-3 w-3" />
+                            {proveedor.cbu}
+                          </div>
+                        )}
                         {textoEntrega(proveedor.diasEntrega) && (
                           <div className="text-xs text-slate-400 flex items-center gap-1">
                             <Truck className="h-3 w-3" />
@@ -667,6 +678,20 @@ export default function ProveedoresPage() {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="proveedor@email.com"
                     className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">CBU / CVU</label>
+                <div className="relative">
+                  <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    value={formData.cbu}
+                    onChange={(e) => setFormData({ ...formData, cbu: e.target.value })}
+                    placeholder="22 dígitos — para el archivo de transferencias"
+                    inputMode="numeric"
+                    className="pl-9 font-mono"
                   />
                 </div>
               </div>

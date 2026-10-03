@@ -3,6 +3,7 @@ import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 import { contactosDesde } from '@/lib/proveedores/contactos'
+import { cbusDelCliente, guardarCbu, parseCbuInput } from '@/lib/proveedores/cbu'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -19,6 +20,7 @@ const updateProveedorSchema = z.object({
   adminNombre: z.string().max(100).nullable().optional(),
   adminTelefono: z.string().max(30).nullable().optional(),
   diasEntrega: z.number().int().min(0).max(60).nullable().optional(),
+  cbu: z.string().nullable().optional(),
   activo: z.boolean().optional(),
 })
 
@@ -52,9 +54,12 @@ export async function GET(
     return json({ error: 'Proveedor no encontrado' }, { status: 404 })
   }
 
+  const cbus = await cbusDelCliente(user.clienteId)
+
   return json({
     proveedor: {
       ...proveedor,
+      cbu: cbus.get(proveedor.id) ?? null,
       documentosCount: proveedor._count.documentos,
     },
   })
@@ -76,6 +81,10 @@ export async function PATCH(
   try {
     const body = await request.json()
     const data = updateProveedorSchema.parse(body)
+    const cbuIn = parseCbuInput(data.cbu)
+    if (cbuIn.error) {
+      return NextResponse.json({ error: cbuIn.error }, { status: 400 })
+    }
 
     // Verificar que el proveedor existe y pertenece al cliente
     const existing = await prisma.proveedores.findFirst({
@@ -145,9 +154,13 @@ export async function PATCH(
       },
     })
 
+    if (cbuIn.cbu !== undefined) await guardarCbu(user.clienteId, id, cbuIn.cbu)
+    const cbus = await cbusDelCliente(user.clienteId)
+
     return NextResponse.json({
       proveedor: {
         ...proveedor,
+        cbu: cbus.get(id) ?? null,
         documentosCount: proveedor._count.documentos,
       },
     })

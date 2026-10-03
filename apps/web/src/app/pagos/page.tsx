@@ -8,6 +8,8 @@ import { Header } from '@/components/layout/header'
 import { PaymentOrdersTable } from '@/components/payments/payment-orders-table'
 import { UpcomingPayments } from '@/components/payments/upcoming-payments'
 import { ReconciliationDialog } from '@/components/payments/reconciliation-dialog'
+import { TransferTray } from '@/components/payments/transfer-tray'
+import { BatchList } from '@/components/payments/batch-list'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -24,6 +26,7 @@ import {
   Send,
   CheckCircle2,
   CalendarClock,
+  Layers,
 } from 'lucide-react'
 
 interface PaymentOrder {
@@ -73,6 +76,22 @@ export default function PagosPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
   const [reconciliationOpen, setReconciliationOpen] = useState(false)
+
+  // Vista: órdenes (listado histórico) · a transferir (borradores) · lotes.
+  // Se refleja en ?vista= para volver directo desde "Pagar en lote".
+  type Vista = 'ordenes' | 'transferir' | 'lotes'
+  const [vista, setVistaState] = useState<Vista>('ordenes')
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get('vista')
+    if (v === 'transferir' || v === 'lotes') setVistaState(v)
+  }, [])
+  const setVista = (v: Vista) => {
+    setVistaState(v)
+    const url = new URL(window.location.href)
+    if (v === 'ordenes') url.searchParams.delete('vista')
+    else url.searchParams.set('vista', v)
+    window.history.replaceState(null, '', url)
+  }
   const pageSize = 25
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -190,10 +209,16 @@ export default function PagosPage() {
                   <Sparkles className="h-4 w-4 mr-1.5" />
                   Conciliación IA
                 </Button>
-                <Button variant="primary" asChild>
+                <Button variant="outline" asChild>
                   <Link href="/pagos/nueva">
                     <Plus className="h-4 w-4 mr-1.5" />
                     Nueva orden
+                  </Link>
+                </Button>
+                <Button variant="primary" asChild>
+                  <Link href="/pagos/lote">
+                    <Layers className="h-4 w-4 mr-1.5" />
+                    Pagar en lote
                   </Link>
                 </Button>
               </div>
@@ -201,6 +226,23 @@ export default function PagosPage() {
           }
         />
 
+        <Tabs value={vista} onValueChange={(v) => setVista(v as Vista)}>
+          <TabsList>
+            <TabsTrigger value="ordenes">Órdenes</TabsTrigger>
+            <TabsTrigger value="transferir">
+              A transferir
+              {(borradores?.count ?? 0) > 0 && (
+                <span className="ml-1.5 rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{borradores?.count}</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="lotes">Lotes</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {vista === 'transferir' && <TransferTray canEdit={!!isAdmin} />}
+        {vista === 'lotes' && <BatchList />}
+
+        {vista === 'ordenes' && (<>
         {/* KPI cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
@@ -229,10 +271,7 @@ export default function PagosPage() {
             icon={<FileEdit className="h-4 w-4" />}
             tone="slate"
             active={estado === 'BORRADOR'}
-            onClick={() => {
-              setEstado(estado === 'BORRADOR' ? '' : 'BORRADOR')
-              setPage(1)
-            }}
+            onClick={() => setVista('transferir')}
           />
           <StatCard
             label="Pagado este mes"
@@ -320,6 +359,7 @@ export default function PagosPage() {
             <UpcomingPayments />
           </div>
         </div>
+        </>)}
       </div>
 
       <ReconciliationDialog
