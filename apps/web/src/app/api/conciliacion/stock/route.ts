@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSeccion } from '@/lib/auth'
+import { esAdminUsuario, requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { hoyAR, sumarDias } from '@/lib/fechas'
 import { stockEsperadoPorInsumo } from '@/lib/conciliacion/stock'
-import { getDepositos } from '@/lib/stock/depositos'
+import { getDepositosPermitidos } from '@/lib/stock/depositos'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +20,7 @@ const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
  * fechas con conteos del depósito. Solo cantidades.
  */
 export async function GET(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_STOCK)
+  const { user, clienteId, error } = await requireSeccion(SECCION.CONCILIACION_STOCK)
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
@@ -28,8 +28,17 @@ export async function GET(request: NextRequest) {
   const fechaParam = sp.get('fecha') || ''
   const fecha = FECHA_RE.test(fechaParam) ? fechaParam : hoyAR()
 
-  const depositos = await getDepositos(clienteId, true)
-  const deposito = depositos.find((d) => d.id === sp.get('depositoId')) ?? depositos.find((d) => d.esCentral) ?? depositos[0]
+  // Solo los depósitos habilitados para este usuario: el selector no muestra
+  // los demás y pedir uno ajeno por querystring da 403.
+  const depositos = await getDepositosPermitidos(clienteId, user?.id, esAdminUsuario(user), true)
+  if (depositos.length === 0) {
+    return NextResponse.json({ error: 'No tenés depósitos habilitados para contar' }, { status: 403 })
+  }
+  const pedido = sp.get('depositoId')
+  if (pedido && !depositos.some((d) => d.id === pedido)) {
+    return NextResponse.json({ error: 'No tenés acceso a ese depósito' }, { status: 403 })
+  }
+  const deposito = depositos.find((d) => d.id === pedido) ?? depositos.find((d) => d.esCentral) ?? depositos[0]
   if (!deposito) return NextResponse.json({ error: 'No hay depósitos configurados' }, { status: 400 })
 
   const [insumos, conteosDia, esperados, actuales, seguros, fechas] = await Promise.all([
@@ -108,7 +117,7 @@ export async function GET(request: NextRequest) {
  * }
  */
 export async function POST(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_STOCK, 'edit')
+  const { user, clienteId, error } = await requireSeccion(SECCION.CONCILIACION_STOCK, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
 
@@ -120,6 +129,13 @@ export async function POST(request: NextRequest) {
   const seguros: Array<{ insumoId: string; stockSeguro: number | null }> = Array.isArray(body?.seguros) ? body.seguros : []
 
   const deposito = await prisma.depositos.findFirst({ where: { id: String(body?.depositoId || ''), clienteId } })
+  // El candado real del guardado: que el selector no lo muestre no alcanza.
+  if (deposito) {
+    const permitidos = await getDepositosPermitidos(clienteId, user?.id, esAdminUsuario(user), false)
+    if (!permitidos.some((d) => d.id === deposito.id)) {
+      return NextResponse.json({ error: 'No tenés acceso a ese depósito' }, { status: 403 })
+    }
+  }
   if (!deposito) return NextResponse.json({ error: 'Depósito no encontrado' }, { status: 404 })
   if (conteos.length > 0) {
     if (!FECHA_RE.test(fecha)) return NextResponse.json({ error: 'Fecha inválida (YYYY-MM-DD)' }, { status: 400 })

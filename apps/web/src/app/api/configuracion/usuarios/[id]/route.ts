@@ -36,6 +36,10 @@ export async function PATCH(
     if (typeof nombre === 'string' && nombre.trim()) updates.nombre = nombre.trim()
     // El teléfono se puede vaciar: string vacío = borrarlo.
     if (typeof telefono === 'string') updates.telefono = telefono.trim() || null
+    // Depósitos habilitados para contar stock. Vacío = todos.
+    if (Array.isArray(body.depositos)) {
+      updates.depositos = body.depositos.filter((d: unknown) => typeof d === 'string')
+    }
 
     // Matriz de permisos por módulo. Los admin no la usan: tienen acceso total,
     // así que al promover a admin se limpia.

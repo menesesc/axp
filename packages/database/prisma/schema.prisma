@@ -257,6 +257,9 @@ model usuarios {
   // Los admin tienen acceso total y llevan el array vacío.
   // Ver apps/web/src/lib/permisos.ts y la migración manual_permisos_granulares.sql.
   permisos              String[]                @default([])
+  /// Depósitos en los que este usuario puede contar stock. Vacío = todos.
+  /// El permiso de sección dice si puede contar; esto, dónde.
+  depositos  String[] @default([]) @db.Uuid
   clienteId             String?                 @db.Uuid
   activo                Boolean                 @default(true)
   createdAt             DateTime                @default(now()) @db.Timestamptz(3)

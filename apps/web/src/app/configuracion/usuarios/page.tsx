@@ -24,6 +24,7 @@ import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
 import { UserPlus, Mail, Phone, Shield, Eye, Loader2, Trash2, Check, X, Pencil } from 'lucide-react'
 import { PermisosMatriz, PermisosResumen } from '@/components/configuracion/permisos-matriz'
+import { DepositosPermitidos } from '@/components/configuracion/depositos-permitidos'
 
 interface Usuario {
   id: string
@@ -32,6 +33,7 @@ interface Usuario {
   rol: 'SUPERADMIN' | 'ADMIN' | 'USER'
   tipo_acceso: 'ADMIN' | 'VIEWER'
   permisos: string[]
+  depositos: string[]
   telefono: string | null
   activo: boolean
   canSendDocs: boolean
@@ -301,10 +303,19 @@ export default function UsuariosPage() {
                     Un administrador accede a todas las secciones, incluida Configuración.
                   </p>
                 ) : (
-                  <PermisosMatriz
-                    permisos={editingUser.permisos ?? []}
-                    onChange={(permisos) => setEditingUser({ ...editingUser, permisos })}
-                  />
+                  <>
+                    <PermisosMatriz
+                      permisos={editingUser.permisos ?? []}
+                      onChange={(permisos) => setEditingUser({ ...editingUser, permisos })}
+                    />
+                    {/* El alcance del conteo solo tiene sentido si puede entrar a Conteo. */}
+                    {(editingUser.permisos ?? []).some((p) => p.startsWith('conciliacion.stock:')) && (
+                      <DepositosPermitidos
+                        valor={editingUser.depositos ?? []}
+                        onChange={(depositos) => setEditingUser({ ...editingUser, depositos })}
+                      />
+                    )}
+                  </>
                 )}
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-slate-700">
@@ -334,6 +345,7 @@ export default function UsuariosPage() {
                           tipo_acceso: editingUser.tipo_acceso,
                           activo: editingUser.activo,
                           permisos: editingUser.permisos ?? [],
+                          depositos: editingUser.depositos ?? [],
                         },
                       })
                       setEditingUser(null)

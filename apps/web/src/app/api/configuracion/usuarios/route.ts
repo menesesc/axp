@@ -25,10 +25,11 @@ export async function GET() {
         rol: string
         tipo_acceso: string | null
         permisos: string[] | null
+        depositos: string[] | null
         activo: boolean
       }>
     >`
-      SELECT id, email, nombre, rol::text AS rol, tipo_acceso, permisos, activo
+      SELECT id, email, nombre, rol::text AS rol, tipo_acceso, permisos, depositos, activo
       FROM usuarios
       WHERE "clienteId" = ${clienteId}::uuid
       ORDER BY nombre ASC
@@ -38,6 +39,7 @@ export async function GET() {
       ...u,
       tipo_acceso: u.tipo_acceso || (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN' ? 'ADMIN' : 'VIEWER'),
       permisos: u.permisos ?? [],
+      depositos: u.depositos ?? [],
       telefono: null,
       canSendDocs: true,
     }))

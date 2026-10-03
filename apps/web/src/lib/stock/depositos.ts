@@ -41,3 +41,32 @@ export async function getCentral(clienteId: string): Promise<Deposito> {
   if (!central) throw new Error('El cliente no tiene depósitos')
   return central
 }
+
+/**
+ * Depósitos en los que un usuario puede contar stock.
+ *
+ * `usuarios.depositos` vacío = todos (encargado). Con una lista cargada, solo
+ * esos: el de barra ve Barra y nada más. Los admin no se filtran.
+ *
+ * Se resuelve en el servidor y se usa tanto para armar el selector como para
+ * validar el guardado: ocultar el depósito en la UI no alcanza.
+ */
+export async function getDepositosPermitidos(
+  clienteId: string,
+  usuarioId: string | null | undefined,
+  esAdmin: boolean,
+  soloActivos = true
+): Promise<Deposito[]> {
+  const todos = await getDepositos(clienteId, soloActivos)
+  if (esAdmin || !usuarioId) return todos
+
+  const u = await prisma.usuarios.findUnique({
+    where: { id: usuarioId },
+    select: { depositos: true },
+  })
+  const permitidos = u?.depositos ?? []
+  if (permitidos.length === 0) return todos
+
+  const set = new Set(permitidos)
+  return todos.filter((d) => set.has(d.id))
+}
