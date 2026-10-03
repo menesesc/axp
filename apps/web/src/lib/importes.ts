@@ -33,6 +33,8 @@ const CLAVES_DINERO = new Set(
     'saldo',
     'deuda',
     'subtotal',
+    'totalSubtotal',
+    'compradoTotal',
     'iva',
     'ivaTotal',
     'neto',

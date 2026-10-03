@@ -15,6 +15,7 @@ import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-char
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
 import { MonthlyAmountChart } from '@/components/dashboard/monthly-amount-chart'
 import { PurchasingTabContent } from '@/components/dashboard/purchasing-tab'
+import { RubrosBreakdownCard } from '@/components/dashboard/rubros-breakdown-card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -144,6 +145,23 @@ export default function Home() {
     enabled: !!clienteId,
   })
 
+  // Ingresos por rubro (ventas Maxirest) en el mismo período. Si el usuario no
+  // tiene acceso al ranking de ventas, o no ve importes, la tarjeta no se muestra.
+  const { data: ingresosData, isLoading: ingresosLoading } = useQuery({
+    queryKey: ['ingresos-rubro', clienteId, comprasDesde, comprasHasta],
+    queryFn: async () => {
+      const p = new URLSearchParams({ groupBy: 'rubro', limit: '200' })
+      if (comprasDesde) p.set('from', comprasDesde)
+      if (comprasHasta) p.set('to', comprasHasta)
+      const res = await fetch(`/api/sales/ranking?${p}`)
+      if (!res.ok) return null
+      const json = await res.json()
+      if (json.hideMontos) return null
+      return json as { ranking: Array<{ rubroNombre: string | null; importe: number }> }
+    },
+    enabled: !!clienteId,
+  })
+
   if (!clienteId) {
     return (
       <DashboardLayout>
@@ -185,6 +203,55 @@ export default function Home() {
     year: 'Año',
     custom: 'Período',
   }
+
+  // Período compartido por Finanzas (gastos/ingresos por rubro) y Compras
+  const periodFilter = (
+    <div className="bg-white border rounded-lg p-4 space-y-3">
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-sm text-slate-500 flex items-center gap-1 mr-2">
+          <Calendar className="h-4 w-4" />
+          Período:
+        </span>
+        {([
+          { value: 'month' as const, label: 'Mes actual' },
+          { value: 'lastMonth' as const, label: 'Mes anterior' },
+          { value: 'quarter' as const, label: 'Trimestre' },
+          { value: 'year' as const, label: 'Año' },
+          { value: 'custom' as const, label: 'Personalizado' },
+        ]).map((opt) => (
+          <Button
+            key={opt.value}
+            variant={comprasFilter === opt.value ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => applyComprasFilter(opt.value)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+
+      {comprasFilter === 'custom' && (
+        <div className="flex gap-3 items-end">
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-1 block">Desde</label>
+            <Input
+              type="date"
+              value={comprasDesde}
+              onChange={(e) => setComprasDesde(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-1 block">Hasta</label>
+            <Input
+              type="date"
+              value={comprasHasta}
+              onChange={(e) => setComprasHasta(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
   const handleUpload = () => {
     setUploadOpen(true)
@@ -275,6 +342,37 @@ export default function Home() {
                 isLoading={statsLoading || paymentsLoading}
               />
 
+              {periodFilter}
+
+              <div className={`grid grid-cols-1 gap-4 ${ingresosData !== null ? 'lg:grid-cols-2' : ''}`}>
+                <RubrosBreakdownCard
+                  title={`¿En qué se va la plata? · ${comprasFilterLabel[comprasFilter]}`}
+                  hint="Compras por categoría · subtotal de items sin IVA"
+                  data={(itemStats?.byCategoria || []).map((c: { categoria: string; totalSubtotal: number }) => ({
+                    nombre: c.categoria,
+                    total: c.totalSubtotal,
+                  }))}
+                  barClass="bg-rose-400"
+                  href="/items"
+                  emptyText="Sin compras con items en el período"
+                  isLoading={itemsLoading}
+                />
+                {ingresosData !== null && (
+                  <RubrosBreakdownCard
+                    title={`¿De dónde vienen los ingresos? · ${comprasFilterLabel[comprasFilter]}`}
+                    hint="Ventas por rubro · cierres de caja"
+                    data={(ingresosData?.ranking || []).map((r) => ({
+                      nombre: r.rubroNombre || 'Sin rubro',
+                      total: r.importe,
+                    }))}
+                    barClass="bg-emerald-500"
+                    href="/ventas"
+                    emptyText="Sin cierres de caja en el período"
+                    isLoading={ingresosLoading}
+                  />
+                )}
+              </div>
+
               <MonthlyAmountChart data={montoPorMes} isLoading={statsLoading} />
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -299,52 +397,7 @@ export default function Home() {
           {/* ─── Tab Compras ─── */}
           <TabsContent value="compras">
             <div className="space-y-4">
-              {/* Filtro de fechas */}
-              <div className="bg-white border rounded-lg p-4 space-y-3">
-                <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-sm text-slate-500 flex items-center gap-1 mr-2">
-                    <Calendar className="h-4 w-4" />
-                    Período:
-                  </span>
-                  {([
-                    { value: 'month' as const, label: 'Mes actual' },
-                    { value: 'lastMonth' as const, label: 'Mes anterior' },
-                    { value: 'quarter' as const, label: 'Trimestre' },
-                    { value: 'year' as const, label: 'Año' },
-                    { value: 'custom' as const, label: 'Personalizado' },
-                  ]).map((opt) => (
-                    <Button
-                      key={opt.value}
-                      variant={comprasFilter === opt.value ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => applyComprasFilter(opt.value)}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </div>
-
-                {comprasFilter === 'custom' && (
-                  <div className="flex gap-3 items-end">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">Desde</label>
-                      <Input
-                        type="date"
-                        value={comprasDesde}
-                        onChange={(e) => setComprasDesde(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">Hasta</label>
-                      <Input
-                        type="date"
-                        value={comprasHasta}
-                        onChange={(e) => setComprasHasta(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              {periodFilter}
 
               <PurchasingKpis
                 compradoEsteMes={compradoEnPeriodo}

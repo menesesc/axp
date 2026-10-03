@@ -99,6 +99,35 @@ export async function GET(request: NextRequest) {
       console.error('[stats] byProvider error:', e)
     }
 
+    // Gasto por categoría de compra (subtotal de líneas, sin IVA). Las líneas sin
+    // categoría asignada van a un bucket propio para que el total cierre.
+    let byCategoriaRaw: Array<{
+      categoria_id: string | null
+      categoria: string | null
+      total_subtotal: number | null
+      total_items: bigint
+    }> = []
+    try {
+      byCategoriaRaw = await prisma.$queryRawUnsafe<typeof byCategoriaRaw>(`
+        SELECT
+          cc.id as categoria_id,
+          cc.nombre as categoria,
+          SUM(di.subtotal::numeric) as total_subtotal,
+          COUNT(di.id)::bigint as total_items
+        FROM documento_items di
+        JOIN documentos d ON di."documentoId" = d.id
+        LEFT JOIN proveedores p ON d."proveedorId" = p.id
+        LEFT JOIN compra_item_categoria cicat
+          ON cicat."clienteId" = $1::uuid AND cicat."descripcionNorm" = ${descNormSql('di.descripcion')}
+        LEFT JOIN compra_categorias cc ON cc.id = cicat."categoriaId"
+        WHERE d."clienteId" = $1::uuid ${dateFilter}
+        GROUP BY cc.id, cc.nombre
+        ORDER BY total_subtotal DESC NULLS LAST
+      `, ...params)
+    } catch (e) {
+      console.error('[stats] byCategoria error:', e)
+    }
+
     // Top items by total value
     let topItemsRaw: Array<{
       descripcion: string
@@ -444,6 +473,12 @@ export async function GET(request: NextRequest) {
         proveedor: row.proveedor,
         totalItems: Number(row.total_items),
         totalCantidad: row.total_cantidad ? Number(row.total_cantidad) : 0,
+        totalSubtotal: row.total_subtotal ? Number(row.total_subtotal) : 0,
+      })),
+      byCategoria: byCategoriaRaw.map(row => ({
+        categoriaId: row.categoria_id,
+        categoria: row.categoria ?? 'Sin categoría',
+        totalItems: Number(row.total_items),
         totalSubtotal: row.total_subtotal ? Number(row.total_subtotal) : 0,
       })),
       topItems: topItemsRaw.map(row => ({
