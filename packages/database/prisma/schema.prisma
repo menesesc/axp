@@ -12,6 +12,10 @@ model clientes {
   id                         String                       @id @db.Uuid
   razonSocial                String                       @db.VarChar(255)
   cuit                       String                       @unique @db.VarChar(11)
+  /// Otros CUITs del grupo que también cuentan como receptor válido. El grupo
+  /// factura bajo varias razones sociales (WALPINA S.A.C., RESTAURANTE FAMILIA
+  /// WEISS) y sin esto esas facturas quedan PENDIENTE para siempre.
+  cuitsAdicionales String[] @default([])
   r2Prefix                   String                       @db.VarChar(50)
   activo                     Boolean                      @default(true)
   createdAt                  DateTime                     @default(now()) @db.Timestamptz(3)

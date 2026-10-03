@@ -325,7 +325,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     // VALIDACIÓN ADICIONAL: Verificar que el número de factura no sea el CUIT del cliente
     const cliente = await prisma.clientes.findUnique({
       where: { id: file.clienteId },
-      select: { cuit: true, razonSocial: true },
+      select: { cuit: true, razonSocial: true, cuitsAdicionales: true },
     });
 
     if (cliente?.cuit && parsed.numeroCompleto) {
@@ -351,7 +351,30 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       const receptorNormalized = parsed.receptorCUIT.replace(/\D/g, '');
       const clienteCuitNormalized = cliente.cuit.replace(/\D/g, '');
 
-      if (receptorNormalized !== clienteCuitNormalized) {
+      // El grupo factura bajo varias razones sociales: todas cuentan como
+      // "nosotros". El principal es `cuit`; `cuitsAdicionales` lo extiende.
+      const cuitsPropios = new Set(
+        [cliente.cuit, ...(cliente.cuitsAdicionales ?? [])]
+          .map((c) => (c || '').replace(/\D/g, ''))
+          .filter((c) => c.length > 0)
+      );
+
+      // El OCR confunde emisor y receptor en varios formatos de factura. Dos
+      // señales de que pasó eso, y no de que la factura sea de otro:
+      //   a) el CUIT receptor leído es el MISMO que el del emisor
+      //   b) el CUIT del emisor leído es uno de los nuestros (vienen al revés)
+      const proveedorNormalized = (parsed.proveedorCUIT || '').replace(/\D/g, '');
+      const receptorEsElEmisor = proveedorNormalized.length > 0 && receptorNormalized === proveedorNormalized;
+      const emisorEsNuestro = proveedorNormalized.length > 0 && cuitsPropios.has(proveedorNormalized);
+
+      if (cuitsPropios.has(receptorNormalized)) {
+        logger.info(`✅ Receptor CUIT ${parsed.receptorCUIT} es del grupo`);
+      } else if (receptorEsElEmisor || emisorEsNuestro) {
+        logger.info(
+          `✅ Receptor CUIT ${parsed.receptorCUIT} parece una confusión emisor/receptor del OCR ` +
+          `(proveedor leído: ${parsed.proveedorCUIT}). No se marca como factura ajena.`
+        );
+      } else {
         // CUIT no coincide — verificar si la razón social del receptor coincide con el cliente
         // Si coincide, es un error de lectura del CUIT, no una factura equivocada
         const receptorNombreNorm = (parsed.receptorNombre || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -387,8 +410,6 @@ async function processOCRFile(file: InboxFile): Promise<void> {
             file.filename
           );
         }
-      } else {
-        logger.info(`✅ Receptor CUIT matches client: ${parsed.receptorCUIT}`);
       }
     }
 

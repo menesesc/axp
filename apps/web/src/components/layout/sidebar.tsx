@@ -71,9 +71,9 @@ const navigationSections: NavSection[] = [
     ],
   },
   {
-    title: 'Documentos',
+    title: 'Compras',
     items: [
-      { name: 'Documentos', href: '/documentos', icon: FileText, badge: true },
+      { name: 'Comprobantes', href: '/documentos', icon: FileText, badge: true },
       { name: 'Items', href: '/items', icon: Package },
       { name: 'Proveedores', href: '/proveedores', icon: Users },
       { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true },
@@ -86,10 +86,10 @@ const navigationSections: NavSection[] = [
     ],
   },
   {
-    title: 'Conciliación',
+    title: 'Stock',
     items: [
       { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot },
-      { name: 'Stock', href: '/conciliacion/stock', icon: ClipboardList },
+      { name: 'Conteo', href: '/conciliacion/stock', icon: ClipboardList },
       { name: 'Pedidos internos', href: '/pedidos', icon: PackageCheck },
       { name: 'Compras sugeridas', href: '/compras', icon: ShoppingBasket, comprasBadge: true },
       { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
