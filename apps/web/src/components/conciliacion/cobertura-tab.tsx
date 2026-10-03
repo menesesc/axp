@@ -116,6 +116,7 @@ export function CoberturaTab({
         reactivados: number
         yaEstaban: number
         saltadosPorReceta: number
+        saltadosPorNombre: number
       }
     },
     onSuccess: (r) => {
@@ -124,6 +125,9 @@ export function CoberturaTab({
         hechos > 0 ? `${hechos} producto${hechos === 1 ? '' : 's'} a stock directo` : null,
         r.saltadosPorReceta > 0
           ? `${r.saltadosPorReceta} con receta quedaron como estaban`
+          : null,
+        r.saltadosPorNombre > 0
+          ? `${r.saltadosPorNombre} con nombre repetido: renombralos para poder stockearlos`
           : null,
       ].filter(Boolean)
       toast.success(partes.join(' · ') || 'No había nada para marcar')

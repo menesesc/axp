@@ -97,9 +97,34 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    if (aCrear.length > 0) {
+    // `insumos` tiene única por (clienteId, nombre), y los nombres de Maxirest
+    // vienen truncados a 17 caracteres: varios códigos distintos colapsan en el
+    // mismo texto ("DV CATENA ZAPATA" son cinco varietales). Dos productos
+    // homónimos no pueden ser dos insumos sin renombrar uno, y renombrar es una
+    // decisión del usuario —puede que sean el mismo vino cargado dos veces, y
+    // entonces hay que unificarlos, no duplicarlos—. Así que se saltean y se
+    // informan, en vez de fallar la operación entera por un choque de nombres.
+    const nombresTomados = new Set(
+      (
+        await prisma.insumos.findMany({
+          where: { clienteId: clienteId!, nombre: { in: aCrear.map((p) => p.nombre) } },
+          select: { nombre: true },
+        })
+      ).map((i) => i.nombre)
+    )
+    const vecesEnLote = new Map<string, number>()
+    for (const p of aCrear) vecesEnLote.set(p.nombre, (vecesEnLote.get(p.nombre) ?? 0) + 1)
+
+    const creables = aCrear.filter(
+      (p) => !nombresTomados.has(p.nombre) && vecesEnLote.get(p.nombre) === 1
+    )
+    const homonimos = aCrear.filter(
+      (p) => nombresTomados.has(p.nombre) || vecesEnLote.get(p.nombre)! > 1
+    )
+
+    if (creables.length > 0) {
       await prisma.insumos.createMany({
-        data: aCrear.map((p) => ({
+        data: creables.map((p) => ({
           clienteId: clienteId!,
           nombre: p.nombre,
           // Venta directa = una unidad vendida consume una unidad comprada.
@@ -112,11 +137,15 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      creados: aCrear.length,
+      creados: creables.length,
       reactivados: aReactivar.length,
       yaEstaban: yaMarcados.length - aReactivar.length,
       saltadosPorReceta: conReceta.length,
-      detalleSaltados: conReceta.slice(0, 20).map((p) => p.nombre),
+      saltadosPorNombre: homonimos.length,
+      detalleSaltados: [
+        ...conReceta.slice(0, 10).map((p) => `${p.nombre} (tiene receta)`),
+        ...homonimos.slice(0, 10).map((p) => `${p.nombre} (nombre repetido)`),
+      ],
     })
   } catch (e) {
     console.error('Error en venta-directa:', e)
