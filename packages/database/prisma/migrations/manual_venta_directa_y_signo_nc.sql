@@ -100,14 +100,22 @@ CREATE OR REPLACE VIEW insumo_consumo_linea AS
 -- ---------------------------------------------------------------------
 -- 2b. Ingresos de compra por línea de documento
 --
---     `signo` es -1 para las notas de crédito: una NC es una devolución, o
---     sea mercadería que sale y plata que vuelve. Antes ninguna consulta
---     miraba el tipo, así que una NC inflaba el stock y abarataba el costo.
+--     Una nota de crédito es una devolución: mercadería que sale y plata que
+--     vuelve. Antes ninguna consulta miraba el tipo, así que una NC inflaba el
+--     stock y abarataba el costo.
 --
---     cantidad, qty_base y subtotal vienen ya con el signo aplicado para que
---     los SUM() den bien. `precio_unitario` NO: es un precio, no un flujo, y
---     se mantiene positivo. El costo por unidad base (subtotal/qty_base)
---     también queda positivo, porque se cancelan los dos signos.
+--     OJO con cómo se corrige. Los datos guardan el signo de forma
+--     inconsistente, según cómo venga cada proveedor y cómo lo haya leído el
+--     OCR: sobre 92 líneas de NC hay 62 con cantidad positiva y subtotal
+--     negativo, 28 con las dos negativas y 2 con las dos positivas. Multiplicar
+--     por -1 arregla unas y rompe otras — en las 28 que ya venían negativas, la
+--     devolución volvería a sumar.
+--
+--     Por eso no se invierte el signo: se FUERZA el negativo con -abs(). Queda
+--     bien venga como venga, y es idempotente si algún día se normaliza la
+--     carga. `precio_unitario` va con abs(): es un precio, no un flujo, y se
+--     mantiene positivo. El costo por unidad base (subtotal/qty_base) también
+--     queda positivo, porque se cancelan los dos signos.
 --
 --     No se filtra por estadoRevision: eso lo decide cada consulta, que para
 --     stock usa ESTADOS_COMPRA (CONFIRMADO, PAGADO).
@@ -127,15 +135,18 @@ CREATE OR REPLACE VIEW insumo_compra_linea AS
     di.unidad                                AS unidad_factura,
     a."insumoId"                             AS insumo_id,
     a."factorBase"                           AS factor_base,
-    sg.signo                                 AS signo,
-    (sg.signo * di.cantidad)                 AS cantidad,
-    (sg.signo * di.cantidad * a."factorBase") AS qty_base,
-    (sg.signo * di.subtotal)                 AS subtotal,
-    di."precioUnitario"                      AS precio_unitario
+    sg.signo                                     AS signo,
+    sg.cantidad                                  AS cantidad,
+    (sg.cantidad * a."factorBase")               AS qty_base,
+    sg.subtotal                                  AS subtotal,
+    abs(di."precioUnitario")::numeric(14,2)      AS precio_unitario
   FROM documento_items di
   JOIN documentos   d ON d.id = di."documentoId"
   JOIN insumo_alias a ON di.descripcion ILIKE '%' || a.patron || '%'
   JOIN insumos      i ON i.id = a."insumoId" AND i."clienteId" = d."clienteId"
   CROSS JOIN LATERAL (
-    SELECT CASE WHEN d.tipo = 'NOTA_CREDITO' THEN -1 ELSE 1 END AS signo
+    SELECT
+      CASE WHEN d.tipo = 'NOTA_CREDITO' THEN -1 ELSE 1 END AS signo,
+      CASE WHEN d.tipo = 'NOTA_CREDITO' THEN -abs(di.cantidad) ELSE di.cantidad END AS cantidad,
+      CASE WHEN d.tipo = 'NOTA_CREDITO' THEN -abs(di.subtotal) ELSE di.subtotal END AS subtotal
   ) sg;
