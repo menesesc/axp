@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { fmtAR, fmtNumAR, fmtFecha, useSort, type SortDir } from './shared'
 import { AlertTriangle, Trash2, Tag, FileText, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -65,7 +66,7 @@ const TIPO_BADGE: Record<string, string> = {
 
 export function AuditTab() {
   const queryClient = useQueryClient()
-  const [{ from, to }, setRange] = useState(defaultRange())
+  const [{ from, to }, setRange] = useSalesRange(defaultRange)
   const [tipoFilter, setTipoFilter] = useState<'' | 'DESCUENTO' | 'ELIMINACION' | 'ESPECIFICACION' | 'EMISION'>('')
   const [mozoFilter, setMozoFilter] = useState('')
   const [reparsingAll, setReparsingAll] = useState(false)

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { ProductDetail } from './ranking-tab'
 import { fmtAR, fmtNumAR, fmtRangeLabel, yesterdayRange } from './shared'
 import { ChevronRight, ChevronLeft, Menu, Search, X, Package } from 'lucide-react'
@@ -79,7 +80,7 @@ const MODOS = [
  * Filtros siempre a mano: rango de fechas (botón desplegable) y turno (segmentado).
  */
 export function RankingDashboard({ hideMontos = true }: { hideMontos?: boolean } = {}) {
-  const [range, setRange] = useState(yesterdayRange())
+  const [range, setRange] = useSalesRange(yesterdayRange)
   const [turno, setTurno] = useState<'' | 'ALMUERZO' | 'CENA'>('')
   const [mode, setMode] = useState<'rubro' | 'general'>('rubro')
   const [selectedRubro, setSelectedRubro] = useState<{ codigo: string; nombre: string } | null>(null)

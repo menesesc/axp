@@ -13,6 +13,8 @@ import { BillingTab } from '@/components/sales/billing-tab'
 import { ByShiftTab } from '@/components/sales/by-shift-tab'
 import { AuditTab } from '@/components/sales/audit-tab'
 import { CsvTab } from '@/components/sales/csv-tab'
+import { SalesRangeProvider } from '@/components/sales/range-context'
+import { defaultRange, yesterdayRange } from '@/components/sales/shared'
 
 export default function VentasPage() {
   const { clienteId, isLoading } = useUser()
@@ -42,6 +44,9 @@ export default function VentasPage() {
           </p>
         </div>
 
+        {/* Un solo rango para todas las pestañas. Si la primera es el ranking
+            (operador restringido), arranca en ayer como el panel. */}
+        <SalesRangeProvider initial={tabs.primera === 'ranking' ? yesterdayRange : defaultRange}>
         <Tabs defaultValue={tabs.primera}>
           <TabsList>
             {tabs.puede('cierres') && <TabsTrigger value="cierres">Cierres</TabsTrigger>}
@@ -95,6 +100,7 @@ export default function VentasPage() {
             </TabsContent>
           )}
         </Tabs>
+        </SalesRangeProvider>
       </div>
     </DashboardLayout>
   )

@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { fmtAR, fmtNumAR, defaultRange } from './shared'
 import { CreditCard } from 'lucide-react'
 import {
@@ -24,7 +25,7 @@ interface Payment {
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
 
 export function PaymentsTab() {
-  const [{ from, to }, setRange] = useState(defaultRange())
+  const [{ from, to }, setRange] = useSalesRange(defaultRange)
 
   const params = useMemo(() => new URLSearchParams({ from, to }).toString(), [from, to])
 

@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { fmtAR, fmtNumAR, fmtCompactAR, defaultRange } from './shared'
 import { Users } from 'lucide-react'
 import {
@@ -26,7 +27,7 @@ interface Waiter {
 }
 
 export function WaitersTab() {
-  const [{ from, to }, setRange] = useState(defaultRange())
+  const [{ from, to }, setRange] = useSalesRange(defaultRange)
 
   const params = useMemo(() => new URLSearchParams({ from, to }).toString(), [from, to])
 

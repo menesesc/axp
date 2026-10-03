@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { fmtAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange, groupByWeekday } from './shared'
 import { Sun, Moon } from 'lucide-react'
 import {
@@ -28,7 +29,7 @@ interface ShiftData {
 type WeekdayMetric = 'avg' | 'total'
 
 export function ByShiftTab() {
-  const [{ from, to }, setRange] = useState(defaultRange())
+  const [{ from, to }, setRange] = useSalesRange(defaultRange)
   const [wdMetric, setWdMetric] = useState<WeekdayMetric>('avg')
 
   const params = useMemo(() => new URLSearchParams({ from, to }).toString(), [from, to])

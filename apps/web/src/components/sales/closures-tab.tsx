@@ -7,6 +7,7 @@ import { Upload, Receipt, ChevronDown, ChevronUp, Loader2, ArrowUp, ArrowDown } 
 import { toast } from 'sonner'
 import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip, XAxis } from 'recharts'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { fmtAR, fmtNumAR, fmtFecha, defaultRange, previousRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
 import { ClosureDetail } from './closure-detail'
 
@@ -42,7 +43,7 @@ function sumTotals(closures: ClosureRow[]) {
 
 export function ClosuresTab() {
   const queryClient = useQueryClient()
-  const [{ from, to }, setRange] = useState(defaultRange())
+  const [{ from, to }, setRange] = useSalesRange(defaultRange)
   const [sucursal, setSucursal] = useState('')
   const [turno, setTurno] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)

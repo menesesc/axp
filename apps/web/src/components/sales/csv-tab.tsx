@@ -7,7 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ImportWizard } from '@/components/ventas/import-wizard'
 import { Upload, Search, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ShoppingCart } from 'lucide-react'
-import { fmtAR, fmtFecha } from './shared'
+import { fmtAR, fmtFecha, defaultRange } from './shared'
+import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 
 interface VentaItem {
   id: string
@@ -85,8 +87,7 @@ export function CsvTab({ clienteId }: { clienteId: string | null | undefined }) 
   const queryClient = useQueryClient()
   const [importOpen, setImportOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
+  const [{ from: fechaDesde, to: fechaHasta }, setRange] = useSalesRange(defaultRange)
   const [page, setPage] = useState(1)
   const pageSize = 50
 
@@ -129,24 +130,13 @@ export function CsvTab({ clienteId }: { clienteId: string | null | undefined }) 
               className="pl-9 text-sm"
             />
           </div>
-          <Input
-            type="date"
-            value={fechaDesde}
-            onChange={(e) => { setFechaDesde(e.target.value); setPage(1) }}
-            className="w-36 text-sm"
+          <DateRange
+            from={fechaDesde}
+            to={fechaHasta}
+            onChange={(r) => { setRange(r); setPage(1) }}
           />
-          <Input
-            type="date"
-            value={fechaHasta}
-            onChange={(e) => { setFechaHasta(e.target.value); setPage(1) }}
-            className="w-36 text-sm"
-          />
-          {(search || fechaDesde || fechaHasta) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setSearch(''); setFechaDesde(''); setFechaHasta(''); setPage(1) }}
-            >
+          {search && (
+            <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setPage(1) }}>
               <X className="h-4 w-4 mr-1" /> Limpiar
             </Button>
           )}

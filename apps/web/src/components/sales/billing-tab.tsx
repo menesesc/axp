@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DateRange } from './date-range'
+import { useSalesRange } from './range-context'
 import { fmtAR, fmtNumAR, fmtFecha, fmtFechaShort, fmtCompactAR, defaultRange, groupByWeekday } from './shared'
 import { FileText } from 'lucide-react'
 import {
@@ -76,7 +77,7 @@ const LABELS: Record<BillingKey, string> = {
 type WeekdayMetric = 'avg' | 'total'
 
 export function BillingTab() {
-  const [{ from, to }, setRange] = useState(defaultRange())
+  const [{ from, to }, setRange] = useSalesRange(defaultRange)
   const [wdMetric, setWdMetric] = useState<WeekdayMetric>('avg')
 
   const params = useMemo(() => new URLSearchParams({ from, to }).toString(), [from, to])
