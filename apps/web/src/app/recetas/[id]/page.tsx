@@ -147,7 +147,7 @@ export default function RecetaPage() {
           Recetario
         </Link>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid gap-6 lg:grid-cols-2">
           <div className="relative overflow-hidden rounded-2xl bg-slate-200">
             {url ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -287,7 +287,7 @@ export default function RecetaPage() {
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <div className="space-y-5">
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex items-center justify-between">
