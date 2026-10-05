@@ -93,15 +93,20 @@ export default function UsuariosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
-      if (!res.ok) throw new Error('Failed to update')
+      // Mostrar el mensaje real del servidor: "Error al actualizar" a secas
+      // obliga a adivinar qué falló.
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error || `Error ${res.status} al actualizar`)
+      }
       return res.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['usuarios'] })
       toast.success('Usuario actualizado')
     },
-    onError: () => {
-      toast.error('Error al actualizar')
+    onError: (e: Error) => {
+      toast.error(e.message)
     },
   })
 
