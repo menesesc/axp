@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
+import { LogoEmpresa } from '@/components/configuracion/logo-empresa'
 import { Input } from '@/components/ui/input'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
@@ -16,6 +17,7 @@ interface Empresa {
   cuit: string
   r2Prefix: string
   activo: boolean
+  logoKey: string | null
 }
 
 export default function EmpresaPage() {
@@ -104,6 +106,8 @@ export default function EmpresaPage() {
                   <p className="text-sm text-slate-500">CUIT: {empresa.cuit}</p>
                 </div>
               </div>
+
+              <LogoEmpresa logoKey={empresa.logoKey} />
 
               {isEditing ? (
                 <div className="space-y-4">
