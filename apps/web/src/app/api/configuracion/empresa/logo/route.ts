@@ -31,7 +31,8 @@ export async function POST(request: NextRequest) {
   // mostrando el logo viejo por el cache.
   const key = `${cliente.r2Prefix}/marca/logo-${Date.now()}.${ext}`
   await uploadToR2(BUCKET, key, Buffer.from(await file.arrayBuffer()), undefined, file.type)
-  await prisma.clientes.update({ where: { id: clienteId! }, data: { logoKey: key } })
+  // SQL crudo: el cliente Prisma de producción no conoce la columna nueva.
+  await prisma.$executeRaw`UPDATE clientes SET "logoKey" = ${key} WHERE id = ${clienteId!}::uuid`
 
   return NextResponse.json({ logoKey: key })
 }
@@ -46,7 +47,9 @@ export async function GET(request: NextRequest) {
   if (!BUCKET) return NextResponse.json({ error: 'R2 no está configurado' }, { status: 503 })
 
   const key = request.nextUrl.searchParams.get('key') || ''
-  const cliente = await prisma.clientes.findUnique({ where: { id: clienteId! }, select: { r2Prefix: true, logoKey: true } })
+  const [cliente] = await prisma.$queryRaw<Array<{ r2Prefix: string; logoKey: string | null }>>`
+    SELECT "r2Prefix", "logoKey" FROM clientes WHERE id = ${clienteId!}::uuid
+  `
   const final = key || cliente?.logoKey || ''
   if (!cliente || !final || !final.startsWith(`${cliente.r2Prefix}/`)) {
     return NextResponse.json({ error: 'No encontrado' }, { status: 404 })

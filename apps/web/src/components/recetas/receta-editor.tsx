@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { ArrowLeft, Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fotoUrl, type CategoriaReceta, type DispositivoReceta, type RecetaDetalle } from './tipos'
+import { VincularInsumos, clave } from './vincular-insumos'
 
 /**
  * Editor de una receta.
@@ -95,6 +96,13 @@ export function RecetaEditor({
     pasoTexto: aTexto(receta.pasos.map((p) => ({ seccion: p.seccion, texto: p.texto }))),
     sugTexto: receta.sugerencias.map((s) => s.texto).join('\n'),
   })
+  // nombre normalizado → insumoId. Se guarda aparte del textarea para que
+  // editar el texto de los ingredientes no borre lo ya vinculado.
+  const [vinculos, setVinculos] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      receta.ingredientes.filter((i) => i.insumoId).map((i) => [clave(i.nombre), i.insumoId!])
+    )
+  )
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((prev) => ({ ...prev, [k]: v }))
 
   const { data: cats } = useQuery({
@@ -124,7 +132,10 @@ export function RecetaEditor({
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const ingredientes = parsear(f.ingTexto).map((l) => ({ seccion: l.seccion, ...parsearIngrediente(l.texto) }))
+      const ingredientes = parsear(f.ingTexto).map((l) => {
+        const ing = parsearIngrediente(l.texto)
+        return { seccion: l.seccion, ...ing, insumoId: vinculos[clave(ing.nombre)] ?? null }
+      })
       const pasos = parsear(f.pasoTexto).map((l) => ({ seccion: l.seccion, texto: l.texto }))
       const sugerencias = f.sugTexto.split('\n').map((s) => s.trim()).filter(Boolean)
 
@@ -330,6 +341,12 @@ export function RecetaEditor({
             className="w-full rounded-md border border-slate-200 px-3 py-2 font-mono text-[13px] outline-none focus:border-emerald-500"
           />
         </div>
+
+        <VincularInsumos
+          nombres={[...new Set(parsear(f.ingTexto).map((l) => parsearIngrediente(l.texto).nombre))]}
+          vinculos={vinculos}
+          onChange={setVinculos}
+        />
 
         <div className="rounded-2xl border border-slate-200 p-4">
           <p className="mb-1 text-sm font-semibold">Preparación</p>

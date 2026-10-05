@@ -19,7 +19,6 @@ export async function GET() {
       select: {
         id: true,
         razonSocial: true,
-        logoKey: true,
         cuit: true,
         r2Prefix: true,
         activo: true,
@@ -30,7 +29,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Empresa no encontrada' }, { status: 404 })
     }
 
-    return NextResponse.json({ empresa })
+    // logoKey va por SQL crudo: el cliente Prisma de producción no se
+    // regenera en el build y no conoce las columnas nuevas.
+    const [logo] = await prisma.$queryRaw<Array<{ logoKey: string | null }>>`
+      SELECT "logoKey" FROM clientes WHERE id = ${clienteId}::uuid
+    `
+
+    return NextResponse.json({ empresa: { ...empresa, logoKey: logo?.logoKey ?? null } })
   } catch (error) {
     console.error('Error fetching empresa:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -49,11 +54,10 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json()
     const { razonSocial, cuit, logoKey } = body
+    // Idem: logoKey se escribe aparte con SQL crudo, más abajo.
 
     const updates: any = {}
     if (razonSocial) updates.razonSocial = razonSocial
-    // Logo PNG para el encabezado del recetario. Cadena vacía lo quita.
-    if (typeof logoKey === 'string') updates.logoKey = logoKey.trim() || null
     if (cuit) updates.cuit = cuit
     updates.updatedAt = new Date()
 
@@ -63,14 +67,20 @@ export async function PATCH(request: NextRequest) {
       select: {
         id: true,
         razonSocial: true,
-        logoKey: true,
         cuit: true,
         r2Prefix: true,
         activo: true,
       },
     })
 
-    return NextResponse.json({ empresa })
+    // Logo del encabezado del recetario. Por SQL crudo, como la lectura.
+    if (typeof logoKey === 'string') {
+      await prisma.$executeRaw`
+        UPDATE clientes SET "logoKey" = ${logoKey.trim() || null} WHERE id = ${clienteId}::uuid
+      `
+    }
+
+    return NextResponse.json({ empresa: { ...empresa, logoKey: typeof logoKey === 'string' ? logoKey.trim() || null : undefined } })
   } catch (error) {
     console.error('Error updating empresa:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
