@@ -91,7 +91,10 @@ export default function RecetasPage() {
           <img
             src="/api/configuracion/empresa/logo"
             alt=""
-            className="hidden h-9 w-auto max-w-[160px] shrink-0 object-contain sm:block"
+            // mix-blend-multiply funde el blanco del PNG con el fondo claro.
+            // Procesar la imagen para hacerlo transparente sería más prolijo,
+            // pero recortar por color se come las partes blancas del logo.
+            className="hidden h-9 w-auto max-w-[160px] shrink-0 object-contain mix-blend-multiply sm:block"
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
           <div className="relative min-w-[12rem] flex-1">

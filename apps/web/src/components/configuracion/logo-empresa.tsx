@@ -57,6 +57,8 @@ export function LogoEmpresa({ logoKey }: { logoKey: string | null }) {
       <p className="text-sm font-medium text-slate-700">Logo</p>
       <p className="mt-0.5 text-xs text-slate-500">
         Se muestra como encabezado del recetario. PNG, WEBP o JPG, hasta 2 MB.
+        Si el archivo tiene fondo blanco se funde con el fondo claro, pero un
+        PNG con transparencia se ve mejor.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -66,7 +68,7 @@ export function LogoEmpresa({ logoKey }: { logoKey: string | null }) {
             <img
               src={`/api/configuracion/empresa/logo?v=${version}`}
               alt="Logo de la empresa"
-              className="max-h-full max-w-full object-contain p-2"
+              className="max-h-full max-w-full object-contain p-2 mix-blend-multiply"
             />
           ) : (
             <ImageIcon className="h-7 w-7 text-slate-300" />

@@ -11,7 +11,7 @@ import { ModoCocina } from '@/components/recetas/modo-cocina'
 import { RecetaEditor } from '@/components/recetas/receta-editor'
 import { fmtMin, fmtPesos, fotoUrl, type RecetaDetalle } from '@/components/recetas/tipos'
 import {
-  ArrowLeft, ChefHat, Clock, Gauge, Heart, Minus, Pencil, Play, Plus, User, Utensils,
+  ArrowLeft, ChefHat, Clock, Gauge, Heart, Minus, Pencil, Play, Plus, Printer, User, Utensils,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -206,6 +206,15 @@ export default function RecetaPage() {
                     <Pencil className="h-4 w-4" />
                   </button>
                 )}
+                <a
+                  href={`/recetas/${id}/print${porciones ? `?porciones=${porciones}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Imprimir o guardar en PDF"
+                  className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white hover:bg-slate-50"
+                >
+                  <Printer className="h-4 w-4" />
+                </a>
                 <button
                   onClick={() => favorita.mutate()}
                   aria-label={r.favorita ? 'Quitar de favoritas' : 'Marcar como favorita'}
