@@ -29,17 +29,18 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { activo, tipo_acceso, nombre, telefono } = body
+    const { activo, tipo_acceso, nombre } = body
 
     const updates: any = { updatedAt: new Date() }
     if (typeof activo === 'boolean') updates.activo = activo
     if (typeof nombre === 'string' && nombre.trim()) updates.nombre = nombre.trim()
-    // El teléfono se puede vaciar: string vacío = borrarlo.
-    if (typeof telefono === 'string') updates.telefono = telefono.trim() || null
-    // Depósitos habilitados para contar stock. Vacío = todos.
-    if (Array.isArray(body.depositos)) {
-      updates.depositos = body.depositos.filter((d: unknown) => typeof d === 'string')
-    }
+
+    // Depósitos habilitados para contar stock. Vacío = todos. Va por SQL
+    // directo, como `permisos`: es una columna nueva y el cliente Prisma de
+    // producción no se regenera en el build.
+    const depositos: string[] | null = Array.isArray(body.depositos)
+      ? body.depositos.filter((d: unknown) => typeof d === 'string')
+      : null
 
     // Matriz de permisos por módulo. Los admin no la usan: tienen acceso total,
     // así que al promover a admin se limpia.
@@ -67,14 +68,22 @@ export async function PATCH(
       data: updates,
     })
 
-    // permisos vía SQL directo: no depende de regenerar el cliente Prisma.
+    // permisos y depositos vía SQL directo: no dependen de regenerar el
+    // cliente Prisma.
     if (permisos !== null) {
       await prisma.$executeRaw`
         UPDATE usuarios SET permisos = ${permisos}::text[], "updatedAt" = NOW() WHERE id = ${id}::uuid
       `
     }
+    if (depositos !== null) {
+      await prisma.$executeRaw`
+        UPDATE usuarios SET depositos = ${depositos}::uuid[], "updatedAt" = NOW() WHERE id = ${id}::uuid
+      `
+    }
 
-    return NextResponse.json({ usuario: { ...updated, permisos: permisos ?? undefined } })
+    return NextResponse.json({
+      usuario: { ...updated, permisos: permisos ?? undefined, depositos: depositos ?? undefined },
+    })
   } catch (error) {
     console.error('Error updating usuario:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
