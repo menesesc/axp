@@ -19,6 +19,7 @@ export async function GET() {
       select: {
         id: true,
         razonSocial: true,
+        logoKey: true,
         cuit: true,
         r2Prefix: true,
         activo: true,
@@ -47,10 +48,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { razonSocial, cuit } = body
+    const { razonSocial, cuit, logoKey } = body
 
     const updates: any = {}
     if (razonSocial) updates.razonSocial = razonSocial
+    // Logo PNG para el encabezado del recetario. Cadena vacía lo quita.
+    if (typeof logoKey === 'string') updates.logoKey = logoKey.trim() || null
     if (cuit) updates.cuit = cuit
     updates.updatedAt = new Date()
 
@@ -60,6 +63,7 @@ export async function PATCH(request: NextRequest) {
       select: {
         id: true,
         razonSocial: true,
+        logoKey: true,
         cuit: true,
         r2Prefix: true,
         activo: true,

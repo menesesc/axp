@@ -16,11 +16,16 @@ model clientes {
   /// factura bajo varias razones sociales (WALPINA S.A.C., RESTAURANTE FAMILIA
   /// WEISS) y sin esto esas facturas quedan PENDIENTE para siempre.
   cuitsAdicionales String[] @default([])
+  /// Logo PNG de la empresa en R2. Encabezado del recetario.
+  logoKey                    String?                      @db.VarChar(500)
   r2Prefix                   String                       @db.VarChar(50)
   activo                     Boolean                      @default(true)
   createdAt                  DateTime                     @default(now()) @db.Timestamptz(3)
   updatedAt                  DateTime                     @db.Timestamptz(3)
   documentos                 documentos[]
+  recetaCategorias           receta_categorias[]
+  dispositivos               dispositivos[]
+  recetas                    recetas[]
   ingest_queue               ingest_queue[]
   pagos                      pagos[]
   proveedores                proveedores[]
@@ -271,6 +276,8 @@ model usuarios {
 
   @@index([clienteId])
   @@index([rol])
+  recetaNotas     receta_notas[]
+  recetaFavoritas receta_favoritas[]
 }
 
 model processing_logs {
@@ -718,6 +725,7 @@ model insumos {
   plantillaItems pedido_plantilla_items[]
   pedidoProveedorItems pedido_proveedor_items[]
   stock       insumo_stock[]
+  recetaIngredientes receta_ingredientes[]
 
   @@unique([clienteId, nombre])
   @@index([clienteId])
@@ -1016,4 +1024,166 @@ model pedido_proveedor_items {
   insumo insumos?          @relation(fields: [insumoId], references: [id], onDelete: SetNull)
 
   @@index([pedidoId])
+}
+
+// =====================================================
+// MÓDULO: RECETARIO
+//
+// Libro de recetas de cocina. NO confundir con `sales_recipes`, que es la
+// receta técnica que descuenta insumos del stock. Conviven: una dice cómo se
+// hace un plato, la otra cuánto insumo consume un producto vendido.
+// =====================================================
+
+model receta_categorias {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String   @db.Uuid
+  nombre    String   @db.VarChar(80)
+  emoji     String?  @db.VarChar(16)
+  color     String?  @db.VarChar(9)
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  clientes clientes  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  recetas  recetas[]
+
+  @@unique([clienteId, nombre])
+  @@map("receta_categorias")
+}
+
+model dispositivos {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String   @db.Uuid
+  nombre    String   @db.VarChar(80)
+  emoji     String?  @db.VarChar(16)
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  clientes clientes              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  recetas  receta_dispositivos[]
+
+  @@unique([clienteId, nombre])
+  @@map("dispositivos")
+}
+
+model recetas {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId   String   @db.Uuid
+  categoriaId String?  @db.Uuid
+  titulo      String   @db.VarChar(200)
+  descripcion String?  @db.Text
+  /// "borrador" | "publicada". En borrador solo la ve quien puede editar.
+  estado      String   @default("borrador") @db.VarChar(20)
+  prepMin     Int?
+  totalMin    Int?
+  porciones   Int      @default(1)
+  /// "Fácil" | "Media" | "Difícil"
+  dificultad  String?  @db.VarChar(20)
+  autor       String?  @db.VarChar(80)
+  /// Foto en R2, bajo el prefijo del cliente.
+  fotoKey     String?  @db.VarChar(500)
+  youtubeUrl  String?  @db.VarChar(500)
+  destacada   Boolean  @default(false)
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  clientes     clientes              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  categoria    receta_categorias?    @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  dispositivos receta_dispositivos[]
+  ingredientes receta_ingredientes[]
+  pasos        receta_pasos[]
+  sugerencias  receta_sugerencias[]
+  notas        receta_notas[]
+  favoritas    receta_favoritas[]
+
+  @@index([clienteId, estado])
+  @@index([categoriaId])
+  @@map("recetas")
+}
+
+model receta_dispositivos {
+  recetaId      String @db.Uuid
+  dispositivoId String @db.Uuid
+
+  receta      recetas      @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  dispositivo dispositivos @relation(fields: [dispositivoId], references: [id], onDelete: Cascade)
+
+  @@id([recetaId, dispositivoId])
+  @@map("receta_dispositivos")
+}
+
+model receta_ingredientes {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recetaId String   @db.Uuid
+  /// Agrupa ("Masa", "Relleno"). NULL = sin agrupar.
+  seccion  String?  @db.VarChar(80)
+  orden    Int      @default(0)
+  nombre   String   @db.VarChar(200)
+  cantidad Decimal? @db.Decimal(14, 4)
+  unidad   String?  @db.VarChar(20)
+  nota     String?  @db.VarChar(200)
+  /// Opcional: con insumo se calcula el costo, sin él la receta igual sirve.
+  insumoId String?  @db.Uuid
+
+  receta recetas  @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  insumo insumos? @relation(fields: [insumoId], references: [id], onDelete: SetNull)
+
+  @@index([recetaId, orden])
+  @@index([insumoId])
+  @@map("receta_ingredientes")
+}
+
+model receta_pasos {
+  id       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recetaId String  @db.Uuid
+  seccion  String? @db.VarChar(80)
+  orden    Int     @default(0)
+  texto    String  @db.Text
+
+  receta recetas @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+
+  @@index([recetaId, orden])
+  @@map("receta_pasos")
+}
+
+model receta_sugerencias {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recetaId String @db.Uuid
+  orden    Int    @default(0)
+  texto    String @db.Text
+
+  receta recetas @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+
+  @@index([recetaId, orden])
+  @@map("receta_sugerencias")
+}
+
+/// Nota privada: una por usuario y receta. No la ve nadie más.
+model receta_notas {
+  recetaId  String   @db.Uuid
+  usuarioId String   @db.Uuid
+  texto     String   @db.Text
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  receta  recetas  @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  usuario usuarios @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@id([recetaId, usuarioId])
+  @@map("receta_notas")
+}
+
+model receta_favoritas {
+  recetaId  String   @db.Uuid
+  usuarioId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  receta  recetas  @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+  usuario usuarios @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@id([recetaId, usuarioId])
+  @@map("receta_favoritas")
 }

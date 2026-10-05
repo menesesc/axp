@@ -62,6 +62,7 @@ export const MODULO = {
   CONCILIACION: 'conciliacion',
   FINANZAS: 'finanzas',
   INFORMES: 'informes',
+  RECETAS: 'recetas',
   SISTEMA: 'sistema',
   CONFIGURACION: 'configuracion',
 } as const
@@ -83,6 +84,7 @@ export const MODULOS: ModuloDef[] = [
   { value: MODULO.CONCILIACION, label: 'Conciliación', hint: 'Insumos, recetas y control de stock' },
   { value: MODULO.FINANZAS, label: 'Finanzas', hint: 'Pagos, calendario de vencimientos y estadísticas' },
   { value: MODULO.INFORMES, label: 'Informes', hint: 'Compras, cuenta corriente, precios y proyecciones' },
+  { value: MODULO.RECETAS, label: 'Recetario', hint: 'Libro de recetas de la cocina' },
   { value: MODULO.SISTEMA, label: 'Sistema', hint: 'Procesamiento de documentos y logs' },
   {
     value: MODULO.CONFIGURACION,
@@ -411,6 +413,16 @@ export const SECCIONES: SeccionDef[] = [
     importes: true,
   },
 
+  // --- Recetario -----------------------------------------------------------
+  {
+    value: 'recetas.libro',
+    modulo: MODULO.RECETAS,
+    label: 'Recetario',
+    paginas: ['/recetas', '/configuracion/recetario'],
+    apis: ['/api/recetas'],
+    importes: true, // el costo por porción es plata: sin el flag, no se ve
+  },
+
   // --- Sistema -------------------------------------------------------------
   {
     value: 'sistema.procesamiento',
@@ -467,6 +479,7 @@ export const SECCION = {
   INFORMES_PRECIOS: 'informes.precios',
   INFORMES_COMPRAS: 'informes.compras',
   INFORMES_PROYECCIONES: 'informes.proyecciones',
+  RECETAS_LIBRO: 'recetas.libro',
   SISTEMA_PROCESAMIENTO: 'sistema.procesamiento',
   CONFIGURACION: 'configuracion.general',
 } as const

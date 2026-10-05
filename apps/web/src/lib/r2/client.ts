@@ -30,6 +30,8 @@ export async function uploadToR2(
   key: string,
   body: Buffer,
   metadata?: Record<string, string>,
+  // El recetario sube imágenes; antes esto era siempre PDF.
+  contentType = 'application/pdf',
 ): Promise<void> {
   if (!r2Client) throw new Error('R2 client not configured')
 
@@ -37,7 +39,7 @@ export async function uploadToR2(
     Bucket: bucket,
     Key: key,
     Body: body,
-    ContentType: 'application/pdf',
+    ContentType: contentType,
     Metadata: metadata,
   }))
 }
