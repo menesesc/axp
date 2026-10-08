@@ -22,6 +22,8 @@ import {
   XCircle,
   FileText,
   Eye,
+  Files,
+  Download,
 } from 'lucide-react'
 
 interface Orden {
@@ -68,6 +70,7 @@ export default function LotePage() {
   const [leyendo, setLeyendo] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [descargando, setDescargando] = useState<string | null>(null)
+  const [progresoOps, setProgresoOps] = useState<{ hechas: number; total: number } | null>(null)
   const [dragging, setDragging] = useState(false)
 
   const { data, isLoading } = useQuery<{ lote: Lote }>({
@@ -107,6 +110,36 @@ export default function LotePage() {
     toast.success(`Lote ${lote.numero} armado — descargando archivo para Galicia`)
     descargarGalicia()
   }, [lote]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Un PDF por orden, con el mismo nombre que al bajarla a mano desde la orden
+   * (PROVEEDOR-OPxxxx.pdf) y su comprobante anexado si ya lo tiene. Van de a
+   * una con una pausa corta: el navegador frena las ráfagas de descargas (la
+   * primera vez puede pedir permiso para "descargar varios archivos").
+   */
+  const descargarOrdenes = async (ordenes: Orden[]) => {
+    if (ordenes.length === 0) return
+    setDescargando(ordenes.length === 1 ? `op:${ordenes[0]!.id}` : 'ops')
+    setProgresoOps({ hechas: 0, total: ordenes.length })
+    let fallidas = 0
+    try {
+      for (let i = 0; i < ordenes.length; i++) {
+        const o = ordenes[i]!
+        try {
+          await descargarArchivo(`/api/pagos/${o.id}/pdf`, `OP${formatNumeroOrden(o.numero)}.pdf`)
+        } catch {
+          fallidas++
+        }
+        setProgresoOps({ hechas: i + 1, total: ordenes.length })
+        if (i < ordenes.length - 1) await new Promise((r) => setTimeout(r, 400))
+      }
+      if (fallidas > 0) toast.error(`${fallidas} orden${fallidas === 1 ? '' : 'es'} no se pudo descargar`)
+      else if (ordenes.length > 1) toast.success(`${ordenes.length} órdenes descargadas`)
+    } finally {
+      setDescargando(null)
+      setProgresoOps(null)
+    }
+  }
 
   const descargarPdfFinal = async () => {
     if (!lote) return
@@ -221,6 +254,10 @@ export default function LotePage() {
                 <Button variant="outline" onClick={descargarGalicia} disabled={!!descargando}>
                   {descargando === 'galicia' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1.5" />}
                   Archivo Galicia{lote.partesGalicia > 1 && ` (${lote.partesGalicia} partes)`}
+                </Button>
+                <Button variant="outline" onClick={() => descargarOrdenes(lote.ordenes)} disabled={!!descargando} title="Un PDF por orden: PROVEEDOR-OPxxxx.pdf, con su comprobante si ya lo tiene">
+                  {descargando === 'ops' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Files className="h-4 w-4 mr-1.5" />}
+                  {descargando === 'ops' && progresoOps ? `OPs ${progresoOps.hechas}/${progresoOps.total}` : 'OPs individuales'}
                 </Button>
                 <Button variant="primary" onClick={descargarPdfFinal} disabled={!!descargando}>
                   {descargando === 'pdf' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileDown className="h-4 w-4 mr-1.5" />}
@@ -427,6 +464,17 @@ export default function LotePage() {
                 {o.estado === 'PAGADO' ? 'Pagada' : 'En banco'}
               </span>
               <span className="text-sm font-semibold tabular-nums text-slate-900 w-32 text-right">{formatCurrency(o.montoTotal)}</span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => descargarOrdenes([o])}
+                disabled={!!descargando}
+                aria-label="Descargar PDF de la orden"
+                title="Descargar PDF de la orden"
+              >
+                {descargando === `op:${o.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              </Button>
               <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
                 <a href={`/api/pagos/${o.id}/pdf?view=true`} target="_blank" rel="noreferrer" aria-label="Ver PDF de la orden">
                   {o.comprobanteKey ? <Eye className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
