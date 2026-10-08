@@ -40,6 +40,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { waPhone } from '@/lib/whatsapp'
+import { SECCION } from '@/lib/permisos'
+import { EcheqGaliciaCard } from '@/components/payments/echeq-galicia-card'
 
 interface Documento {
   id: string
@@ -111,7 +113,7 @@ export default function PagoDetailPage() {
   const id = params.id as string
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { clienteId, isAdmin } = useUser()
+  const { clienteId, isAdmin, canEdit } = useUser()
   const [isDownloading, setIsDownloading] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null)
   const [isLoadingPdf, setIsLoadingPdf] = useState(false)
@@ -597,6 +599,25 @@ export default function PagoDetailPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {pago.metodos.some((m) => m.tipo === 'ECHEQ') && (
+          <EcheqGaliciaCard
+            pagoId={pago.id}
+            lineas={pago.metodos
+              .filter((m) => m.tipo === 'ECHEQ')
+              .map((m) => ({
+                id: m.id,
+                monto: m.monto,
+                fecha: String(m.fecha).slice(0, 10),
+                referencia: m.referencia ?? null,
+                conPdf: (m.attachments?.length ?? 0) > 0,
+              }))
+              .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.monto - b.monto)}
+            proveedorEmail={pago.proveedor.email}
+            canEdit={canEdit(SECCION.FINANZAS_PAGOS)}
+            onDescargarOp={() => downloadPdf()}
+          />
+        )}
 
         {/* Share Email Dialog */}
         <ShareEmailDialog
