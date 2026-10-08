@@ -1,7 +1,8 @@
 'use client'
 
-import { use, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
@@ -54,8 +55,9 @@ interface PaginaLeida {
 
 const clavePagina = (p: { archivo: number; pagina: number }) => `${p.archivo}:${p.pagina}`
 
-export default function LotePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function LotePage() {
+  // Next 14 / React 18: `params` no es una Promise ni existe `use()`.
+  const { id } = useParams<{ id: string }>()
   const { clienteId, isAdmin } = useUser()
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
