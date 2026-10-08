@@ -13,12 +13,25 @@ export function getAnthropicClient(): Anthropic {
   return _client
 }
 
-export const AI_MODEL = 'claude-sonnet-4-20250514'
+// Claude Sonnet 4 (claude-sonnet-4-20250514) fue dado de baja: la API devuelve 404.
+export const AI_MODEL = 'claude-sonnet-5-5'
 
-// Pricing per million tokens (USD) - Claude Sonnet 4
+/**
+ * Opciones para AI_MODEL: piensa por defecto (adaptive) y el thinking cuenta
+ * dentro de max_tokens. Para extraer/resumir alcanza con esfuerzo bajo.
+ */
+export const AI_OPCIONES = { output_config: { effort: 'low' as const } }
+
+/** Texto de la respuesta (puede venir precedido de un bloque de thinking). */
+export function textoRespuesta(content: Array<{ type: string; text?: string }>): string {
+  const b = content.find((c) => c.type === 'text')
+  return b?.text ?? ''
+}
+
+// Pricing per million tokens (USD) - Claude Sonnet 5.5
 const PRICING = {
-  inputPerMToken: 3.0,
-  outputPerMToken: 15.0,
+  inputPerMToken: 2.0,
+  outputPerMToken: 10.0,
 } as const
 
 export function calculateCost(inputTokens: number, outputTokens: number): number {

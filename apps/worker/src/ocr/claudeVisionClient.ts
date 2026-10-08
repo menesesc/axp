@@ -290,13 +290,18 @@ function validateLetra(letra: string | null): string | null {
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 3000
 
+/** Modelos anteriores a la generación 4.6 no aceptan `effort` ni piensan por defecto. */
+export function soportaEffort(model: string): boolean {
+  return !/claude-(?:haiku-4-5|sonnet-4-(?:0|5|2025)|opus-4-(?:0|1|5)|3)/.test(model)
+}
+
 export async function processWithClaudeVision(
   pdfBuffer: Buffer,
   proveedores: ProveedorForMatching[],
   corrections: CorrectionExample[],
   clienteId: string,
   filename: string = 'document.pdf',
-  model: string = 'claude-haiku-4-5-20251001',
+  model: string = 'claude-haiku-5-5',
 ): Promise<ClaudeVisionResult> {
   const client = getAnthropicClient()
 
@@ -322,9 +327,14 @@ export async function processWithClaudeVision(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // Modelos 4.6+ (Haiku 5.5, Sonnet 5.x…): piensan por defecto (adaptive) y
+      // aceptan `effort`. Para extraer datos de una factura alcanza con `low`;
+      // el thinking cuenta dentro de max_tokens, así que se deja más margen.
+      const conEffort = soportaEffort(model)
       const response = await client.messages.create({
         model,
-        max_tokens: 4096,
+        max_tokens: conEffort ? 16000 : 4096,
+        ...(conEffort ? { output_config: { effort: 'low' as const } } : {}),
         system: [
           {
             type: 'text',
@@ -347,9 +357,9 @@ export async function processWithClaudeVision(
         ],
       })
 
-      // Extraer texto de la respuesta
-      const firstBlock = response.content[0]
-      const responseText = firstBlock?.type === 'text' ? firstBlock.text : ''
+      // Extraer texto de la respuesta (puede venir precedido de un bloque de thinking)
+      const textBlock = response.content.find((b) => b.type === 'text')
+      const responseText = textBlock?.type === 'text' ? textBlock.text : ''
 
       // Extraer usage (incluyendo cache tokens)
       const rawUsage = response.usage as any

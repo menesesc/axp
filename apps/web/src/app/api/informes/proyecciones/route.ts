@@ -4,7 +4,7 @@ import { NextResponse, NextRequest } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
-import { getAnthropicClient, AI_MODEL } from '@/lib/ai/anthropic-client'
+import { getAnthropicClient, AI_MODEL, AI_OPCIONES, textoRespuesta } from '@/lib/ai/anthropic-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -170,11 +170,12 @@ Responde SOLO con un JSON válido (sin markdown ni backticks) con esta estructur
 
       const response = await client.messages.create({
         model: AI_MODEL,
-        max_tokens: 1024,
+        max_tokens: 4096,
+        ...AI_OPCIONES,
         messages: [{ role: 'user', content: prompt }],
       })
 
-      const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
+      const text = textoRespuesta(response.content)
       // Parse JSON, handle potential markdown wrapping
       let parsed
       try {

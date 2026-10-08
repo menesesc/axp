@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { downloadFromR2 } from '@/lib/r2/client'
-import { getAnthropicClient, AI_MODEL, calculateCost, parseAIResponse } from '@/lib/ai/anthropic-client'
+import { getAnthropicClient, AI_MODEL, AI_OPCIONES, calculateCost, parseAIResponse, textoRespuesta } from '@/lib/ai/anthropic-client'
 import { buildReviewPrompt, type AIReviewResponse } from '@/lib/ai/review-prompt'
 
 const FIELD_LABELS: Record<string, string> = {
@@ -136,7 +136,8 @@ export async function POST(
       message = await client.messages.create(
         {
           model: AI_MODEL,
-          max_tokens: 1024,
+          max_tokens: 4096,
+          ...AI_OPCIONES,
           messages: [
             {
               role: 'user',
@@ -187,8 +188,7 @@ export async function POST(
     const durationMs = Date.now() - startTime
 
     // Parse response
-    const firstBlock = message.content[0]
-    const responseText = firstBlock?.type === 'text' ? firstBlock.text : ''
+    const responseText = textoRespuesta(message.content)
     const { input_tokens: inputTokens, output_tokens: outputTokens } = message.usage
 
     let suggestions: AIReviewResponse
