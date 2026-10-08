@@ -1,0 +1,527 @@
+/*
+ * Landing de AXP — sistema visual de la familia Southbit (southbit.dev,
+ * pingway, signet): fondo noche, halos radiales, grilla enmascarada, tarjetas
+ * con borde en degradé y brillo que sigue el cursor, revelado con blur.
+ * Azul = la marca AXP (su logo). Ámbar = lo que AXP avisa (aumentos, alertas).
+ */
+
+@property --lx-giro {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.lx {
+  --noche: #05070c;
+  --pizarra: #0b111c;
+  --pizarra-2: #0f1724;
+  --borde: rgba(255, 255, 255, 0.09);
+  --borde-fuerte: rgba(255, 255, 255, 0.16);
+  --texto: #eef2f8;
+  --sec: #9aa5b8;
+  --ter: #667086;
+  --azul: #3b9bff;
+  --azul-2: #7cc4ff;
+  --azul-p: #0c4c96;
+  --ambar: #f5a524;
+  --ambar-2: #fcd34d;
+  --verde: #34d399;
+  --suave: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color: var(--texto);
+  background:
+    radial-gradient(90% 50% at 70% -10%, rgba(59, 155, 255, 0.16), transparent 70%),
+    radial-gradient(60% 40% at 0% 30%, rgba(12, 76, 150, 0.22), transparent 70%),
+    radial-gradient(70% 45% at 50% 105%, rgba(245, 165, 36, 0.08), transparent 70%),
+    var(--noche);
+  min-height: 100dvh;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lx ::selection {
+  background: rgba(59, 155, 255, 0.35);
+  color: #fff;
+}
+
+.lx-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.lx-sec {
+  color: var(--sec);
+}
+
+/* ------------------------------------------------------------------ fondo */
+
+.lx-grilla {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(124, 196, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 196, 255, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 60% 30%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 60% 30%, #000 30%, transparent 75%);
+}
+
+/* ----------------------------------------------------------------- header */
+
+.lx-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  transition: background-color 400ms ease, border-color 400ms ease, backdrop-filter 400ms ease;
+  border-bottom: 1px solid transparent;
+}
+.lx-header[data-scroll='1'] {
+  background: rgba(5, 7, 12, 0.8);
+  border-bottom-color: var(--borde);
+  backdrop-filter: saturate(160%) blur(18px);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+}
+.lx-nav a {
+  color: var(--sec);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  transition: color 200ms ease, background-color 200ms ease;
+}
+.lx-nav a:hover {
+  color: var(--texto);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ---------------------------------------------------------------- botones */
+
+.lx-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1.4rem;
+  border-radius: 999px;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
+  border: 1px solid transparent;
+  transition: transform 500ms var(--suave), box-shadow 500ms var(--suave), background-color 300ms, border-color 300ms;
+  white-space: nowrap;
+}
+.lx-boton:hover {
+  transform: translateY(-2px);
+}
+.lx-boton:active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 120ms;
+}
+.lx-boton:focus-visible,
+.lx a:focus-visible,
+.lx button:focus-visible,
+.lx summary:focus-visible {
+  outline: 2px solid var(--azul-2);
+  outline-offset: 3px;
+}
+.lx-boton-primario {
+  background: #fff;
+  color: var(--noche);
+  box-shadow: 0 10px 30px -10px rgba(255, 255, 255, 0.35);
+}
+.lx-boton-primario:hover {
+  box-shadow: 0 16px 40px -12px rgba(124, 196, 255, 0.55);
+}
+.lx-boton-secundario {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--borde-fuerte);
+  color: var(--texto);
+  backdrop-filter: blur(12px);
+}
+.lx-boton-secundario:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.lx-boton-chico {
+  padding: 0.6rem 1.05rem;
+  font-size: 0.875rem;
+}
+
+/* ------------------------------------------------------- entrada del hero */
+
+.lx-entra {
+  animation: lx-entrar 1.2s var(--suave) both;
+}
+.lx-entra-2 {
+  animation-delay: 90ms;
+}
+.lx-entra-3 {
+  animation-delay: 200ms;
+}
+.lx-entra-4 {
+  animation-delay: 320ms;
+}
+@keyframes lx-entrar {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.lx-titulo-linea {
+  display: block;
+  padding-bottom: 0.06em;
+  background: linear-gradient(180deg, #fff 35%, #b8c4d8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Palabra que rota en el título */
+.lx-rota {
+  position: relative;
+  display: grid;
+}
+.lx-rota > span {
+  grid-area: 1 / 1;
+  padding-bottom: 0.08em;
+  background: linear-gradient(95deg, var(--azul-2), var(--azul) 55%, var(--ambar-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0;
+  transform: translateY(0.45em);
+  filter: blur(10px);
+  clip-path: inset(-0.2em 100% -0.3em 0);
+  transition: opacity 700ms var(--suave), transform 900ms var(--suave), filter 700ms var(--suave),
+    clip-path 900ms var(--suave);
+}
+.lx-rota > span[data-estado='activa'] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  clip-path: inset(-0.2em -0.1em -0.3em 0);
+}
+.lx-rota > span[data-estado='previa'] {
+  opacity: 0;
+  transform: translateY(-0.45em);
+  filter: blur(8px);
+  clip-path: inset(-0.2em 0 -0.3em 100%);
+}
+
+/* ------------------------------------------- escena: la factura se lee sola */
+
+.lx-inclinable {
+  --rx: 0deg;
+  --ry: 0deg;
+  transform: perspective(1400px) rotateX(var(--rx)) rotateY(var(--ry));
+  transition: transform 900ms var(--suave);
+  transform-style: preserve-3d;
+}
+
+.lx-halo {
+  position: absolute;
+  inset: 4% -4%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side at 35% 45%, rgba(59, 155, 255, 0.55), transparent),
+    radial-gradient(closest-side at 72% 70%, rgba(245, 165, 36, 0.35), transparent);
+  filter: blur(55px);
+  opacity: 0.55;
+  animation: lx-respirar 10s ease-in-out infinite alternate;
+}
+@keyframes lx-respirar {
+  to {
+    opacity: 0.8;
+    transform: scale(1.06) rotate(6deg);
+  }
+}
+
+.lx-papel {
+  background: #f7f8fa;
+  color: #1b2532;
+  border-radius: 14px;
+  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+
+/* La barra de escaneo recorre la factura una sola vez */
+.lx-escaneo {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 70px;
+  top: -70px;
+  background: linear-gradient(180deg, transparent, rgba(59, 155, 255, 0.22) 70%, rgba(59, 155, 255, 0.85) 98%, transparent);
+  animation: lx-escanear 1.9s cubic-bezier(0.45, 0, 0.25, 1) 0.9s both;
+  pointer-events: none;
+}
+@keyframes lx-escanear {
+  0% {
+    top: -70px;
+    opacity: 1;
+  }
+  92% {
+    top: 100%;
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+/* Cada dato leído se marca en azul, en orden */
+.lx-dato {
+  border-radius: 5px;
+  animation: lx-marcar 0.6s var(--suave) both;
+  animation-delay: var(--d, 1s);
+}
+@keyframes lx-marcar {
+  from {
+    background: transparent;
+    box-shadow: none;
+  }
+  to {
+    background: rgba(59, 155, 255, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(59, 155, 255, 0.45);
+  }
+}
+.lx-dato-ambar {
+  animation-name: lx-marcar-ambar;
+}
+@keyframes lx-marcar-ambar {
+  from {
+    background: transparent;
+  }
+  to {
+    background: rgba(245, 165, 36, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(245, 165, 36, 0.6);
+  }
+}
+
+.lx-aparece {
+  animation: lx-aparecer 0.8s var(--suave) both;
+  animation-delay: var(--d, 1s);
+}
+@keyframes lx-aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.lx-vidrio {
+  background: linear-gradient(180deg, rgba(15, 23, 36, 0.92), rgba(11, 17, 28, 0.92));
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 30px 60px -25px rgba(0, 0, 0, 0.85);
+}
+
+.lx-alerta {
+  background: linear-gradient(180deg, rgba(38, 26, 6, 0.95), rgba(24, 17, 6, 0.95));
+  border: 1px solid rgba(245, 165, 36, 0.45);
+  box-shadow: 0 24px 50px -20px rgba(245, 165, 36, 0.45);
+  border-radius: 14px;
+}
+
+.lx-flota {
+  animation: lx-flotar 6s ease-in-out infinite;
+}
+@keyframes lx-flotar {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+/* ------------------------------------------------------------- tarjetas */
+
+.lx-tarjeta {
+  --mx: 50%;
+  --my: 0%;
+  --c1: var(--azul);
+  --c2: var(--azul-2);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 1.4rem;
+  border: 1px solid transparent;
+  background: linear-gradient(var(--pizarra), var(--pizarra)) padding-box,
+    linear-gradient(145deg, color-mix(in srgb, var(--c1) 45%, transparent), rgba(255, 255, 255, 0.05) 45%) border-box;
+  transition: transform 700ms var(--suave), box-shadow 700ms var(--suave);
+}
+.lx-tarjeta[data-tono='ambar'] {
+  --c1: var(--ambar);
+  --c2: var(--ambar-2);
+}
+.lx-tarjeta[data-tono='verde'] {
+  --c1: var(--verde);
+  --c2: #a7f3d0;
+}
+.lx-tarjeta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(22rem circle at var(--mx) var(--my), color-mix(in srgb, var(--c1) 22%, transparent), transparent 70%);
+  opacity: 0;
+  transition: opacity 500ms ease;
+}
+.lx-tarjeta:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 40px 70px -45px color-mix(in srgb, var(--c1) 80%, transparent);
+}
+.lx-tarjeta:hover::before {
+  opacity: 1;
+}
+
+.lx-icono {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.75rem;
+  color: #fff;
+  background: linear-gradient(135deg, var(--c1), color-mix(in srgb, var(--c2) 70%, var(--c1)));
+  box-shadow: 0 10px 24px -8px color-mix(in srgb, var(--c1) 75%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* Mini maquetas dentro de las tarjetas */
+.lx-mini {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--borde);
+}
+
+.lx-barra {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.lx-barra > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--c1), var(--c2));
+}
+
+/* Separador fino arriba de cada sección */
+.lx-seccion {
+  position: relative;
+}
+.lx-seccion::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(60rem, 90%);
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, rgba(124, 196, 255, 0.35), transparent);
+}
+
+/* Pasos de "Cómo funciona": una línea los une */
+.lx-paso-numero {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 600;
+  color: var(--texto);
+  background: var(--pizarra-2);
+  border: 1px solid var(--borde-fuerte);
+  box-shadow: 0 0 0 6px var(--noche);
+}
+
+/* -------------------------------------------------------------- FAQ */
+
+.lx-faq summary {
+  list-style: none;
+  cursor: pointer;
+}
+.lx-faq summary::-webkit-details-marker {
+  display: none;
+}
+.lx-faq .lx-mas {
+  transition: transform 400ms var(--suave);
+}
+.lx-faq details[open] .lx-mas {
+  transform: rotate(45deg);
+}
+
+/* ------------------------------------------------------- cierre */
+
+.lx-cierre {
+  border-radius: 2rem;
+  border: 1px solid transparent;
+  background: linear-gradient(#080c14, #080c14) padding-box,
+    conic-gradient(from var(--lx-giro), var(--azul-p), var(--azul), var(--azul-2), var(--ambar-2), var(--ambar), var(--azul-p)) border-box;
+  animation: lx-girar 12s linear infinite;
+}
+@keyframes lx-girar {
+  to {
+    --lx-giro: 360deg;
+  }
+}
+.lx-cierre-brillo {
+  position: absolute;
+  inset: -40% -10% auto;
+  height: 120%;
+  z-index: -1;
+  filter: blur(30px);
+  background: radial-gradient(closest-side at 30% 50%, rgba(59, 155, 255, 0.3), transparent),
+    radial-gradient(closest-side at 72% 50%, rgba(245, 165, 36, 0.22), transparent);
+}
+
+/* ------------------------------------------------ revelado al hacer scroll */
+
+.lx-mov [data-revelar] {
+  opacity: 0;
+  transform: translateY(2rem) scale(0.985);
+  filter: blur(6px);
+  transition: opacity 1s var(--suave), transform 1.3s var(--suave), filter 1s var(--suave);
+}
+.lx-mov [data-revelar='2'] {
+  transition-delay: 90ms;
+}
+.lx-mov [data-revelar='3'] {
+  transition-delay: 180ms;
+}
+.lx-mov [data-revelar='4'] {
+  transition-delay: 270ms;
+}
+.lx-mov [data-revelar].visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx *,
+  .lx *::before,
+  .lx *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .lx-inclinable {
+    transform: none !important;
+  }
+}

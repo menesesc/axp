@@ -6,8 +6,10 @@ import { Providers } from '@/components/providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'AXP - Sistema de Gestión de Facturas',
-  description: 'Sistema de procesamiento OCR y gestión de documentos',
+  metadataBase: new URL('https://axp.com.ar'),
+  title: 'AXP',
+  description: 'Compras, ventas, stock y pagos de tu negocio en un solo lugar, con las facturas cargadas solas.',
+  applicationName: 'AXP',
 };
 
 export default function RootLayout({

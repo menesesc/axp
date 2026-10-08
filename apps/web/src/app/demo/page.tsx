@@ -6,7 +6,7 @@ import { ArrowLeft, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { track } from '../../../landing/utils/analytics';
+import { track } from '@/lib/analytics';
 
 interface FormState {
   nombre: string;
