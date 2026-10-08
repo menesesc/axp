@@ -48,7 +48,9 @@ export async function GET(request: NextRequest) {
     JOIN pagos p ON pm."pagoId" = p.id
     JOIN proveedores pr ON p."proveedorId" = pr.id
     WHERE p."clienteId" = ${user.clienteId}::uuid
-      AND p.estado IN ('BORRADOR', 'EMITIDA')
+      -- Un cheque/eCheq entregado (orden PAGADO) se debita recién en su fecha:
+      -- sigue en el calendario. Transferencias pagadas, no.
+      AND (p.estado IN ('BORRADOR', 'EMITIDA') OR (p.estado = 'PAGADO' AND pm.tipo IN ('CHEQUE', 'ECHEQ')))
       AND CASE
         WHEN pm.tipo IN ('CHEQUE', 'ECHEQ') AND pm.meta->>'fecha' IS NOT NULL
           THEN (pm.meta->>'fecha')::date

@@ -24,7 +24,7 @@ import { Separator } from '@/components/ui/separator'
 import { useUser } from '@/hooks/use-user'
 import { formatCurrency, formatDate, formatTipoDocumento, formatNumeroOrden } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer, Send } from 'lucide-react'
+import { ArrowLeft, Edit, Download, Trash2, Share2, MessageCircle, Mail, Loader2, FileText, ExternalLink, X, Printer, Send, CheckCircle2 } from 'lucide-react'
 import { ShareEmailDialog } from '@/components/shared/share-email-dialog'
 import { TransferReceiptCard } from '@/components/payments/transfer-receipt-card'
 import {
@@ -362,6 +362,17 @@ export default function PagoDetailPage() {
                   Emitir orden
                 </Button>
               </>
+            )}
+            {pago.estado === 'EMITIDA' && (
+              <Button
+                variant="outline"
+                onClick={() => updateMutation.mutate('PAGADO')}
+                disabled={updateMutation.isPending}
+                className="text-emerald-700 hover:text-emerald-800"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                Marcar pagada
+              </Button>
             )}
             <Button
               variant="outline"

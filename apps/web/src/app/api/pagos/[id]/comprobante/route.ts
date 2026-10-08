@@ -64,6 +64,11 @@ export async function POST(
       where: { id },
       data: { comprobanteKey: key },
     })
+    // Con el comprobante de la transferencia, una orden emitida queda pagada.
+    await prisma.pagos.updateMany({
+      where: { id, estado: 'EMITIDA' },
+      data: { estado: 'PAGADO', updatedAt: new Date() },
+    })
 
     return NextResponse.json({ success: true, key, filename: file.name })
   } catch (err) {

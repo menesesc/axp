@@ -226,7 +226,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     })
     guardados++
   }
-  await prisma.pagos.update({ where: { id: pago.id }, data: { updatedAt: new Date() } })
+  // Si ya están todos los eCheq con su PDF (y la transferencia, si la orden
+  // también tiene una, con su comprobante), la orden emitida queda pagada.
+  const actual = await cargarPago(user.clienteId, pago.id)
+  const echeqs = actual ? lineasEcheq(actual) : []
+  const completa =
+    !!actual &&
+    echeqs.every((l) => ((l.meta.attachments as unknown[] | undefined)?.length ?? 0) > 0) &&
+    (!actual.pago_metodos.some((m) => m.tipo === 'TRANSFERENCIA') || !!actual.comprobanteKey)
+  await prisma.pagos.update({
+    where: { id: pago.id },
+    data: { updatedAt: new Date(), ...(completa && pago.estado === 'EMITIDA' ? { estado: 'PAGADO' } : {}) },
+  })
 
   return NextResponse.json({ guardados })
 }

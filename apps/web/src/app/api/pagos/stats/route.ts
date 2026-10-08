@@ -56,7 +56,7 @@ export async function GET() {
       FROM pago_metodos pm
       JOIN pagos p ON pm."pagoId" = p.id
       WHERE p."clienteId" = ${user.clienteId}::uuid
-        AND p.estado IN ('BORRADOR', 'EMITIDA')
+        AND (p.estado IN ('BORRADOR', 'EMITIDA') OR (p.estado = 'PAGADO' AND pm.tipo IN ('CHEQUE', 'ECHEQ')))
         AND CASE
           WHEN pm.tipo IN ('CHEQUE', 'ECHEQ') AND pm.meta->>'fecha' IS NOT NULL
             THEN (pm.meta->>'fecha')::date
@@ -72,7 +72,7 @@ export async function GET() {
       FROM pago_metodos pm
       JOIN pagos p ON pm."pagoId" = p.id
       WHERE p."clienteId" = ${user.clienteId}::uuid
-        AND p.estado IN ('BORRADOR', 'EMITIDA')
+        AND p.estado IN ('BORRADOR', 'EMITIDA', 'PAGADO')
         AND pm.tipo IN ('CHEQUE', 'ECHEQ')
         AND CASE
           WHEN pm.meta->>'fecha' IS NOT NULL THEN (pm.meta->>'fecha')::date
