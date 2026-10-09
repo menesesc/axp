@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
+import { jsonImportes } from '@/lib/importes'
 import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 import { crearPagoTx } from '@/lib/pagos/crear-pago'
@@ -29,7 +30,7 @@ const createPagoSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
-  const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS)
+  const { user, error, verImportes } = await requireSeccion(SECCION.FINANZAS_PAGOS)
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
     prisma.pagos.count({ where }),
   ])
 
-  return NextResponse.json({
+  return jsonImportes({
     pagos: pagos.map((p) => ({
       id: p.id,
       numero: p.numero,
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
       total,
       pages: Math.ceil(total / pageSize),
     },
-  })
+  }, !!verImportes)
 }
 
 export async function POST(request: NextRequest) {

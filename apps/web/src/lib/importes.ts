@@ -102,6 +102,9 @@ function limpiar(valor: unknown, heredaDinero: boolean): unknown {
 
   if (valor && typeof valor === 'object') {
     if (valor instanceof Date) return valor
+    // Decimal de Prisma (u otro número envuelto): es un valor, no un objeto a
+    // recorrer. Si es plata se anula; si no, se deja para que se serialice.
+    if (typeof (valor as { toNumber?: unknown }).toNumber === 'function') return heredaDinero ? 0 : valor
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(valor as Record<string, unknown>)) {
       out[k] = limpiar(v, esClaveDinero(k))
