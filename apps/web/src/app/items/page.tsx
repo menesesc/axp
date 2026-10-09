@@ -161,6 +161,8 @@ interface ItemStats {
   }>
   priceVariation: Array<{
     descripcion: string
+    documentoInicialId?: string | null
+    documentoFinalId?: string | null
     precioInicial: number
     precioFinal: number
     fechaInicial: string | null
@@ -178,6 +180,16 @@ interface ItemStats {
 }
 
 // Sparkline component - minimalist line chart
+/** Importe que abre el comprobante del que salió, si lo conocemos. */
+function EnlaceDoc({ id, children }: { id?: string | null | undefined; children: React.ReactNode }) {
+  if (!id) return <>{children}</>
+  return (
+    <Link href={`/documento/${id}`} className="underline decoration-dotted underline-offset-2 hover:text-blue-700">
+      {children}
+    </Link>
+  )
+}
+
 function Sparkline({ data, width = 80, height = 24 }: { data: number[]; width?: number; height?: number }) {
   if (!data.length || data.length < 2) return null
 
@@ -850,7 +862,11 @@ function ItemsPageContent() {
                       </div>
                     </div>
                     <div className="flex justify-between text-xs text-slate-500 mt-1">
-                      <span>{formatCurrency(item.precioInicial)} → {formatCurrency(item.precioFinal)}</span>
+                      <span>
+                        <EnlaceDoc id={item.documentoInicialId}>{formatCurrency(item.precioInicial)}</EnlaceDoc>
+                        {' → '}
+                        <EnlaceDoc id={item.documentoFinalId}>{formatCurrency(item.precioFinal)}</EnlaceDoc>
+                      </span>
                       <span className="text-slate-400">
                         {fechaIni && fechaFin ? `${fechaIni} · ${fechaFin}` : `${item.compras} compras`}
                       </span>

@@ -11,7 +11,15 @@ interface ItemStats {
   byProvider?: Array<{ proveedorId: string | null; proveedor: string; totalItems: number; totalSubtotal: number }>
   byCategoria?: Array<{ categoria: string; totalSubtotal: number }>
   topItems?: Array<{ descripcion: string; totalCantidad: number; totalSubtotal: number; proveedores: number; priceHistory?: Array<{ fecha: string; precio: number }> }>
-  priceVariation?: Array<{ descripcion: string; precioInicial: number; precioFinal: number; variacionPct: number; compras: number }>
+  priceVariation?: Array<{
+    descripcion: string
+    precioInicial: number
+    precioFinal: number
+    variacionPct: number
+    compras: number
+    documentoInicialId?: string | null
+    documentoFinalId?: string | null
+  }>
 }
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -28,6 +36,30 @@ function Tarjeta({ titulo, accion, children, className = '' }: { titulo: string;
     </section>
   )
 }
+
+/** Importe que, si sabemos de qué comprobante salió, abre ese comprobante. */
+const Comprobante = ({
+  id,
+  titulo,
+  fuerte,
+  children,
+}: {
+  id?: string | null | undefined
+  titulo: string
+  fuerte?: boolean
+  children: React.ReactNode
+}) =>
+  id ? (
+    <Link
+      href={`/documento/${id}` as Route}
+      title={titulo}
+      className={`underline decoration-dotted underline-offset-2 hover:text-[var(--azul-2)] ${fuerte ? 'font-medium text-[var(--texto)]' : ''}`}
+    >
+      {children}
+    </Link>
+  ) : (
+    <span className={fuerte ? 'font-medium text-[var(--texto)]' : ''}>{children}</span>
+  )
 
 const VerTodo = ({ href, texto = 'Ver todo' }: { href: string; texto?: string }) => (
   <Link href={href as Route} className="inline-flex items-center gap-1 text-sm text-[var(--azul-2)] underline-offset-4 hover:underline">
@@ -210,7 +242,15 @@ export function VistaCompras({
                   </div>
                   {verImportes && (
                     <p className="ax-num mt-2 text-xs text-[var(--sec)]">
-                      {pesos(v.precioInicial)} <ArrowRight className="inline h-3 w-3" /> <span className="font-medium text-[var(--texto)]">{pesos(v.precioFinal)}</span>
+                      {/* Cada punta lleva a su comprobante: cuando una variación
+                          no cierra, lo primero que se quiere es ver el PDF. */}
+                      <Comprobante id={v.documentoInicialId} titulo="Ver el comprobante del precio anterior">
+                        {pesos(v.precioInicial)}
+                      </Comprobante>{' '}
+                      <ArrowRight className="inline h-3 w-3" />{' '}
+                      <Comprobante id={v.documentoFinalId} titulo="Ver el comprobante del precio actual" fuerte>
+                        {pesos(v.precioFinal)}
+                      </Comprobante>
                       <span className="text-[var(--ter)]"> · {v.compras} compras</span>
                     </p>
                   )}

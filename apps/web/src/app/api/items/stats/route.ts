@@ -224,6 +224,8 @@ export async function GET(request: NextRequest) {
       precio_final: number
       fecha_inicial: Date
       fecha_final: Date
+      doc_inicial: string | null
+      doc_final: string | null
       variacion_pct: number
       compras: number
     }> = []
@@ -234,6 +236,7 @@ export async function GET(request: NextRequest) {
             di.descripcion,
             di."precioUnitario"::numeric as precio,
             d."fechaEmision" as fecha,
+            d.id as documento_id,
             ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" ASC) as rn_asc,
             ROW_NUMBER() OVER (PARTITION BY di.descripcion ORDER BY d."fechaEmision" DESC) as rn_desc,
             COUNT(*) OVER (PARTITION BY di.descripcion) as total_compras
@@ -252,6 +255,8 @@ export async function GET(request: NextRequest) {
             MAX(CASE WHEN rn_desc = 1 THEN precio END) as precio_final,
             MAX(CASE WHEN rn_asc = 1 THEN fecha END) as fecha_inicial,
             MAX(CASE WHEN rn_desc = 1 THEN fecha END) as fecha_final,
+            MAX(CASE WHEN rn_asc = 1 THEN documento_id::text END) as doc_inicial,
+            MAX(CASE WHEN rn_desc = 1 THEN documento_id::text END) as doc_final,
             MAX(total_compras) as compras
           FROM item_prices
           GROUP BY descripcion
@@ -263,6 +268,8 @@ export async function GET(request: NextRequest) {
           precio_final,
           fecha_inicial,
           fecha_final,
+          doc_inicial,
+          doc_final,
           ROUND(((precio_final - precio_inicial) / precio_inicial * 100)::numeric, 1) as variacion_pct,
           compras::int
         FROM first_last
@@ -499,6 +506,10 @@ export async function GET(request: NextRequest) {
         precioFinal: Number(row.precio_final),
         fechaInicial: row.fecha_inicial ? new Date(row.fecha_inicial).toISOString().split('T')[0] : null,
         fechaFinal: row.fecha_final ? new Date(row.fecha_final).toISOString().split('T')[0] : null,
+        // Los comprobantes detrás de cada punta, para poder ir a mirar el PDF
+        // cuando una variación no cierra.
+        documentoInicialId: row.doc_inicial,
+        documentoFinalId: row.doc_final,
         variacionPct: Number(row.variacion_pct),
         compras: row.compras,
       })),

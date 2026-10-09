@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
       variacion_pct: number
       fecha_anterior: Date
       fecha_actual: Date
+      documento_anterior_id: string
+      documento_actual_id: string
       cantidad_compras: number
     }>>`
       WITH precios AS (
@@ -56,6 +58,7 @@ export async function GET(request: NextRequest) {
           p."razonSocial" as proveedor,
           di."precioUnitario",
           d."fechaEmision",
+          d.id as documento_id,
           ROW_NUMBER() OVER (PARTITION BY di.descripcion, d."proveedorId" ORDER BY d."fechaEmision" DESC) as rn,
           COUNT(*) OVER (PARTITION BY di.descripcion, d."proveedorId") as cantidad_compras
         FROM documento_items di
@@ -78,6 +81,8 @@ export async function GET(request: NextRequest) {
           ROUND(((a."precioUnitario" - b."precioUnitario") / NULLIF(b."precioUnitario", 0) * 100)::numeric, 1)::float as variacion_pct,
           b."fechaEmision" as fecha_anterior,
           a."fechaEmision" as fecha_actual,
+          b.documento_id::text as documento_anterior_id,
+          a.documento_id::text as documento_actual_id,
           a.cantidad_compras::int
         FROM precios a
         JOIN precios b ON a.descripcion = b.descripcion AND a.proveedor_id = b.proveedor_id

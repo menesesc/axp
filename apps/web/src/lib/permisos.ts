@@ -155,8 +155,9 @@ export const SECCIONES: SeccionDef[] = [
     value: 'documentos.items',
     modulo: MODULO.DOCUMENTOS,
     label: 'Items',
-    paginas: ['/items'],
-    apis: ['/api/items'],
+    // La revisión de líneas edita items, así que va con el mismo permiso.
+    paginas: ['/items', '/compras/revision'],
+    apis: ['/api/items', '/api/compras/revision-lineas'],
     importes: true,
   },
   {

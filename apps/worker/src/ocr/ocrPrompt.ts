@@ -83,9 +83,18 @@ FORMATO NUMÉRICO ARGENTINO: Los documentos argentinos usan PUNTO (.) como separ
   - descripcion: texto del producto/servicio (tal como aparece)
   - codigo: código de producto si es visible (puede ser null)
   - cantidad: número decimal (ej: 10, 2.5, 0.5)
+    CUIDADO con la cantidad, que es donde más se falla: en las facturas argentinas suele venir
+    con TRES DECIMALES separados por coma. "120,000" son CIENTO VEINTE unidades, NO ciento veinte mil.
+    "1,500" es 1.5. "15,820" es 15.82. "90,000" es 90.
+    Un restaurante no compra 120.000 paquetes de sal: si te da una cantidad enorme y redonda,
+    volvé a mirar, casi seguro son decimales.
   - unidad: unidad de medida si es visible. Buscar abreviaturas: KG, UN, UNI, LT, LTS, M, M2, M3, HS, PAR, BULTO, CAJA, CJ, ROLLO, PACK, DOC, etc. Puede ser null si no aparece.
   - precioUnitario: precio por unidad (decimal)
   - subtotal: importe total de la línea = cantidad × precioUnitario (decimal)
+
+  CONTROL OBLIGATORIO por línea: cantidad × precioUnitario tiene que dar el subtotal de la línea.
+  Si no da, hay un número mal leído (casi siempre la cantidad con sus decimales): revisá los tres
+  antes de responder. Si no cierra porque la línea tiene un descuento, dejá los tres como figuran.
 
 ## REGLAS CRÍTICAS
 

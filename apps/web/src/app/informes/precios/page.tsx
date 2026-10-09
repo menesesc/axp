@@ -26,6 +26,69 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+/**
+ * Aviso de líneas con números que no cierran.
+ *
+ * Una variación de +99.887% no existe: es la cantidad leída con el separador
+ * de miles, que deja el precio anterior dividido por mil. Mientras esas
+ * líneas estén sin corregir, el informe las muestra arriba de todo y tapa los
+ * aumentos reales.
+ */
+function AvisoRevision() {
+  const { data } = useQuery({
+    queryKey: ['revision-lineas-resumen'],
+    queryFn: async () => {
+      const res = await fetch('/api/compras/revision-lineas')
+      if (!res.ok) return null
+      return res.json() as Promise<{ totales: { lineas: number; documentos: number; altaConfianza: number } }>
+    },
+    staleTime: 60000,
+  })
+
+  const t = data?.totales
+  if (!t || t.lineas === 0) return null
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 print:hidden">
+      <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+      <p className="text-sm text-amber-900">
+        <strong>{t.lineas} líneas</strong> de {t.documentos} comprobantes tienen números que no cierran
+        {t.altaConfianza > 0 && <> y {t.altaConfianza} se pueden corregir de una</>}. Mientras tanto aparecen acá como
+        aumentos de miles por ciento.
+      </p>
+      <Link
+        href="/compras/revision"
+        className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+      >
+        Revisar
+      </Link>
+    </div>
+  )
+}
+
+/** Precio que abre el comprobante del que salió. */
+function PrecioDoc({
+  id,
+  fecha,
+  children,
+}: {
+  id?: string | null
+  fecha?: string | Date | null
+  children: React.ReactNode
+}) {
+  if (!id) return <>{children}</>
+  const cuando = fecha ? formatDate(typeof fecha === 'string' ? fecha : fecha.toISOString()) : null
+  return (
+    <Link
+      href={`/documento/${id}`}
+      title={cuando ? `Ver el comprobante del ${cuando}` : 'Ver el comprobante'}
+      className="underline decoration-dotted underline-offset-2 hover:text-blue-700"
+    >
+      {children}
+    </Link>
+  )
+}
+
 function AlertSection({
   title,
   items,
@@ -76,8 +139,18 @@ function AlertSection({
                   </Link>
                 </td>
                 <td className="py-2 text-sm opacity-80">{item.proveedor}</td>
-                <td className="py-2 text-right text-sm opacity-80">{formatCurrency(item.precio_anterior)}</td>
-                <td className="py-2 text-right font-medium">{formatCurrency(item.precio_actual)}</td>
+                {/* Los dos precios abren su comprobante: cuando una variación
+                    no cierra, lo primero que se quiere es ver el PDF. */}
+                <td className="py-2 text-right text-sm opacity-80">
+                  <PrecioDoc id={item.documento_anterior_id} fecha={item.fecha_anterior}>
+                    {formatCurrency(item.precio_anterior)}
+                  </PrecioDoc>
+                </td>
+                <td className="py-2 text-right font-medium">
+                  <PrecioDoc id={item.documento_actual_id} fecha={item.fecha_actual}>
+                    {formatCurrency(item.precio_actual)}
+                  </PrecioDoc>
+                </td>
                 <td className="py-2 text-right">
                   <span className={`inline-flex items-center gap-0.5 font-bold ${s.text}`}>
                     {item.variacion_pct > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
@@ -178,6 +251,10 @@ export default function PreciosPage() {
           className="pl-10 max-w-md"
         />
       </div>
+
+      {/* Las variaciones de cuatro o cinco cifras casi nunca son un aumento:
+          son un número mal leído del PDF. El aviso lleva a corregirlos. */}
+      <AvisoRevision />
 
       {isLoading ? (
         <div className="space-y-4">
