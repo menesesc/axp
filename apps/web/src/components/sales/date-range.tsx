@@ -1,8 +1,7 @@
 'use client'
 
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { hoyAR, inicioDeMesAR, mesAnteriorAR, sumarDias } from '@/lib/fechas'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ATAJOS_VENTAS, SelectorPeriodo, periodoDesdeRango } from '@/components/ui/periodo'
 
 interface Props {
   from: string
@@ -13,100 +12,32 @@ interface Props {
   onSucursalChange?: ((s: string) => void) | undefined
 }
 
-// Todos los presets se calculan sobre el calendario argentino: con UTC, entre
-// las 21:00 y la medianoche "Hoy" caía en el día siguiente.
-function startOfMonth(): string {
-  return inicioDeMesAR()
-}
-function startOfPrevMonth(): { from: string; to: string } {
-  return mesAnteriorAR()
-}
-function todayIso(): string {
-  return hoyAR()
-}
-function daysAgo(n: number): string {
-  return sumarDias(hoyAR(), -n)
-}
-
+/**
+ * Rango de fechas de ventas: el mismo selector de período que el resto de la
+ * app (atajos en calendario argentino y rango a medida), más la sucursal.
+ */
 export function DateRange({ from, to, onChange, sucursales, sucursal, onSucursalChange }: Props) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex items-center gap-1.5">
-        <Input
-          type="date"
-          value={from}
-          onChange={(e) => onChange({ from: e.target.value, to })}
-          className="w-36 text-sm"
-        />
-        <span className="text-slate-400 text-sm">→</span>
-        <Input
-          type="date"
-          value={to}
-          onChange={(e) => onChange({ from, to: e.target.value })}
-          className="w-36 text-sm"
-        />
-      </div>
-      <div className="flex gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange({ from: todayIso(), to: todayIso() })}
-        >
-          Hoy
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange({ from: daysAgo(1), to: daysAgo(1) })}
-        >
-          Ayer
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange({ from: daysAgo(6), to: todayIso() })}
-        >
-          7d
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange({ from: daysAgo(29), to: todayIso() })}
-        >
-          30d
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange({ from: startOfMonth(), to: todayIso() })}
-        >
-          Este mes
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onChange(startOfPrevMonth())}
-        >
-          Mes anterior
-        </Button>
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <SelectorPeriodo
+        valor={periodoDesdeRango(from, to, ATAJOS_VENTAS)}
+        onCambiar={(p) => onChange({ from: p.desde, to: p.hasta })}
+        atajos={ATAJOS_VENTAS}
+      />
       {sucursales && sucursales.length > 1 && onSucursalChange && (
-        <select
-          value={sucursal ?? ''}
-          onChange={(e) => onSucursalChange(e.target.value)}
-          className="border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-white"
-        >
-          <option value="">Todas las sucursales</option>
-          {sucursales.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+        <Select value={sucursal || 'todas'} onValueChange={(v) => onSucursalChange(v === 'todas' ? '' : v)}>
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="Todas las sucursales" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas las sucursales</SelectItem>
+            {sucursales.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
     </div>
   )

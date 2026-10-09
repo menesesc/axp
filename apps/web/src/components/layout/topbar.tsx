@@ -146,7 +146,7 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
   let grupoAnterior = ''
   return (
     <Dialog open={abierto} onOpenChange={(v) => !v && onCerrar()}>
-      <DialogContent className="ax overflow-hidden p-0 sm:max-w-xl [&>button]:hidden">
+      <DialogContent className="top-[12vh] max-w-[calc(100vw-2rem)] translate-y-0 gap-0 overflow-hidden rounded-2xl p-0 data-[state=closed]:slide-out-to-top-[2%] data-[state=open]:slide-in-from-top-[2%] sm:max-w-xl [&>button]:hidden">
         <DialogHeader className="sr-only">
           <DialogTitle>Buscar</DialogTitle>
         </DialogHeader>
@@ -169,12 +169,12 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
               }
             }}
             placeholder="Buscar factura, proveedor, artículo o pantalla"
-            className="h-14 w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--ter)]"
+            className="h-14 w-full bg-transparent text-base text-[var(--texto)] outline-none placeholder:text-[var(--ter)]"
             aria-label="Buscar"
           />
           <kbd className="ax-tecla">Esc</kbd>
         </div>
-        <ul className="max-h-[22rem] overflow-y-auto p-2" role="listbox">
+        <ul className="ax-sin-barra max-h-[min(24rem,60vh)] overflow-y-auto p-2" role="listbox">
           {resultados.length === 0 && <li className="px-3 py-8 text-center text-sm text-[var(--sec)]">No hay resultados para “{q}”.</li>}
           {resultados.map((r, i) => {
             const encabezado = r.grupo !== grupoAnterior ? r.grupo : null
@@ -182,14 +182,16 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
             const Icono = r.icono
             return (
               <li key={r.id} role="option" aria-selected={i === sel}>
-                {encabezado && <p className="px-3 pb-1 pt-3 text-xs text-[var(--ter)]">{encabezado}</p>}
+                {encabezado && <p className="px-3 pb-1.5 pt-2.5 text-xs font-medium text-[var(--ter)]">{encabezado}</p>}
                 <button
                   type="button"
                   onMouseEnter={() => setSel(i)}
                   onClick={() => ir(r)}
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${i === sel ? 'bg-[rgba(59,155,255,0.1)] text-[var(--azul-p)]' : 'text-[var(--texto)]'}`}
                 >
-                  <Icono className="h-4 w-4 shrink-0 text-[var(--ter)]" />
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${i === sel ? 'bg-white text-[var(--azul)] shadow-sm' : 'bg-slate-900/[0.04] text-[var(--sec)]'}`}>
+                    <Icono className="h-4 w-4" />
+                  </span>
                   <span className="min-w-0 flex-1 truncate">
                     {r.titulo}
                     {r.detalle && <span className="ml-2 text-xs text-[var(--ter)]">{r.detalle}</span>}
@@ -200,6 +202,11 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
             )
           })}
         </ul>
+        <div className="flex items-center gap-4 border-t border-[var(--borde)] bg-[var(--pizarra-2)] px-4 py-2.5 text-xs text-[var(--ter)]">
+          <span className="flex items-center gap-1.5"><kbd className="ax-tecla">↑</kbd><kbd className="ax-tecla">↓</kbd> para moverte</span>
+          <span className="flex items-center gap-1.5"><kbd className="ax-tecla">Enter</kbd> para abrir</span>
+          <span className="ml-auto hidden sm:block">Escribí al menos 2 letras para buscar facturas e items</span>
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -282,7 +289,7 @@ export function Topbar({ contadores, onAbrirMenu }: { contadores: Contadores; on
                   {totalAvisos > 0 && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[var(--ambar)] shadow-[0_0_0_3px_#fff]" />}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="ax w-72 rounded-2xl p-1.5">
+              <DropdownMenuContent align="end" className="w-72 rounded-2xl p-1.5">
                 <DropdownMenuLabel className="text-xs font-normal text-[var(--ter)]">Avisos</DropdownMenuLabel>
                 {avisos.length === 0 && <p className="px-2 py-4 text-center text-sm text-[var(--sec)]">Todo al día. No hay nada pendiente.</p>}
                 {avisos.map((a) => (
@@ -314,7 +321,7 @@ export function Topbar({ contadores, onAbrirMenu }: { contadores: Contadores; on
                   <ChevronDown className="hidden h-4 w-4 text-[var(--ter)] sm:block" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="ax w-64 rounded-2xl p-1.5">
+              <DropdownMenuContent align="end" className="w-64 rounded-2xl p-1.5">
                 <div className="px-2.5 pb-2.5 pt-1.5">
                   <p className="truncate text-sm font-medium text-[var(--texto)]">{user?.nombre}</p>
                   <p className="truncate text-xs text-[var(--ter)]">{user?.email}</p>

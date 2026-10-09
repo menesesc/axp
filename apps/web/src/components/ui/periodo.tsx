@@ -14,6 +14,7 @@ export type ClavePeriodo =
   | 'semanaAnterior'
   | 'mes'
   | 'mesAnterior'
+  | 'ultimos7'
   | 'ultimos30'
   | 'trimestre'
   | 'anio'
@@ -66,6 +67,8 @@ export function periodoDe(clave: AtajoPeriodo, hoy: string = hoyAR()): Periodo {
       const mesNombre = MESES[Number(r.from.split('-')[1]) - 1]!
       return { clave, desde: r.from, hasta: r.to, etiqueta: mesNombre[0]!.toUpperCase() + mesNombre.slice(1) }
     }
+    case 'ultimos7':
+      return { clave, desde: sumarDias(hoy, -6), hasta: hoy, etiqueta: 'Últimos 7 días' }
     case 'ultimos30':
       return { clave, desde: sumarDias(hoy, -29), hasta: hoy, etiqueta: 'Últimos 30 días' }
     case 'trimestre': {
@@ -89,10 +92,23 @@ const TEXTO: Record<AtajoPeriodo, string> = {
   semanaAnterior: 'Semana anterior',
   mes: 'Este mes',
   mesAnterior: 'Mes anterior',
+  ultimos7: 'Últimos 7 días',
   ultimos30: 'Últimos 30 días',
   trimestre: 'Este trimestre',
   anio: 'Este año',
 }
+
+/** Si el rango coincide con un atajo lo devuelve como tal; si no, como rango a medida. */
+export function periodoDesdeRango(desde: string, hasta: string, atajos: AtajoPeriodo[]): Periodo {
+  for (const a of atajos) {
+    const p = periodoDe(a)
+    if (p.desde === desde && p.hasta === hasta) return p
+  }
+  return desde && hasta ? periodoPersonalizado(desde, hasta) : periodoDe('todo')
+}
+
+/** Atajos para ventas: días puntuales y ventanas cortas. */
+export const ATAJOS_VENTAS: AtajoPeriodo[] = ['hoy', 'ayer', 'ultimos7', 'ultimos30', 'mes', 'mesAnterior']
 
 /** Atajos para informes y totales (por defecto). */
 export const ATAJOS_INFORME: AtajoPeriodo[] = ['mes', 'mesAnterior', 'ultimos30', 'trimestre', 'anio']

@@ -96,8 +96,8 @@ export const MENU: Modulo[][] = [
     },
   ],
   [
-    { id: 'proveedores', nombre: 'Proveedores', icono: Users, escena: 'generica', subs: [{ nombre: 'Proveedores', href: '/proveedores' }] },
-    { id: 'items', nombre: 'Items', icono: Package, escena: 'generica', subs: [{ nombre: 'Items', href: '/items' }] },
+    { id: 'proveedores', nombre: 'Proveedores', icono: Users, escena: 'proveedores', subs: [{ nombre: 'Proveedores', href: '/proveedores' }] },
+    { id: 'items', nombre: 'Items', icono: Package, escena: 'items', subs: [{ nombre: 'Items', href: '/items' }] },
     {
       id: 'informes',
       nombre: 'Informes',
@@ -121,7 +121,7 @@ export const CONFIGURACION: Modulo = {
   id: 'configuracion',
   nombre: 'Configuración',
   icono: Settings,
-  escena: 'generica',
+  escena: 'configuracion',
   contador: 'logs',
   subs: [
     { nombre: 'Empresa', href: '/configuracion/empresa' },

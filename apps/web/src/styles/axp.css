@@ -4,7 +4,8 @@
  * degradé suave, azul para navegar y ámbar solo para lo que pide atención.
  */
 
-.ax {
+/* Tokens globales: disponibles también en diálogos y menús (portales). */
+:root {
   --fondo: #f3f6fb;
   --pizarra: #ffffff;
   --pizarra-2: #f7f9fc;
@@ -23,7 +24,10 @@
   --rojo-t: #dc2626;
   --sombra: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px -14px rgba(15, 35, 70, 0.14);
   --suave: cubic-bezier(0.16, 1, 0.3, 1);
+}
 
+/* Marco de la app (fondo, tipografía). Los paneles flotantes solo usan los tokens. */
+.ax {
   color: var(--texto);
   font-family: var(--font-sans), system-ui, sans-serif;
   background:
@@ -902,4 +906,81 @@
     transform: scale(1.15) rotate(45deg);
     opacity: 1;
   }
+}
+
+.ax-dona-seg {
+  animation: ax-dona-entra 1.2s var(--suave) both;
+}
+@keyframes ax-dona-entra {
+  from {
+    stroke-dasharray: 0 400;
+  }
+}
+
+.ax-reparto {
+  animation: ax-repartir 4s ease-in-out infinite;
+}
+@keyframes ax-repartir {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(9px, 5px);
+  }
+}
+.ax-escanea-corto {
+  animation: ax-escanear-corto 1.8s ease-in-out infinite alternate;
+}
+@keyframes ax-escanear-corto {
+  to {
+    transform: translate(-19px, 11px);
+  }
+}
+.ax-interruptor {
+  animation: ax-interruptor 3.6s var(--suave) infinite;
+}
+@keyframes ax-interruptor {
+  0%,
+  40% {
+    transform: none;
+  }
+  50%,
+  90% {
+    transform: translate(-12.5px, -7.2px);
+  }
+  100% {
+    transform: none;
+  }
+}
+.ax-engranaje {
+  animation: ax-girar 9s linear infinite;
+}
+@keyframes ax-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Select nativo: mismo aspecto que los de la app (borde, radio y flecha);
+   el ancho y el tamaño de letra siguen saliendo de cada pantalla. */
+.ax select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 2.25rem;
+  padding-right: 2.1rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  color: var(--texto);
+  cursor: pointer;
+}
+.ax select:focus {
+  outline: none;
+  border-color: var(--azul);
+  box-shadow: 0 0 0 4px rgba(59, 155, 255, 0.15);
 }

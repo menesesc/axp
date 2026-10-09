@@ -262,3 +262,139 @@ export function UsoPlan({ usados, limite, plan }: { usados: number; limite: numb
     </section>
   )
 }
+
+/* ------------------------------------------------- últimos comprobantes */
+
+interface DocReciente {
+  id: string
+  tipo: string
+  letra: string | null
+  numeroCompleto: string | null
+  fechaEmision: string | null
+  createdAt?: string | null
+  estadoRevision: string
+  total: number | null
+  confidenceScore?: number | string | null
+  proveedores: { razonSocial: string } | null
+}
+
+const ESTADO_DOC: Record<string, { t: string; c: string }> = {
+  PENDIENTE: { t: 'Para revisar', c: 'ax-chip-ambar' },
+  CONFIRMADO: { t: 'Confirmada', c: 'ax-chip-azul' },
+  PAGADO: { t: 'Pagada', c: 'ax-chip-verde' },
+  ERROR: { t: 'Con error', c: 'ax-chip-rojo' },
+  DUPLICADO: { t: 'Duplicada', c: 'ax-chip-gris' },
+}
+
+const TIPO_DOC: Record<string, string> = { FACTURA: 'Factura', NOTA_CREDITO: 'Nota de crédito', NOTA_DEBITO: 'Nota de débito', REMITO: 'Remito' }
+
+/** Hace cuánto llegó: "hace 5 min", "hace 3 h", "ayer", "12/9". */
+function haceCuanto(iso: string | null | undefined) {
+  if (!iso) return ''
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
+  if (min < 1) return 'recién'
+  if (min < 60) return `hace ${min} min`
+  const h = Math.round(min / 60)
+  if (h < 24) return `hace ${h} h`
+  if (h < 48) return 'ayer'
+  const d = new Date(iso)
+  return `${d.getDate()}/${d.getMonth() + 1}`
+}
+
+const capitalizar = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase())
+
+/** Las últimas facturas que llegaron, con proveedor, estado, monto y cuándo llegaron. */
+export function UltimosComprobantes({ documentos, cargando, verImportes }: { documentos: DocReciente[]; cargando: boolean; verImportes: boolean }) {
+  return (
+    <section className="ax-card ax-entra">
+      <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+        <h2 className="ax-card-titulo">Últimas facturas que llegaron</h2>
+        <Link href={'/documentos' as Route} className="inline-flex items-center gap-1 text-sm text-[var(--azul-2)] underline-offset-4 hover:underline">
+          Ver todas <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      {cargando ? (
+        <div className="space-y-2 px-5 pb-5">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-900/[0.04]" />
+          ))}
+        </div>
+      ) : documentos.length === 0 ? (
+        <p className="px-5 pb-10 pt-6 text-center text-sm text-[var(--sec)]">Todavía no llegó ninguna factura. Reenviala por mail o subila desde “Subir factura”.</p>
+      ) : (
+        <ul className="pb-2">
+          {documentos.map((d) => {
+            const estado = ESTADO_DOC[d.estadoRevision] ?? { t: d.estadoRevision, c: 'ax-chip-gris' }
+            const prov = d.proveedores?.razonSocial ? capitalizar(d.proveedores.razonSocial) : 'Proveedor sin identificar'
+            const ini = prov.replace(/\b(S\.?A\.?S?|S\.?R\.?L)\b\.?/gi, '').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
+            const nota = d.tipo === 'NOTA_CREDITO'
+            return (
+              <li key={d.id}>
+                <Link href={`/documento/${d.id}` as Route} className="group flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-[rgba(59,155,255,0.05)]">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[rgba(59,155,255,0.1)] text-xs font-semibold text-[var(--azul-2)]">{ini || '?'}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium group-hover:text-[var(--azul-2)]">{prov}</p>
+                    <p className="truncate text-xs text-[var(--ter)]">
+                      {TIPO_DOC[d.tipo] ?? capitalizar(d.tipo)} {d.letra ?? ''} {d.numeroCompleto ?? ''}
+                      {d.createdAt ? ` · llegó ${haceCuanto(d.createdAt)}` : ''}
+                    </p>
+                  </div>
+                  <span className={`ax-chip hidden sm:inline-flex ${estado.c}`}>{estado.t}</span>
+                  <span className={`ax-num w-28 shrink-0 text-right text-sm font-medium ${nota ? 'text-[var(--verde)]' : ''}`}>
+                    {verImportes && d.total != null ? `${nota ? '−' : ''}${pesos(Math.abs(Number(d.total)))}` : ''}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/* ------------------------------------------- facturas del mes (arriba) */
+
+/** KPI de facturas del mes con el uso del plan: cuántas van, cuántas hoy y el límite. */
+export function KpiFacturasMes({ mes, hoy, limite, plan, cargando }: { mes: number; hoy: number; limite: number | null; plan?: string | undefined; cargando: boolean }) {
+  const pct = limite ? Math.min(100, (mes / limite) * 100) : 0
+  const tono = pct >= 90 ? COLOR.rojo : pct >= 70 ? COLOR.ambar : COLOR.azul
+  return (
+    <Link href={'/configuracion/plan' as Route} className="ax-card ax-entra block p-5 transition-transform hover:-translate-y-0.5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-[var(--sec)]">Facturas del mes</p>
+        <span className="ax-icono h-8 w-8" style={{ '--c1': tono } as React.CSSProperties}>
+          <ScanIcono />
+        </span>
+      </div>
+      {cargando ? (
+        <div className="mt-2 h-8 w-28 animate-pulse rounded-lg bg-slate-900/[0.06]" />
+      ) : (
+        <p className="ax-display ax-num mt-2 text-[1.75rem] font-semibold leading-none">
+          {mes.toLocaleString('es-AR')}
+          {limite ? <span className="text-base font-normal text-[var(--ter)]"> / {limite.toLocaleString('es-AR')}</span> : null}
+        </p>
+      )}
+      <div className="mt-3 min-h-9">
+        {limite ? (
+          <div className="ax-barra" style={{ '--c1': tono } as React.CSSProperties}>
+            <i style={{ width: `${pct}%` }} />
+          </div>
+        ) : null}
+        <p className="mt-2 text-xs text-[var(--ter)]">
+          {hoy} {hoy === 1 ? 'llegó hoy' : 'llegaron hoy'}
+          {plan ? ` · Plan ${plan}` : ''}
+          {limite && pct >= 90 ? ' · cerca del límite' : ''}
+        </p>
+      </div>
+    </Link>
+  )
+}
+
+function ScanIcono() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10" />
+    </svg>
+  )
+}

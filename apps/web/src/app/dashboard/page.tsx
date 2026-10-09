@@ -7,10 +7,7 @@ import {
   CalendarClock,
   FileText,
   Receipt,
-  ScanLine,
   ShoppingBasket,
-  ShoppingCart,
-  TrendingUp,
   Wallet,
 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -20,15 +17,13 @@ import { useUser } from '@/hooks/use-user'
 import { useSubscription } from '@/hooks/use-subscription'
 import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
 import { SECCION } from '@/lib/permisos'
-import { RecentDocumentsCard } from '@/components/dashboard/recent-documents-card'
 import { StatusChart } from '@/components/dashboard/status-chart'
 import { PaymentsSummary } from '@/components/dashboard/payments-summary'
-import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
 import { MonthlyAmountChart } from '@/components/dashboard/monthly-amount-chart'
-import { PurchasingTabContent } from '@/components/dashboard/purchasing-tab'
+import { VistaCompras } from '@/components/dashboard/vista-compras'
 import { RubrosBreakdownCard } from '@/components/dashboard/rubros-breakdown-card'
-import { AvisosHoy, Kpi, UsoPlan, VencimientosSemana, millones, pesos, type Aviso } from '@/components/dashboard/inicio'
+import { AvisosHoy, Kpi, KpiFacturasMes, UltimosComprobantes, VencimientosSemana, millones, pesos, type Aviso } from '@/components/dashboard/inicio'
 import { SelectorPeriodo, periodoDe, type Periodo } from '@/components/ui/periodo'
 
 type Vista = 'hoy' | 'finanzas' | 'compras'
@@ -86,7 +81,7 @@ export default function Inicio() {
 
   const { data: docs, isLoading: docsLoading } = useQuery({
     queryKey: ['recent-docs', clienteId],
-    queryFn: () => get('/api/documentos?pageSize=5&sortBy=createdAt&sortOrder=desc', { documentos: [] } as any),
+    queryFn: () => get('/api/documentos?pageSize=8&sortBy=createdAt&sortOrder=desc', { documentos: [] } as any),
     enabled: !!clienteId && ve.documentos,
   })
 
@@ -196,12 +191,11 @@ export default function Inicio() {
 
           <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {ve.stats && (
-              <Kpi
-                etiqueta="Facturas cargadas hoy"
-                valor={String(stats?.documentosHoy ?? 0)}
-                nota={`${stats?.documentosEsteMes ?? 0} en el mes`}
-                serie={(stats?.documentosPorDia ?? []).slice(-14).map((d: { count: number }) => d.count)}
-                icono={ScanLine}
+              <KpiFacturasMes
+                mes={stats?.documentosEsteMes ?? 0}
+                hoy={stats?.documentosHoy ?? 0}
+                limite={stats?.documentosMesLimite ?? null}
+                plan={subscription?.plan_nombre}
                 cargando={statsLoading}
               />
             )}
@@ -248,11 +242,11 @@ export default function Inicio() {
           <div className="grid gap-5 lg:grid-cols-3">
             {ve.documentos && (
               <div className="lg:col-span-2">
-                <RecentDocumentsCard documents={docs?.documentos || []} isLoading={docsLoading} />
+                <UltimosComprobantes documentos={docs?.documentos || []} cargando={docsLoading} verImportes={canSeeImportes(SECCION.DOC_COMPROBANTES)} />
               </div>
             )}
-            <div className="space-y-5">
-              {ve.stats && (
+            {ve.stats && (
+              <div>
                 <StatusChart
                   pendientes={pendientes}
                   confirmados={stats?.totalConfirmados || 0}
@@ -261,9 +255,8 @@ export default function Inicio() {
                   duplicados={stats?.totalDuplicados || 0}
                   isLoading={statsLoading}
                 />
-              )}
-              {ve.stats && <UsoPlan usados={stats?.documentosEsteMes ?? 0} limite={stats?.documentosMesLimite ?? null} plan={subscription?.plan_nombre} />}
-            </div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -366,45 +359,13 @@ export default function Inicio() {
       )}
 
       {vista === 'compras' && (
-        <>
-          <div className="mb-5 grid gap-4 sm:grid-cols-3">
-            <Kpi
-              etiqueta={`Comprado · ${periodo.etiqueta}`}
-              valor={importes.items ? pesos(itemStats?.compradoTotal ?? 0) : '—'}
-              nota="Total facturado, con IVA"
-              icono={ShoppingCart}
-              cargando={itemsLoading}
-            />
-            <Kpi
-              etiqueta="Artículos distintos"
-              valor={String(itemStats?.topItems?.length ?? 0)}
-              nota={`A ${itemStats?.byProvider?.length ?? 0} proveedores`}
-              icono={FileText}
-              href="/items"
-              cargando={itemsLoading}
-            />
-            <Kpi
-              etiqueta="Subieron de precio"
-              valor={String(itemStats?.priceVariation?.length ?? 0)}
-              nota="Contra la compra anterior"
-              tono={(itemStats?.priceVariation?.length ?? 0) > 0 ? 'rojo' : 'verde'}
-              icono={TrendingUp}
-              href="/informes/precios"
-              cargando={itemsLoading}
-            />
-          </div>
-          {ve.stats && importes.stats && (
-            <div className="mb-5">
-              <ProviderTotalsChart data={stats?.totalesPorProveedor || []} isLoading={statsLoading} />
-            </div>
-          )}
-          <PurchasingTabContent
-            topItems={itemStats?.topItems || []}
-            priceVariation={itemStats?.priceVariation || []}
-            byProvider={itemStats?.byProvider || []}
-            isLoading={itemsLoading}
-          />
-        </>
+        <VistaCompras
+          datos={itemStats}
+          cargando={itemsLoading}
+          etiquetaPeriodo={periodo.etiqueta}
+          montoPorMes={ve.stats && importes.stats ? stats?.montoPorMes ?? [] : null}
+          verImportes={importes.items}
+        />
       )}
     </DashboardLayout>
   )

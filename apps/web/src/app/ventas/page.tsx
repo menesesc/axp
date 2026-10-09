@@ -4,7 +4,8 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useUser } from '@/hooks/use-user'
 import { useTabsPermitidas } from '@/components/layout/tabs-permitidas'
 import { MODULO } from '@/lib/permisos'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsListLinea, TabsTriggerLinea } from '@/components/ui/tabs'
+import { Header } from '@/components/layout/header'
 import { ClosuresTab } from '@/components/sales/closures-tab'
 import { RankingDashboard } from '@/components/sales/ranking-dashboard'
 import { WaitersTab } from '@/components/sales/waiters-tab'
@@ -37,27 +38,22 @@ export default function VentasPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-800">Ventas</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Cierres de caja Maxirest, ranking de productos, mozos, formas de pago y comparativas por turno
-          </p>
-        </div>
+        <Header title="Ventas" description="Los cierres de caja de Maxirest entran solos. Mirá cómo te fue por día, turno, mozo y producto." />
 
         {/* Un solo rango para todas las pestañas. Si la primera es el ranking
             (operador restringido), arranca en ayer como el panel. */}
         <SalesRangeProvider initial={tabs.primera === 'ranking' ? yesterdayRange : defaultRange}>
         <Tabs defaultValue={tabs.primera}>
-          <TabsList>
-            {tabs.puede('cierres') && <TabsTrigger value="cierres">Cierres</TabsTrigger>}
-            {tabs.puede('ranking') && <TabsTrigger value="ranking">Ranking</TabsTrigger>}
-            {tabs.puede('mozos') && <TabsTrigger value="mozos">Mozos</TabsTrigger>}
-            {tabs.puede('pagos') && <TabsTrigger value="pagos">Formas de pago</TabsTrigger>}
-            {tabs.puede('facturacion') && <TabsTrigger value="facturacion">Facturación</TabsTrigger>}
-            {tabs.puede('turnos') && <TabsTrigger value="turnos">Por turno</TabsTrigger>}
-            {tabs.puede('auditoria') && <TabsTrigger value="auditoria">Auditoría</TabsTrigger>}
-            {tabs.puede('csv') && <TabsTrigger value="csv">Ventas (CSV)</TabsTrigger>}
-          </TabsList>
+          <TabsListLinea>
+            {tabs.puede('cierres') && <TabsTriggerLinea value="cierres">Cierres</TabsTriggerLinea>}
+            {tabs.puede('ranking') && <TabsTriggerLinea value="ranking">Ranking</TabsTriggerLinea>}
+            {tabs.puede('mozos') && <TabsTriggerLinea value="mozos">Mozos</TabsTriggerLinea>}
+            {tabs.puede('pagos') && <TabsTriggerLinea value="pagos">Formas de pago</TabsTriggerLinea>}
+            {tabs.puede('facturacion') && <TabsTriggerLinea value="facturacion">Facturación</TabsTriggerLinea>}
+            {tabs.puede('turnos') && <TabsTriggerLinea value="turnos">Por turno</TabsTriggerLinea>}
+            {tabs.puede('auditoria') && <TabsTriggerLinea value="auditoria">Auditoría</TabsTriggerLinea>}
+            {tabs.puede('csv') && <TabsTriggerLinea value="csv">Ventas (CSV)</TabsTriggerLinea>}
+          </TabsListLinea>
 
           {tabs.puede('cierres') && (
             <TabsContent value="cierres" className="mt-6">

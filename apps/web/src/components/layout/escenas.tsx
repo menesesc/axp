@@ -6,7 +6,18 @@
  * sombras suaves en el piso y partículas. Sin librerías.
  */
 
-export type NombreEscena = 'inicio' | 'comprobantes' | 'pagos' | 'ventas' | 'stock' | 'recetas' | 'informes' | 'generica'
+export type NombreEscena =
+  | 'inicio'
+  | 'comprobantes'
+  | 'pagos'
+  | 'ventas'
+  | 'stock'
+  | 'recetas'
+  | 'informes'
+  | 'proveedores'
+  | 'items'
+  | 'configuracion'
+  | 'generica'
 
 const O = { x: 160, y: 46 }
 const K = 1.2
@@ -513,6 +524,153 @@ function Informes() {
   )
 }
 
+function Rueda({ x, y }: { x: number; y: number }) {
+  const [cx, cy] = P(x, y, 4)
+  return (
+    <g>
+      <ellipse cx={cx} cy={cy} rx="6" ry="7" fill="#334155" />
+      <ellipse cx={cx} cy={cy} rx="2.6" ry="3" fill="#cbd5e1" />
+    </g>
+  )
+}
+
+function Proveedores() {
+  const [ax, ay] = P(56, 92, 6)
+  const [bx, by] = P(96, 60, 2)
+  const [rx, ry] = P(26, 70, 64)
+  return (
+    <>
+      <Plataforma />
+      {/* Tu local, con toldo */}
+      <Caja x={78} y={10} w={46} d={42} h={34} m="blanco" sombra />
+      <Caja x={74} y={6} z={34} w={54} d={50} h={5} m="azul" />
+      <Caja x={78} y={52} z={22} w={46} d={7} h={3} m="ambar" />
+      {[82, 94, 106, 118].map((x) => (
+        <Caja key={x} x={x} y={58.5} z={22} w={5} d={0.5} h={3} m="blanco" />
+      ))}
+      <Caja x={88} y={52} w={12} d={0.6} h={18} m="azulOsc" />
+      <Caja x={106} y={52} z={8} w={12} d={0.6} h={10} m="azul" />
+      {/* Cajas recibidas en la puerta */}
+      <Caja x={100} y={66} w={14} d={14} h={11} m="carton" sombra />
+      <Caja x={102} y={68} z={11} w={11} d={11} h={9} m="carton" className="ax-apila" />
+      {/* Camino del reparto */}
+      <path d={`M${ax} ${ay} Q${(ax + bx) / 2} ${Math.max(ay, by) + 6} ${bx} ${by}`} fill="none" stroke="rgba(59,155,255,0.45)" strokeWidth="1.5" strokeDasharray="3 5" className="ax-hormiga" />
+      {/* Camión */}
+      <g className="ax-reparto">
+        <Caja x={10} y={78} w={42} d={24} h={28} m="azul" sombra>
+          <Linea a={[14, 102, 18]} b={[46, 102, 18]} color="rgba(255,255,255,0.6)" ancho={2.4} />
+        </Caja>
+        <Caja x={52} y={80} w={18} d={22} h={20} m="azulOsc" sombra>
+          <Linea a={[70, 84, 15]} b={[70, 98, 15]} color="rgba(255,255,255,0.75)" ancho={4} />
+        </Caja>
+        <Rueda x={20} y={102} />
+        <Rueda x={42} y={102} />
+        <Rueda x={62} y={102} />
+      </g>
+      {/* Remito / factura que acompaña la entrega */}
+      <g className="ax-flota" style={{ animationDelay: '-1.2s' }}>
+        <Caja x={20} y={46} z={58} w={26} d={18} h={2} m="blanco" sombra>
+          <Linea a={[24, 50, 60]} b={[36, 50, 60]} color="#3b9bff" ancho={1.8} />
+          <Linea a={[24, 55, 60]} b={[42, 55, 60]} />
+          <Linea a={[24, 60, 60]} b={[38, 60, 60]} />
+        </Caja>
+      </g>
+      <g className="ax-pulso" style={{ transformOrigin: `${rx}px ${ry}px`, transformBox: 'view-box' }}>
+        <circle cx={rx} cy={ry} r="10" fill="#10b981" />
+        <path d={`M${rx - 4} ${ry} l3 3 l5.5 -6`} fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+      <Particulas
+        lista={[
+          [120, 110, 20, '#7cc4ff', 0.6],
+          [60, 20, 50, '#f5a524', 1.8],
+        ]}
+      />
+    </>
+  )
+}
+
+function Items() {
+  const [ex, ey] = P(84, 34, 70)
+  return (
+    <>
+      <Plataforma />
+      {/* Productos */}
+      <Caja x={16} y={56} w={22} d={22} h={30} m="verde" sombra />
+      <Caja x={42} y={60} w={18} d={18} h={22} m="ambar" sombra />
+      <Caja x={20} y={84} w={26} d={20} h={16} m="carton" sombra>
+        <Caja x={31} y={84} z={16} w={4} d={20} h={0.4} m="cinta" />
+      </Caja>
+      <Caja x={52} y={86} w={14} d={14} h={26} m="rojo" sombra />
+      {/* Lector que escanea */}
+      <g className="ax-escanea-corto">
+        <polygon points={pts([[14, 60, 32], [40, 60, 32], [40, 60, 52], [14, 60, 52]])} fill="url(#axe-laser)" />
+        <Linea a={[14, 60, 32]} b={[40, 60, 32]} color="#ef4444" ancho={1.6} />
+      </g>
+      {/* Etiqueta de precio con código de barras */}
+      <g className="ax-flota" style={{ animationDelay: '-1.5s' }}>
+        <Caja x={74} y={18} z={44} w={44} d={30} h={3} m="blanco" sombra>
+          {[0, 3, 5, 9, 12, 14, 18, 21, 23, 27].map((dx) => (
+            <Linea key={dx} a={[80 + dx, 22, 47]} b={[80 + dx, 34, 47]} color="#334155" ancho={dx % 3 === 0 ? 1.8 : 1} />
+          ))}
+          <Linea a={[80, 40, 47]} b={[100, 40, 47]} color="#3b9bff" ancho={2.2} />
+        </Caja>
+        <Caja x={108} y={36} z={47} w={8} d={10} h={1} m="ambar" />
+      </g>
+      <path
+        className="ax-destello"
+        style={{ transformOrigin: `${ex}px ${ey}px`, transformBox: 'view-box' }}
+        d={`M${ex} ${ey - 10} C${ex + 1.5} ${ey - 2} ${ex + 2} ${ey - 1.5} ${ex + 10} ${ey} C${ex + 2} ${ey + 1.5} ${ex + 1.5} ${ey + 2} ${ex} ${ey + 10} C${ex - 1.5} ${ey + 2} ${ex - 2} ${ey + 1.5} ${ex - 10} ${ey} C${ex - 2} ${ey - 1.5} ${ex - 1.5} ${ey - 2} ${ex} ${ey - 10}Z`}
+        fill="#f5a524"
+      />
+      <Particulas
+        lista={[
+          [110, 100, 20, '#a78bfa', 0.3],
+          [10, 30, 40, '#7cc4ff', 1.4],
+        ]}
+      />
+    </>
+  )
+}
+
+function Configuracion() {
+  const [gx, gy] = P(30, 40, 70)
+  const dientes = Array.from({ length: 8 }, (_, i) => i * 45)
+  return (
+    <>
+      <Plataforma />
+      {/* Panel con interruptores */}
+      <Caja x={56} y={22} w={64} d={8} h={60} m="blanco" sombra />
+      {[0, 1, 2].map((i) => {
+        const z = 64 - i * 20
+        return (
+          <g key={i}>
+            <Linea a={[62, 30.2, z]} b={[78, 30.2, z]} color="#c7d3e3" ancho={2} />
+            <Caja x={88} y={30} z={z - 5} w={24} d={1.5} h={10} m={i === 1 ? 'gris' : 'azul'} />
+            <g className="ax-interruptor" style={{ animationDelay: `${i * 0.9}s` }}>
+              <Caja x={i === 1 ? 89 : 101} y={30.5} z={z - 4} w={10} d={2} h={8} m="blanco" />
+            </g>
+          </g>
+        )
+      })}
+      {/* Engranaje */}
+      <g className="ax-engranaje" style={{ transformOrigin: `${gx}px ${gy}px`, transformBox: 'view-box' }}>
+        {dientes.map((a) => (
+          <rect key={a} x={gx - 4} y={gy - 25} width="8" height="10" rx="2" fill="#3b9bff" transform={`rotate(${a} ${gx} ${gy})`} />
+        ))}
+        <circle cx={gx} cy={gy} r="18" fill="#3b9bff" />
+        <circle cx={gx} cy={gy} r="7" fill="#eef5ff" />
+      </g>
+      <Caja x={14} y={84} w={30} d={24} h={14} m="azulOsc" sombra />
+      <Particulas
+        lista={[
+          [120, 110, 20, '#f5a524', 0.5],
+          [20, 20, 60, '#7cc4ff', 1.6],
+        ]}
+      />
+    </>
+  )
+}
+
 function Generica() {
   const [cx, cy] = P(65, 65, 46)
   return (
@@ -544,6 +702,9 @@ const ESCENAS: Record<NombreEscena, () => React.JSX.Element> = {
   stock: Stock,
   recetas: Recetas,
   informes: Informes,
+  proveedores: Proveedores,
+  items: Items,
+  configuracion: Configuracion,
   generica: Generica,
 }
 
@@ -567,6 +728,10 @@ export function Escena({ nombre }: { nombre: NombreEscena }) {
         <linearGradient id="axe-haz" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#7cc4ff" stopOpacity="0" />
           <stop offset="100%" stopColor="#3b9bff" stopOpacity="0.4" />
+        </linearGradient>
+        <linearGradient id="axe-laser" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ef4444" stopOpacity="0" />
+          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.35" />
         </linearGradient>
         <radialGradient id="axe-halo">
           <stop offset="0%" stopColor="#3b9bff" stopOpacity="0.22" />

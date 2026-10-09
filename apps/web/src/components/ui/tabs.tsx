@@ -52,3 +52,36 @@ const TabsContent = React.forwardRef<
 TabsContent.displayName = TabsPrimitive.Content.displayName
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
+
+/**
+ * Variante "submenú": pestañas con línea debajo de la activa, para secciones
+ * dentro de una pantalla (Ventas: cierres, ranking, mozos…).
+ */
+const TabsListLinea = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.List
+    ref={ref}
+    className={cn('flex w-full items-center gap-1 overflow-x-auto border-b border-slate-900/[0.08] scrollbar-hide', className)}
+    {...props}
+  />
+))
+TabsListLinea.displayName = 'TabsListLinea'
+
+const TabsTriggerLinea = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      'relative -mb-px whitespace-nowrap border-b-2 border-transparent px-3 pb-2.5 pt-1.5 text-sm text-slate-500 transition-colors first:pl-0 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b9bff] disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-[#3b9bff] data-[state=active]:font-medium data-[state=active]:text-[#0c4c96]',
+      className
+    )}
+    {...props}
+  />
+))
+TabsTriggerLinea.displayName = 'TabsTriggerLinea'
+
+export { TabsListLinea, TabsTriggerLinea }
