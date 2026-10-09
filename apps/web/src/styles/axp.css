@@ -984,3 +984,39 @@
   border-color: var(--azul);
   box-shadow: 0 0 0 4px rgba(59, 155, 255, 0.15);
 }
+
+/* Barra que queda pegada bajo la barra superior al scrollear (submenú + filtros). */
+.ax-barra-fija {
+  background: color-mix(in srgb, var(--fondo) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+}
+
+/* Tablas: base común para las tablas armadas a mano. :where() deja que las
+   clases propias de cada tabla sigan ganando. */
+:where(.ax) :where(table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+:where(.ax) :where(thead th) {
+  background: #f7f9fc;
+  color: var(--ter);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--borde);
+  white-space: nowrap;
+}
+:where(.ax) :where(tbody td) {
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+:where(.ax) :where(tbody tr:last-child td) {
+  border-bottom: 0;
+}
+:where(.ax) :where(tbody tr) {
+  transition: background-color 150ms ease;
+}
+:where(.ax) :where(tbody tr:hover) {
+  background: rgba(59, 155, 255, 0.035);
+}

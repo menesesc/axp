@@ -7,8 +7,9 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
+import { ATAJOS_LISTADO, periodoDe, type Periodo } from '@/components/ui/periodo'
+import { BarraFiltros } from '@/components/ui/barra-filtros'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -38,9 +39,7 @@ import {
   TrendingUp,
   BarChart3,
   FileText,
-  Filter,
   X,
-  Calendar,
   Loader2,
   ArrowUpRight,
   ArrowDownRight,
@@ -231,8 +230,8 @@ function PriceVariationCard({ stats, fechaDesde, fechaHasta }: { stats: ItemStat
   }
 
   return (
-    <div className="bg-white border rounded-lg p-4">
-      <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+    <div className="ax-card ax-entra p-5">
+      <div className="mb-2 flex items-center gap-2 text-sm text-[var(--sec)]">
         {isUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
         Variación P. Unit.
       </div>
@@ -258,54 +257,6 @@ interface Proveedor {
   razonSocial: string
 }
 
-type QuickDateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth'
-
-function getDateRange(filter: QuickDateFilter): { desde: string; hasta: string } {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const formatDate = (d: Date) => d.toISOString().split('T')[0]!
-
-  switch (filter) {
-    case 'today':
-      return { desde: formatDate(today), hasta: formatDate(today) }
-    case 'yesterday': {
-      const yesterday = new Date(today)
-      yesterday.setDate(yesterday.getDate() - 1)
-      return { desde: formatDate(yesterday), hasta: formatDate(yesterday) }
-    }
-    case 'week': {
-      // Esta semana (lunes a hoy)
-      const weekStart = new Date(today)
-      const day = weekStart.getDay()
-      const diff = day === 0 ? 6 : day - 1 // Ajustar para que lunes sea inicio
-      weekStart.setDate(weekStart.getDate() - diff)
-      return { desde: formatDate(weekStart), hasta: formatDate(today) }
-    }
-    case 'lastWeek': {
-      // Semana anterior (lunes a domingo)
-      const lastWeekEnd = new Date(today)
-      const day = lastWeekEnd.getDay()
-      const diffToLastSunday = day === 0 ? 7 : day
-      lastWeekEnd.setDate(lastWeekEnd.getDate() - diffToLastSunday)
-      const lastWeekStart = new Date(lastWeekEnd)
-      lastWeekStart.setDate(lastWeekStart.getDate() - 6)
-      return { desde: formatDate(lastWeekStart), hasta: formatDate(lastWeekEnd) }
-    }
-    case 'month': {
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-      return { desde: formatDate(monthStart), hasta: formatDate(today) }
-    }
-    case 'lastMonth': {
-      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
-      return { desde: formatDate(lastMonthStart), hasta: formatDate(lastMonthEnd) }
-    }
-    default:
-      return { desde: '', hasta: '' }
-  }
-}
-
 export default function ItemsPage() {
   return (
     <Suspense>
@@ -326,10 +277,9 @@ function ItemsPageContent() {
   const [proveedorId, setProveedorId] = useState<string>('')
   const [categoriaId, setCategoriaId] = useState<string>(urlParams.get('categoriaId') || '')
   const [insumoFiltro, setInsumoFiltro] = useState<'' | 'con' | 'sin'>('')
-  const [quickDateFilter, setQuickDateFilter] = useState<QuickDateFilter>('all')
+  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDe('todo'))
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
   const pageSize = 50
 
   // Debounce input value (searches while typing, like before)
@@ -364,12 +314,10 @@ function ItemsPageContent() {
     }
   }
 
-  // Apply quick date filter
-  const applyQuickDateFilter = (filter: QuickDateFilter) => {
-    setQuickDateFilter(filter)
-    const { desde, hasta } = getDateRange(filter)
-    setFechaDesde(desde)
-    setFechaHasta(hasta)
+  const cambiarPeriodo = (p: Periodo) => {
+    setPeriodo(p)
+    setFechaDesde(p.desde)
+    setFechaHasta(p.hasta)
     setPage(1)
   }
 
@@ -463,7 +411,7 @@ function ItemsPageContent() {
     setProveedorId('')
     setCategoriaId('')
     setInsumoFiltro('')
-    setQuickDateFilter('all')
+    setPeriodo(periodoDe('todo'))
     setFechaDesde('')
     setFechaHasta('')
     setPage(1)
@@ -483,74 +431,45 @@ function ItemsPageContent() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <Header
-          title="Búsqueda de Items"
-          description="Busca y analiza items de tus documentos"
-        />
+        <Header title="Items" description="Todo lo que compraste, artículo por artículo: cuánto, a quién y a qué precio." />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white border rounded-lg p-4">
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+          <div className="ax-card ax-entra p-5">
+            <div className="mb-2 flex items-center gap-2 text-sm text-[var(--sec)]">
               <Package className="h-4 w-4" />
               Items encontrados
             </div>
-            <p className="text-2xl font-semibold">
+            <p className="ax-display ax-num text-[1.6rem] font-semibold leading-none">
               {isLoading ? <Skeleton className="h-7 w-16" /> : (data?.totals.count || 0).toLocaleString()}
             </p>
           </div>
-          <div className="bg-white border rounded-lg p-4">
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+          <div className="ax-card ax-entra p-5">
+            <div className="mb-2 flex items-center gap-2 text-sm text-[var(--sec)]">
               <TrendingUp className="h-4 w-4" />
               Cantidad total
             </div>
-            <p className="text-2xl font-semibold">
+            <p className="ax-display ax-num text-[1.6rem] font-semibold leading-none">
               {isLoading ? <Skeleton className="h-7 w-20" /> : (data?.totals.cantidad || 0).toLocaleString()}
             </p>
           </div>
-          <div className="bg-white border rounded-lg p-4">
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+          <div className="ax-card ax-entra p-5">
+            <div className="mb-2 flex items-center gap-2 text-sm text-[var(--sec)]">
               <BarChart3 className="h-4 w-4" />
               Subtotal
             </div>
-            <p className="text-2xl font-semibold text-emerald-600">
+            <p className="ax-display ax-num text-[1.6rem] font-semibold leading-none text-emerald-600">
               {isLoading ? <Skeleton className="h-7 w-32" /> : formatCurrency(data?.totals.subtotal || 0)}
             </p>
           </div>
           <PriceVariationCard stats={stats} fechaDesde={fechaDesde} fechaHasta={fechaHasta} />
         </div>
 
-        {/* Search and Quick Filters */}
-        <div className="bg-white border rounded-lg p-4 space-y-4">
-          {/* Quick date filters */}
-          <div className="flex flex-wrap gap-2">
-            <span className="text-sm text-slate-500 flex items-center gap-1 mr-2">
-              <Calendar className="h-4 w-4" />
-              Período:
-            </span>
-            {[
-              { value: 'all' as const, label: 'Todo' },
-              { value: 'today' as const, label: 'Hoy' },
-              { value: 'yesterday' as const, label: 'Ayer' },
-              { value: 'week' as const, label: 'Semana' },
-              { value: 'lastWeek' as const, label: 'Sem. Ant.' },
-              { value: 'month' as const, label: 'Mes' },
-              { value: 'lastMonth' as const, label: 'Mes Ant.' },
-            ].map((opt) => (
-              <Button
-                key={opt.value}
-                variant={quickDateFilter === opt.value ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => applyQuickDateFilter(opt.value)}
-              >
-                {opt.label}
-              </Button>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-3">
+        <BarraFiltros
+          periodo={{ valor: periodo, onCambiar: cambiarPeriodo, atajos: ATAJOS_LISTADO }}
+          buscador={
             <div
-              className="flex-1 min-w-[200px] flex flex-wrap items-center gap-1.5 border rounded-md px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 cursor-text"
+              className="flex min-h-10 min-w-[16rem] flex-1 cursor-text flex-wrap items-center gap-1.5 rounded-xl border border-slate-900/[0.12] bg-white px-3 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] focus-within:border-[#3b9bff] focus-within:ring-4 focus-within:ring-[#3b9bff]/15"
               onClick={() => document.getElementById('items-search-input')?.focus()}
             >
               <Search className="h-4 w-4 text-slate-400 shrink-0" />
@@ -569,7 +488,7 @@ function ItemsPageContent() {
               <input
                 id="items-search-input"
                 type="text"
-                placeholder={searchTags.length === 0 ? 'Buscar por descripción o proveedor... (Enter para agregar)' : 'Agregar filtro...'}
+                placeholder={searchTags.length === 0 ? 'Buscar artículo o proveedor (Enter para sumar otra palabra)' : 'Sumar otra palabra'}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -580,41 +499,15 @@ function ItemsPageContent() {
                 <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
               )}
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowFilters(!showFilters)}
-              className="gap-2"
-            >
-              <Filter className="h-4 w-4" />
-              Más filtros
-              {hasFilters && (
-                <Badge variant="outline" className="ml-1">
-                  {[searchTags.length > 0 || debouncedInput ? 'q' : '', proveedorId, categoriaId, fechaDesde, fechaHasta].filter(Boolean).length}
-                </Badge>
-              )}
-            </Button>
-            {categoriaActiva && (
-              <Badge className="gap-1 self-center bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                {categoriaActiva}
-                <button type="button" onClick={() => { setCategoriaId(''); setPage(1) }} className="hover:text-red-600">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
-                <X className="h-4 w-4" />
-                Limpiar
-              </Button>
-            )}
-          </div>
-
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-4 border-t">
+          }
+          activos={[searchTags.length || debouncedInput ? 'q' : '', proveedorId, categoriaId, insumoFiltro, fechaDesde || fechaHasta ? 'f' : ''].filter(Boolean).length}
+          onLimpiar={clearFilters}
+          masFiltros={
+            <>
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">
+                <p className="mb-1.5 text-xs font-medium text-slate-500">
                   Proveedor
-                </label>
+                </p>
                 <Select value={proveedorId || 'all'} onValueChange={(v) => { setProveedorId(v === 'all' ? '' : v); setPage(1) }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todos los proveedores" />
@@ -630,9 +523,9 @@ function ItemsPageContent() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">
+                <p className="mb-1.5 text-xs font-medium text-slate-500">
                   Categoría
-                </label>
+                </p>
                 <Select value={categoriaId || 'all'} onValueChange={(v) => { setCategoriaId(v === 'all' ? '' : v); setPage(1) }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todas las categorías" />
@@ -649,9 +542,9 @@ function ItemsPageContent() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">
+                <p className="mb-1.5 text-xs font-medium text-slate-500">
                   Insumo
-                </label>
+                </p>
                 <Select value={insumoFiltro || 'all'} onValueChange={(v) => { setInsumoFiltro(v === 'all' ? '' : (v as 'con' | 'sin')); setPage(1) }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todos" />
@@ -663,42 +556,26 @@ function ItemsPageContent() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">
-                  Fecha desde
-                </label>
-                <Input
-                  type="date"
-                  value={fechaDesde}
-                  onChange={(e) => {
-                    setFechaDesde(e.target.value)
-                    setQuickDateFilter('all')
-                    setPage(1)
-                  }}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 mb-1 block">
-                  Fecha hasta
-                </label>
-                <Input
-                  type="date"
-                  value={fechaHasta}
-                  onChange={(e) => {
-                    setFechaHasta(e.target.value)
-                    setQuickDateFilter('all')
-                    setPage(1)
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+            </>
+          }
+          acciones={
+            <>
+            {categoriaActiva && (
+              <Badge className="gap-1 self-center bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                {categoriaActiva}
+                <button type="button" onClick={() => { setCategoriaId(''); setPage(1) }} className="hover:text-red-600">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            </>
+          }
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main Content - Items Table */}
           <div className="lg:col-span-3">
-            <div className="bg-white border rounded-lg">
+            <div className="ax-card overflow-hidden">
               {isLoading && !data ? (
                 <div className="p-4 space-y-3">
                   {[...Array(10)].map((_, i) => (
@@ -837,7 +714,7 @@ function ItemsPageContent() {
             />
 
             {/* Top Providers */}
-            <div className="bg-white border rounded-lg p-4">
+            <div className="ax-card ax-entra p-5">
               <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
                 Top Proveedores
@@ -880,7 +757,7 @@ function ItemsPageContent() {
             </div>
 
             {/* Top Items */}
-            <div className="bg-white border rounded-lg p-4">
+            <div className="ax-card ax-entra p-5">
               <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
                 <Package className="h-4 w-4" />
                 Items más comprados
@@ -922,7 +799,7 @@ function ItemsPageContent() {
             </div>
 
             {/* Price Variation */}
-            <div className="bg-white border rounded-lg p-4">
+            <div className="ax-card ax-entra p-5">
               <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
                 Mayor variación de precio
@@ -958,7 +835,7 @@ function ItemsPageContent() {
 
             {/* Price Trend Chart */}
             {stats?.monthlyTrend && stats.monthlyTrend.length > 0 && (
-              <div className="bg-white border rounded-lg p-4">
+              <div className="ax-card ax-entra p-5">
                 <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
                   <BarChart3 className="h-4 w-4" />
                   Tendencia mensual

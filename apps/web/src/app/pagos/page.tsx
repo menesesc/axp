@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -11,8 +12,8 @@ import { ReconciliationDialog } from '@/components/payments/reconciliation-dialo
 import { TransferTray } from '@/components/payments/transfer-tray'
 import { BatchList } from '@/components/payments/batch-list'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ATAJOS_LISTADO, periodoDe, type Periodo } from '@/components/ui/periodo'
+import { BarraFiltros } from '@/components/ui/barra-filtros'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
@@ -20,7 +21,6 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Search,
   Sparkles,
   FileEdit,
   Send,
@@ -68,6 +68,15 @@ interface PagosStats {
 }
 
 export default function PagosPage() {
+  // useSearchParams (la vista sale de ?vista=) necesita un Suspense en el build.
+  return (
+    <Suspense>
+      <Pagos />
+    </Suspense>
+  )
+}
+
+function Pagos() {
   const queryClient = useQueryClient()
   const { clienteId, isAdmin } = useUser()
 
@@ -79,19 +88,13 @@ export default function PagosPage() {
 
   // Vista: órdenes (listado histórico) · a transferir (borradores) · lotes.
   // Se refleja en ?vista= para volver directo desde "Pagar en lote".
+  // Las vistas son pestañas del submenú del módulo (Órdenes, A transferir, Lotes).
   type Vista = 'ordenes' | 'transferir' | 'lotes'
-  const [vista, setVistaState] = useState<Vista>('ordenes')
-  useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get('vista')
-    if (v === 'transferir' || v === 'lotes') setVistaState(v)
-  }, [])
-  const setVista = (v: Vista) => {
-    setVistaState(v)
-    const url = new URL(window.location.href)
-    if (v === 'ordenes') url.searchParams.delete('vista')
-    else url.searchParams.set('vista', v)
-    window.history.replaceState(null, '', url)
-  }
+  const router = useRouter()
+  const v = useSearchParams().get('vista')
+  const vista: Vista = v === 'transferir' || v === 'lotes' ? v : 'ordenes'
+  const setVista = (nueva: Vista) => router.replace(nueva === 'ordenes' ? '/pagos' : `/pagos?vista=${nueva}`, { scroll: false })
+  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDe('todo'))
   const pageSize = 25
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -105,7 +108,7 @@ export default function PagosPage() {
   }, [proveedorSearch])
 
   const { data, isLoading } = useQuery<PagosResponse>({
-    queryKey: ['pagos', clienteId, page, estado, debouncedSearch],
+    queryKey: ['pagos', clienteId, page, estado, debouncedSearch, periodo.desde, periodo.hasta],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -113,6 +116,8 @@ export default function PagosPage() {
       })
       if (estado) params.append('estado', estado)
       if (debouncedSearch) params.append('q', debouncedSearch)
+      if (periodo.desde) params.append('desde', periodo.desde)
+      if (periodo.hasta) params.append('hasta', periodo.hasta)
 
       const res = await fetch(`/api/pagos?${params}`)
       if (!res.ok) throw new Error('Failed to fetch')
@@ -198,7 +203,15 @@ export default function PagosPage() {
       <div className="space-y-6">
         <Header
           title="Pagos"
-          description={pagination ? `${pagination.total} órdenes de pago` : undefined}
+          description={
+            vista === 'transferir'
+              ? 'Borradores listos para armar el archivo del banco.'
+              : vista === 'lotes'
+                ? 'Transferencias en lote enviadas al banco.'
+                : pagination
+                  ? `${pagination.total.toLocaleString('es-AR')} órdenes de pago.`
+                  : 'Órdenes de pago a proveedores.'
+          }
           actions={
             isAdmin && (
               <div className="flex items-center gap-2">
@@ -225,19 +238,6 @@ export default function PagosPage() {
             )
           }
         />
-
-        <Tabs value={vista} onValueChange={(v) => setVista(v as Vista)}>
-          <TabsList>
-            <TabsTrigger value="ordenes">Órdenes</TabsTrigger>
-            <TabsTrigger value="transferir">
-              A transferir
-              {(borradores?.count ?? 0) > 0 && (
-                <span className="ml-1.5 rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{borradores?.count}</span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="lotes">Lotes</TabsTrigger>
-          </TabsList>
-        </Tabs>
 
         {vista === 'transferir' && <TransferTray canEdit={!!isAdmin} />}
         {vista === 'lotes' && <BatchList />}
@@ -282,33 +282,37 @@ export default function PagosPage() {
           />
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Tabs
-            value={estado || 'all'}
-            onValueChange={(v) => {
+        <BarraFiltros
+          periodo={{
+            valor: periodo,
+            onCambiar: (p) => {
+              setPeriodo(p)
+              setPage(1)
+            },
+            atajos: ATAJOS_LISTADO,
+          }}
+          busqueda={{ valor: proveedorSearch, onCambiar: setProveedorSearch, placeholder: 'Buscar proveedor' }}
+          estados={{
+            valor: estado || 'all',
+            onCambiar: (v) => {
               setEstado(v === 'all' ? '' : v)
               setPage(1)
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="all">Todas</TabsTrigger>
-              <TabsTrigger value="BORRADOR">Borrador</TabsTrigger>
-              <TabsTrigger value="EMITIDA">Emitidas</TabsTrigger>
-              <TabsTrigger value="PAGADO">Pagadas</TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-            <Input
-              placeholder="Buscar proveedor..."
-              value={proveedorSearch}
-              onChange={(e) => setProveedorSearch(e.target.value)}
-              className="pl-8 w-52 h-9 text-sm"
-            />
-          </div>
-        </div>
+            },
+            opciones: [
+              { valor: 'all', texto: 'Todas' },
+              { valor: 'BORRADOR', texto: 'Borrador' },
+              { valor: 'EMITIDA', texto: 'Emitidas' },
+              { valor: 'PAGADO', texto: 'Pagadas' },
+            ],
+          }}
+          activos={[estado, proveedorSearch, periodo.clave !== 'todo' ? 'p' : ''].filter(Boolean).length}
+          onLimpiar={() => {
+            setEstado('')
+            setProveedorSearch('')
+            setPeriodo(periodoDe('todo'))
+            setPage(1)
+          }}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-3 space-y-4">

@@ -1,7 +1,5 @@
 'use client'
 
-import { useState } from 'react'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -9,11 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { ATAJOS_LISTADO, SelectorPeriodo, periodoDe, periodoPersonalizado, type AtajoPeriodo, type Periodo } from '@/components/ui/periodo'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Search, SlidersHorizontal, X, MessageSquareWarning, Package, CheckCircle } from 'lucide-react'
+import { ATAJOS_LISTADO, periodoDe, periodoPersonalizado, type AtajoPeriodo, type Periodo } from '@/components/ui/periodo'
+import { BarraFiltros, CampoFiltro } from '@/components/ui/barra-filtros'
+import { MessageSquareWarning, Package } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 
 interface Proveedor {
@@ -86,10 +82,8 @@ export function DocumentFilters({
   quickDateFilter,
   onQuickDateFilterChange,
   onClearFilters,
-  hasActiveFilters,
+  hasActiveFilters: _hayFiltros,
 }: DocumentFiltersProps) {
-  const [showAdvanced, setShowAdvanced] = useState(false)
-
   // El selector trabaja con fechas YYYY-MM-DD de Argentina; la página, con Date.
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const periodo: Periodo =
@@ -105,160 +99,77 @@ export function DocumentFilters({
     onDateToChange(p.hasta ? new Date(`${p.hasta}T23:59:59`) : undefined)
   }
 
+  const activos = [
+    estado,
+    search,
+    quickDateFilter !== 'all' || dateFrom ? 'p' : '',
+    confidenceFilter && confidenceFilter !== 'all' ? 'c' : '',
+    proveedorId && proveedorId !== 'all' ? 'pr' : '',
+    conAnotaciones ? 'a' : '',
+    sinItems ? 'i' : '',
+  ].filter(Boolean).length
+  const masActivos = [confidenceFilter && confidenceFilter !== 'all', proveedorId && proveedorId !== 'all', conAnotaciones, sinItems].filter(Boolean).length
+
   return (
-    <div className="space-y-4">
-      {/* Main Filter Row */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Estado Tabs */}
-        <Tabs value={estado || 'all'} onValueChange={(v) => onEstadoChange(v === 'all' ? '' : v)}>
-          <TabsList>
-            <TabsTrigger value="all">Todos</TabsTrigger>
-            <TabsTrigger value="PENDIENTE">Pendientes</TabsTrigger>
-            <TabsTrigger value="CONFIRMADO">Confirmados</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <SelectorPeriodo valor={periodo} onCambiar={cambiarPeriodo} atajos={ATAJOS_LISTADO} />
-
-        {/* Search */}
-        <div className="relative min-w-[14rem] flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Buscar proveedor o comprobante..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        {/* Advanced Filters Toggle */}
-        <Popover open={showAdvanced} onOpenChange={setShowAdvanced}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-1.5">
-              <SlidersHorizontal className="h-4 w-4" />
-              Filtros
-              {hasActiveFilters && (
-                <span className="flex h-2 w-2 rounded-full bg-blue-600" />
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80" align="end">
-            <div className="space-y-4">
-              <div className="text-sm font-semibold">Más filtros</div>
-
-              {/* Confidence Filter */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-slate-500">
-                  Seguridad de la lectura
-                </label>
-                <Select value={confidenceFilter} onValueChange={onConfidenceFilterChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Cualquiera" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Cualquiera</SelectItem>
-                    <SelectItem value="high">Alta (90%+)</SelectItem>
-                    <SelectItem value="medium">Media (80-89%)</SelectItem>
-                    <SelectItem value="low">Baja (&lt;80%)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Proveedor Filter */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-slate-500">
-                  Proveedor
-                </label>
-                <Select value={proveedorId} onValueChange={onProveedorChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos los proveedores" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los proveedores</SelectItem>
-                    <SelectItem value="none">Sin proveedor</SelectItem>
-                    {proveedores.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.razonSocial}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Checkbox Filters */}
-              <div className="space-y-3 pt-2 border-t">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="soloPagados"
-                    checked={estado === 'PAGADO'}
-                    onCheckedChange={(checked) => onEstadoChange(checked ? 'PAGADO' : '')}
-                  />
-                  <label
-                    htmlFor="soloPagados"
-                    className="text-sm flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckCircle className="h-4 w-4 text-blue-500" />
-                    Solo pagados
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="conAnotaciones"
-                    checked={conAnotaciones}
-                    onCheckedChange={(checked) => onConAnotacionesChange(checked === true)}
-                  />
-                  <label
-                    htmlFor="conAnotaciones"
-                    className="text-sm flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MessageSquareWarning className="h-4 w-4 text-amber-500" />
-                    Con anotaciones
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="sinItems"
-                    checked={sinItems}
-                    onCheckedChange={(checked) => onSinItemsChange(checked === true)}
-                  />
-                  <label
-                    htmlFor="sinItems"
-                    className="text-sm flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Package className="h-4 w-4 text-slate-400" />
-                    Solo sin items
-                  </label>
-                </div>
-              </div>
-
-              {/* Clear Filters */}
-              {hasActiveFilters && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    onClearFilters()
-                    setShowAdvanced(false)
-                  }}
-                >
-                  <X className="h-4 w-4 mr-1.5" />
-                  Limpiar filtros
-                </Button>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {/* Clear Filters Button (visible when active) */}
-        {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={onClearFilters}>
-            <X className="h-4 w-4 mr-1" />
-            Limpiar
-          </Button>
-        )}
-      </div>
-    </div>
+    <BarraFiltros
+      periodo={{ valor: periodo, onCambiar: cambiarPeriodo, atajos: ATAJOS_LISTADO }}
+      busqueda={{ valor: search, onCambiar: onSearchChange, placeholder: 'Buscar proveedor o número' }}
+      estados={{
+        valor: estado || 'all',
+        onCambiar: (v) => onEstadoChange(v === 'all' ? '' : v),
+        opciones: [
+          { valor: 'all', texto: 'Todos' },
+          { valor: 'PENDIENTE', texto: 'Para revisar' },
+          { valor: 'CONFIRMADO', texto: 'Confirmados' },
+          { valor: 'PAGADO', texto: 'Pagados' },
+        ],
+      }}
+      activos={activos}
+      onLimpiar={onClearFilters}
+      masFiltros={
+        <>
+          <CampoFiltro etiqueta="Proveedor">
+            <Select value={proveedorId || 'all'} onValueChange={onProveedorChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todos los proveedores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los proveedores</SelectItem>
+                <SelectItem value="none">Sin proveedor</SelectItem>
+                {proveedores.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.razonSocial}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CampoFiltro>
+          <CampoFiltro etiqueta="Seguridad de la lectura">
+            <Select value={confidenceFilter || 'all'} onValueChange={onConfidenceFilterChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Cualquiera" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Cualquiera</SelectItem>
+                <SelectItem value="high">Alta (90 % o más)</SelectItem>
+                <SelectItem value="medium">Media (80 a 89 %)</SelectItem>
+                <SelectItem value="low">Baja (menos de 80 %)</SelectItem>
+              </SelectContent>
+            </Select>
+          </CampoFiltro>
+          <div className="space-y-3 border-t border-slate-900/[0.08] pt-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <Checkbox checked={conAnotaciones} onCheckedChange={(c) => onConAnotacionesChange(c === true)} />
+              <MessageSquareWarning className="h-4 w-4 text-amber-500" /> Con anotaciones
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <Checkbox checked={sinItems} onCheckedChange={(c) => onSinItemsChange(c === true)} />
+              <Package className="h-4 w-4 text-slate-400" /> Sin items cargados
+            </label>
+          </div>
+          {masActivos > 0 && <p className="text-xs text-slate-500">{masActivos} {masActivos === 1 ? 'filtro activo' : 'filtros activos'} acá.</p>}
+        </>
+      }
+    />
   )
 }

@@ -12,6 +12,8 @@ type RangeState = [Range, (r: Range) => void]
  * vuelve el default, que es relativo a hoy).
  */
 const SalesRangeContext = createContext<RangeState | null>(null)
+/** El rango se elige en una barra fija de la página, no en cada pestaña. */
+const RangoFijoContext = createContext(false)
 
 const STORAGE_KEY = 'ventas:rango'
 
@@ -26,7 +28,7 @@ function leerGuardado(): Range | null {
   }
 }
 
-export function SalesRangeProvider({ initial, children }: { initial: () => Range; children: ReactNode }) {
+export function SalesRangeProvider({ initial, fijo = false, children }: { initial: () => Range; fijo?: boolean; children: ReactNode }) {
   const [range, setRangeState] = useState<Range>(() => leerGuardado() ?? initial())
   const setRange = useCallback((r: Range) => {
     setRangeState(r)
@@ -36,7 +38,11 @@ export function SalesRangeProvider({ initial, children }: { initial: () => Range
       // sin storage (modo privado): el rango igual se comparte en memoria
     }
   }, [])
-  return <SalesRangeContext.Provider value={[range, setRange]}>{children}</SalesRangeContext.Provider>
+  return (
+    <RangoFijoContext.Provider value={fijo}>
+      <SalesRangeContext.Provider value={[range, setRange]}>{children}</SalesRangeContext.Provider>
+    </RangoFijoContext.Provider>
+  )
 }
 
 /**
@@ -47,4 +53,9 @@ export function useSalesRange(fallback: () => Range): RangeState {
   const ctx = useContext(SalesRangeContext)
   const local = useState<Range>(fallback)
   return ctx ?? local
+}
+
+/** ¿El rango está en la barra fija de la página? Las pestañas no lo repiten. */
+export function useRangoFijo() {
+  return useContext(RangoFijoContext)
 }

@@ -59,7 +59,9 @@ export const MENU: Modulo[][] = [
       icono: CreditCard,
       escena: 'pagos',
       subs: [
-        { nombre: 'Órdenes de pago', href: '/pagos' },
+        { nombre: 'Órdenes', href: '/pagos' },
+        { nombre: 'A transferir', href: '/pagos?vista=transferir' },
+        { nombre: 'Lotes', href: '/pagos?vista=lotes' },
         { nombre: 'Calendario', href: '/finanzas' },
       ],
       prefijos: ['/pagos/'],
@@ -139,8 +141,12 @@ export const MODULOS: Modulo[] = [...MENU.flat(), CONFIGURACION]
 
 type Puede = (seccion: string) => boolean
 
+/** Ruta sin query (`/pagos?vista=lotes` → `/pagos`). */
+const ruta = (href: string) => href.split('?')[0]!
+
 /** ¿El usuario puede abrir esta pantalla? Misma regla que el middleware. */
 export function puedeVerRuta(href: string, can: Puede) {
+  href = ruta(href)
   if (esRutaComun(href)) return true
   const secciones = seccionesDeRuta(href)
   return secciones.length > 0 && secciones.some((s) => can(s.value))
@@ -152,12 +158,14 @@ export function subsVisibles(m: Modulo, can: Puede) {
 }
 
 /**
- * Módulo y pantalla de una ruta. Primero busca una pantalla exacta; si no,
- * el prefijo más largo (detalle de un pago, ficha de receta, etc.).
+ * Módulo y pantalla de una ruta. Primero busca una pantalla exacta (con su
+ * `?vista=` si la tiene); si no, el prefijo más largo (detalle de un pago,
+ * ficha de receta, etc.).
  */
-export function ubicar(pathname: string) {
+export function ubicar(pathname: string, vista?: string | null) {
+  const actual = vista ? `${pathname}?vista=${vista}` : pathname
   for (const m of MODULOS) {
-    const s = m.subs.find((x) => x.href === pathname)
+    const s = m.subs.find((x) => x.href === actual) ?? m.subs.find((x) => x.href === pathname)
     if (s) return { modulo: m, sub: s, exacta: true }
   }
   let mejor: { modulo: Modulo; largo: number } | null = null
@@ -167,6 +175,6 @@ export function ubicar(pathname: string) {
     }
   }
   if (!mejor) return null
-  const sub = [...mejor.modulo.subs].sort((a, b) => b.href.length - a.href.length).find((s) => pathname.startsWith(s.href)) ?? null
+  const sub = [...mejor.modulo.subs].sort((a, b) => b.href.length - a.href.length).find((s) => pathname.startsWith(ruta(s.href))) ?? null
   return { modulo: mejor.modulo, sub, exacta: false }
 }

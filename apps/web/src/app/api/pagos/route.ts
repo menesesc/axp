@@ -41,6 +41,8 @@ export async function GET(request: NextRequest) {
   const estado = searchParams.get('estado')
   const proveedorId = searchParams.get('proveedorId')
   const q = searchParams.get('q')?.trim()
+  const desde = searchParams.get('desde')
+  const hasta = searchParams.get('hasta')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
@@ -53,6 +55,15 @@ export async function GET(request: NextRequest) {
 
   if (proveedorId) {
     where.proveedorId = proveedorId
+  }
+
+  // Rango de fechas de la orden (YYYY-MM-DD; la columna es @db.Date).
+  const esFecha = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
+  if (esFecha(desde) || esFecha(hasta)) {
+    where.fecha = {
+      ...(esFecha(desde) ? { gte: new Date(`${desde}T00:00:00Z`) } : {}),
+      ...(esFecha(hasta) ? { lte: new Date(`${hasta}T00:00:00Z`) } : {}),
+    }
   }
 
   if (q) {

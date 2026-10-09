@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { Suspense } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import type { Route } from 'next'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/hooks/use-user'
@@ -21,9 +22,10 @@ export interface HeaderProps {
 }
 
 /** Pestañas con las pantallas del módulo que el usuario puede abrir. */
-export function PestanasModulo({ pathname }: { pathname: string }) {
+function Pestanas({ pathname }: { pathname: string }) {
   const { can } = useUser()
-  const actual = ubicar(pathname)
+  const vista = useSearchParams().get('vista')
+  const actual = ubicar(pathname, vista)
   if (!actual) return null
   const subs = subsVisibles(actual.modulo, can)
   if (subs.length < 2) return null
@@ -32,12 +34,21 @@ export function PestanasModulo({ pathname }: { pathname: string }) {
       {subs.map((s) => {
         const activa = actual.sub?.href === s.href
         return (
-          <Link key={s.href} href={s.href as Route} className="ax-subtab" data-activo={activa ? '1' : '0'} aria-current={activa ? 'page' : undefined}>
+          <Link key={s.href} href={s.href as Route} scroll={false} className="ax-subtab" data-activo={activa ? '1' : '0'} aria-current={activa ? 'page' : undefined}>
             {s.nombre}
           </Link>
         )
       })}
     </nav>
+  )
+}
+
+export function PestanasModulo({ pathname }: { pathname: string }) {
+  // useSearchParams necesita un Suspense para que el build no falle.
+  return (
+    <Suspense fallback={null}>
+      <Pestanas pathname={pathname} />
+    </Suspense>
   )
 }
 
