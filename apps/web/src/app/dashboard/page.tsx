@@ -34,14 +34,8 @@ import { SelectorPeriodo, periodoDe, type Periodo } from '@/components/ui/period
 type Vista = 'hoy' | 'finanzas' | 'compras'
 
 const ESCENA: Record<Vista, NombreEscena> = { hoy: 'inicio', finanzas: 'pagos', compras: 'stock' }
-const BAJADA: Record<Vista, string> = {
-  hoy: 'Lo que pasó hoy y lo que pide tu atención.',
-  finanzas: 'Cuánto debés, qué vence y en qué se va la plata.',
-  compras: 'Qué compraste, a quién y qué subió de precio.',
-}
-
 const fechaLarga = () => {
-  const s = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
+  const s = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' }).replace(',', '')
   return s[0]!.toUpperCase() + s.slice(1)
 }
 
@@ -194,7 +188,7 @@ export default function Inicio() {
 
   return (
     <DashboardLayout>
-      <Header title={`Hola, ${user?.nombre?.split(' ')[0] ?? ''}`} description={`${fechaLarga()}${clienteNombre ? ` · ${clienteNombre}` : ''}. ${BAJADA[vista]}`} escena={ESCENA[vista]} actions={acciones} />
+      <Header title={`Hola, ${user?.nombre?.split(' ')[0] ?? ''}`} description={[fechaLarga(), clienteNombre?.trim()].filter(Boolean).join(' · ')} escena={ESCENA[vista]} actions={acciones} />
 
       {vista === 'hoy' && (
         <>

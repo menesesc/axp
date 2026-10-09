@@ -6,11 +6,23 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { hoyAR, inicioDeMesAR, mesAnteriorAR, sumarDias } from '@/lib/fechas'
 import { cn } from '@/lib/utils'
 
-export type ClavePeriodo = 'mes' | 'mesAnterior' | 'ultimos30' | 'trimestre' | 'anio' | 'personalizado'
+export type ClavePeriodo =
+  | 'todo'
+  | 'hoy'
+  | 'ayer'
+  | 'semana'
+  | 'semanaAnterior'
+  | 'mes'
+  | 'mesAnterior'
+  | 'ultimos30'
+  | 'trimestre'
+  | 'anio'
+  | 'personalizado'
+export type AtajoPeriodo = Exclude<ClavePeriodo, 'personalizado'>
 
 export interface Periodo {
   clave: ClavePeriodo
-  /** YYYY-MM-DD, fecha argentina. */
+  /** YYYY-MM-DD, fecha argentina. Vacío en "todo". */
   desde: string
   hasta: string
   /** Texto corto para títulos: "Este mes", "Septiembre", "Del 1/9 al 15/9". */
@@ -23,10 +35,30 @@ const corta = (iso: string) => {
   return `${Number(d)}/${Number(m)}`
 }
 
+/** Lunes de la semana de `iso` (semana de lunes a domingo). */
+function lunesDe(iso: string) {
+  const dia = new Date(`${iso}T12:00:00Z`).getUTCDay()
+  return sumarDias(iso, -(dia === 0 ? 6 : dia - 1))
+}
+
 /** Calcula el rango de un atajo en hora argentina (no UTC). */
-export function periodoDe(clave: Exclude<ClavePeriodo, 'personalizado'>, hoy: string = hoyAR()): Periodo {
+export function periodoDe(clave: AtajoPeriodo, hoy: string = hoyAR()): Periodo {
   const [a, m] = hoy.split('-').map(Number) as [number, number]
   switch (clave) {
+    case 'todo':
+      return { clave, desde: '', hasta: '', etiqueta: 'Todas las fechas' }
+    case 'hoy':
+      return { clave, desde: hoy, hasta: hoy, etiqueta: 'Hoy' }
+    case 'ayer': {
+      const ayer = sumarDias(hoy, -1)
+      return { clave, desde: ayer, hasta: ayer, etiqueta: 'Ayer' }
+    }
+    case 'semana':
+      return { clave, desde: lunesDe(hoy), hasta: hoy, etiqueta: 'Esta semana' }
+    case 'semanaAnterior': {
+      const lunes = sumarDias(lunesDe(hoy), -7)
+      return { clave, desde: lunes, hasta: sumarDias(lunes, 6), etiqueta: 'Semana anterior' }
+    }
     case 'mes':
       return { clave, desde: inicioDeMesAR(hoy), hasta: hoy, etiqueta: 'Este mes' }
     case 'mesAnterior': {
@@ -49,20 +81,40 @@ export function periodoPersonalizado(desde: string, hasta: string): Periodo {
   return { clave: 'personalizado', desde, hasta, etiqueta: `Del ${corta(desde)} al ${corta(hasta)}` }
 }
 
-const ATAJOS: Array<{ clave: Exclude<ClavePeriodo, 'personalizado'>; texto: string }> = [
-  { clave: 'mes', texto: 'Este mes' },
-  { clave: 'mesAnterior', texto: 'Mes anterior' },
-  { clave: 'ultimos30', texto: 'Últimos 30 días' },
-  { clave: 'trimestre', texto: 'Este trimestre' },
-  { clave: 'anio', texto: 'Este año' },
-]
+const TEXTO: Record<AtajoPeriodo, string> = {
+  todo: 'Todas las fechas',
+  hoy: 'Hoy',
+  ayer: 'Ayer',
+  semana: 'Esta semana',
+  semanaAnterior: 'Semana anterior',
+  mes: 'Este mes',
+  mesAnterior: 'Mes anterior',
+  ultimos30: 'Últimos 30 días',
+  trimestre: 'Este trimestre',
+  anio: 'Este año',
+}
+
+/** Atajos para informes y totales (por defecto). */
+export const ATAJOS_INFORME: AtajoPeriodo[] = ['mes', 'mesAnterior', 'ultimos30', 'trimestre', 'anio']
+/** Atajos para listados (comprobantes, items): arrancan en "todas las fechas". */
+export const ATAJOS_LISTADO: AtajoPeriodo[] = ['todo', 'hoy', 'ayer', 'semana', 'semanaAnterior', 'mes', 'mesAnterior']
 
 /**
  * Selector de período compacto: un botón con el período elegido que abre los
  * atajos y un rango a medida. Mismo control en el dashboard, informes y
  * listados con fechas.
  */
-export function SelectorPeriodo({ valor, onCambiar, className }: { valor: Periodo; onCambiar: (p: Periodo) => void; className?: string }) {
+export function SelectorPeriodo({
+  valor,
+  onCambiar,
+  atajos = ATAJOS_INFORME,
+  className,
+}: {
+  valor: Periodo
+  onCambiar: (p: Periodo) => void
+  atajos?: AtajoPeriodo[]
+  className?: string | undefined
+}) {
   const [abierto, setAbierto] = useState(false)
   const [desde, setDesde] = useState(valor.desde)
   const [hasta, setHasta] = useState(valor.hasta)
@@ -83,7 +135,7 @@ export function SelectorPeriodo({ valor, onCambiar, className }: { valor: Period
         <button
           type="button"
           className={cn(
-            'inline-flex h-10 items-center gap-2 rounded-xl border border-slate-900/[0.12] bg-white px-3.5 text-sm font-medium text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-colors hover:bg-slate-50',
+            'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-900/[0.12] bg-white px-3.5 text-sm font-medium text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-colors hover:bg-slate-50',
             className
           )}
           aria-label={`Período: ${valor.etiqueta}. Cambiar`}
@@ -95,7 +147,8 @@ export function SelectorPeriodo({ valor, onCambiar, className }: { valor: Period
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-1.5">
         <ul className="space-y-0.5">
-          {ATAJOS.map((a) => {
+          {atajos.map((clave) => {
+            const a = { clave, texto: TEXTO[clave] }
             const activo = valor.clave === a.clave
             return (
               <li key={a.clave}>

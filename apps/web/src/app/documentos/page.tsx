@@ -454,43 +454,37 @@ function DocumentosPageContent() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Header
-            title="Documentos"
-            description={pagination ? `${pagination.total} documentos en total` : undefined}
-          />
-          {isAdmin && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={handleRecalculate}
-                disabled={pendingInSelection === 0 || recalculateMutation.isPending}
-                className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-              >
-                <RefreshCw className={`h-4 w-4 mr-1.5 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
-                Recalcular
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleAIReview}
-                disabled={pendingInSelection === 0}
-                className="text-violet-700 border-violet-300 hover:bg-violet-50"
-              >
-                <Sparkles className="h-4 w-4 mr-1.5" />
-                Revisar con IA
-                {pendingInSelection > 0 && (
-                  <span className="ml-1.5 bg-violet-100 text-violet-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
-                    {pendingInSelection}
-                  </span>
-                )}
-              </Button>
-              <Button variant="outline" onClick={() => setUploadOpen(true)}>
-                <Upload className="h-4 w-4 mr-1.5" />
-                Subir documentos
-              </Button>
-            </div>
-          )}
-        </div>
+        <Header
+          title="Comprobantes"
+          description={pagination ? `${pagination.total.toLocaleString('es-AR')} comprobantes. Las facturas que te mandan tus proveedores, leídas y ordenadas.` : 'Las facturas que te mandan tus proveedores, leídas y ordenadas.'}
+          actions={
+            isAdmin ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleAIReview}
+                  disabled={pendingInSelection === 0}
+                  title={pendingInSelection === 0 ? 'Elegí comprobantes pendientes en la tabla' : undefined}
+                >
+                  <Sparkles className="h-4 w-4 text-violet-600" />
+                  Revisar con IA
+                  {pendingInSelection > 0 && (
+                    <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-700">{pendingInSelection}</span>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleRecalculate}
+                  disabled={pendingInSelection === 0 || recalculateMutation.isPending}
+                  title={pendingInSelection === 0 ? 'Elegí comprobantes pendientes en la tabla' : undefined}
+                >
+                  <RefreshCw className={`h-4 w-4 text-emerald-600 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
+                  Recalcular
+                </Button>
+              </>
+            ) : undefined
+          }
+        />
 
         <DocumentFilters
           search={search}

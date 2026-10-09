@@ -28,7 +28,7 @@ export function PestanasModulo({ pathname }: { pathname: string }) {
   const subs = subsVisibles(actual.modulo, can)
   if (subs.length < 2) return null
   return (
-    <nav className="ax-subnav ax-sin-barra mb-6 flex gap-1 overflow-x-auto" aria-label={`Secciones de ${actual.modulo.nombre}`}>
+    <nav className="ax-subnav ax-sin-barra mt-6 flex gap-1 overflow-x-auto" aria-label={`Secciones de ${actual.modulo.nombre}`}>
       {subs.map((s) => {
         const activa = actual.sub?.href === s.href
         return (
@@ -66,8 +66,8 @@ export function Header({ title, description, actions, children, className, escen
 
   const nombreEscena = escena === false ? null : (escena ?? actual!.modulo.escena)
   return (
-    <>
-      <section className={cn('ax-hero ax-entra', !nombreEscena && 'ax-hero-sin-escena', className)}>
+    <div className={cn('mb-6', className)}>
+      <section className={cn('ax-hero ax-entra', !nombreEscena && 'ax-hero-sin-escena')}>
         <div className="relative z-10 min-w-0 py-1">
           <h1 className="ax-display text-[clamp(1.7rem,3vw,2.3rem)] font-semibold leading-tight text-[var(--texto)]">{title}</h1>
           {description && <p className="mt-1.5 max-w-xl text-[15px] text-[var(--sec)]">{description}</p>}
@@ -80,8 +80,7 @@ export function Header({ title, description, actions, children, className, escen
         )}
       </section>
       <PestanasModulo pathname={pathname} />
-      <div className="ax-hero-sep" />
-    </>
+    </div>
   )
 }
 

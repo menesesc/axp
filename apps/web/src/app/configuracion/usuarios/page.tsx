@@ -1,66 +1,77 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DashboardLayout } from '@/components/layout/dashboard-layout';
+import { Header } from '@/components/layout/header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { useUser } from '@/hooks/use-user'
-import { toast } from 'sonner'
-import { UserPlus, Mail, Phone, Shield, Eye, Loader2, Trash2, Check, X, Pencil } from 'lucide-react'
-import { PermisosMatriz, PermisosResumen } from '@/components/configuracion/permisos-matriz'
-import { DepositosPermitidos } from '@/components/configuracion/depositos-permitidos'
+} from '@/components/ui/dialog';
+import { useUser } from '@/hooks/use-user';
+import { toast } from 'sonner';
+import {
+  UserPlus,
+  Mail,
+  Phone,
+  Shield,
+  Eye,
+  Loader2,
+  Trash2,
+  Check,
+  X,
+  Pencil,
+} from 'lucide-react';
+import { PermisosMatriz, PermisosResumen } from '@/components/configuracion/permisos-matriz';
+import { DepositosPermitidos } from '@/components/configuracion/depositos-permitidos';
 
 interface Usuario {
-  id: string
-  email: string
-  nombre: string
-  rol: 'SUPERADMIN' | 'ADMIN' | 'USER'
-  tipo_acceso: 'ADMIN' | 'VIEWER'
-  permisos: string[]
-  depositos: string[]
-  telefono: string | null
-  activo: boolean
-  canSendDocs: boolean
+  id: string;
+  email: string;
+  nombre: string;
+  rol: 'SUPERADMIN' | 'ADMIN' | 'USER';
+  tipo_acceso: 'ADMIN' | 'VIEWER';
+  permisos: string[];
+  depositos: string[];
+  telefono: string | null;
+  activo: boolean;
+  canSendDocs: boolean;
 }
 
 export default function UsuariosPage() {
-  const { clienteId, isAdmin } = useUser()
-  const queryClient = useQueryClient()
-  const [isAddingUser, setIsAddingUser] = useState(false)
-  const [editingUser, setEditingUser] = useState<Usuario | null>(null)
+  const { clienteId, isAdmin } = useUser();
+  const queryClient = useQueryClient();
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [editingUser, setEditingUser] = useState<Usuario | null>(null);
   const [newUser, setNewUser] = useState({
     email: '',
     nombre: '',
     tipo_acceso: 'VIEWER' as 'ADMIN' | 'VIEWER',
     telefono: '',
     permisos: [] as string[],
-  })
+  });
 
   const { data, isLoading } = useQuery<{ usuarios: Usuario[] }>({
     queryKey: ['usuarios', clienteId],
     queryFn: async () => {
-      const res = await fetch('/api/configuracion/usuarios')
-      if (!res.ok) throw new Error('Failed to fetch')
-      return res.json()
+      const res = await fetch('/api/configuracion/usuarios');
+      if (!res.ok) throw new Error('Failed to fetch');
+      return res.json();
     },
     enabled: !!clienteId && isAdmin,
-  })
+  });
 
   const createMutation = useMutation({
     mutationFn: async (userData: typeof newUser) => {
@@ -68,23 +79,23 @@ export default function UsuariosPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData),
-      })
+      });
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to create')
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to create');
       }
-      return res.json()
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['usuarios'] })
-      setIsAddingUser(false)
-      setNewUser({ email: '', nombre: '', tipo_acceso: 'VIEWER', telefono: '', permisos: [] })
-      toast.success('Usuario creado. Se envió invitación por email.')
+      queryClient.invalidateQueries({ queryKey: ['usuarios'] });
+      setIsAddingUser(false);
+      setNewUser({ email: '', nombre: '', tipo_acceso: 'VIEWER', telefono: '', permisos: [] });
+      toast.success('Usuario creado. Se envió invitación por email.');
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Error al crear usuario')
+      toast.error(error.message || 'Error al crear usuario');
     },
-  })
+  });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Usuario> }) => {
@@ -92,40 +103,40 @@ export default function UsuariosPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
-      })
+      });
       // Mostrar el mensaje real del servidor: "Error al actualizar" a secas
       // obliga a adivinar qué falló.
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(json?.error || `Error ${res.status} al actualizar`)
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || `Error ${res.status} al actualizar`);
       }
-      return res.json()
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['usuarios'] })
-      toast.success('Usuario actualizado')
+      queryClient.invalidateQueries({ queryKey: ['usuarios'] });
+      toast.success('Usuario actualizado');
     },
     onError: (e: Error) => {
-      toast.error(e.message)
+      toast.error(e.message);
     },
-  })
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/configuracion/usuarios/${id}`, {
         method: 'DELETE',
-      })
-      if (!res.ok) throw new Error('Failed to delete')
-      return res.json()
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['usuarios'] })
-      toast.success('Usuario eliminado')
+      queryClient.invalidateQueries({ queryKey: ['usuarios'] });
+      toast.success('Usuario eliminado');
     },
     onError: () => {
-      toast.error('Error al eliminar')
+      toast.error('Error al eliminar');
     },
-  })
+  });
 
   if (!isAdmin) {
     return (
@@ -134,119 +145,121 @@ export default function UsuariosPage() {
           No tienes permisos para acceder a esta sección
         </div>
       </DashboardLayout>
-    )
+    );
   }
 
-  const usuarios = data?.usuarios || []
+  const usuarios = data?.usuarios || [];
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Header
-            title="Usuarios"
-            description={`${usuarios.length} usuario${usuarios.length !== 1 ? 's' : ''} en tu empresa`}
-          />
-          <Dialog open={isAddingUser} onOpenChange={setIsAddingUser}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Invitar usuario
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Invitar nuevo usuario</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email *
-                  </label>
-                  <Input
-                    type="email"
-                    placeholder="usuario@empresa.com"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  />
+        <Header
+          title="Usuarios"
+          description={`${usuarios.length} usuario${usuarios.length !== 1 ? 's' : ''} en tu empresa`}
+          actions={
+            <Dialog open={isAddingUser} onOpenChange={setIsAddingUser}>
+              <DialogTrigger asChild>
+                <Button>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Invitar usuario
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Invitar nuevo usuario</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+                    <Input
+                      type="email"
+                      placeholder="usuario@empresa.com"
+                      value={newUser.email}
+                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Nombre completo *
+                    </label>
+                    <Input
+                      placeholder="Juan Pérez"
+                      value={newUser.nombre}
+                      onChange={(e) => setNewUser({ ...newUser, nombre: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Teléfono (para WhatsApp)
+                    </label>
+                    <Input
+                      type="tel"
+                      placeholder="+54 9 11 1234-5678"
+                      value={newUser.telefono}
+                      onChange={(e) => setNewUser({ ...newUser, telefono: e.target.value })}
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Necesario para habilitar envío de documentos por WhatsApp
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Tipo de acceso
+                    </label>
+                    <Select
+                      value={newUser.tipo_acceso}
+                      onValueChange={(v) =>
+                        setNewUser({ ...newUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="VIEWER">
+                          <div className="flex items-center gap-2">
+                            <Eye className="h-4 w-4" />
+                            <span>Permisos por sección</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="ADMIN">
+                          <div className="flex items-center gap-2">
+                            <Shield className="h-4 w-4" />
+                            <span>Administrador</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {newUser.tipo_acceso === 'ADMIN' ? (
+                    <p className="rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2 text-xs text-purple-700">
+                      Un administrador accede a todas las secciones, incluida Configuración.
+                    </p>
+                  ) : (
+                    <PermisosMatriz
+                      permisos={newUser.permisos}
+                      onChange={(permisos) => setNewUser({ ...newUser, permisos })}
+                    />
+                  )}
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="ghost" onClick={() => setIsAddingUser(false)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={() => createMutation.mutate(newUser)}
+                      disabled={!newUser.email || !newUser.nombre || createMutation.isPending}
+                    >
+                      {createMutation.isPending && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}
+                      Enviar invitación
+                    </Button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Nombre completo *
-                  </label>
-                  <Input
-                    placeholder="Juan Pérez"
-                    value={newUser.nombre}
-                    onChange={(e) => setNewUser({ ...newUser, nombre: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Teléfono (para WhatsApp)
-                  </label>
-                  <Input
-                    type="tel"
-                    placeholder="+54 9 11 1234-5678"
-                    value={newUser.telefono}
-                    onChange={(e) => setNewUser({ ...newUser, telefono: e.target.value })}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Necesario para habilitar envío de documentos por WhatsApp
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Tipo de acceso
-                  </label>
-                  <Select
-                    value={newUser.tipo_acceso}
-                    onValueChange={(v) => setNewUser({ ...newUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="VIEWER">
-                        <div className="flex items-center gap-2">
-                          <Eye className="h-4 w-4" />
-                          <span>Permisos por sección</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="ADMIN">
-                        <div className="flex items-center gap-2">
-                          <Shield className="h-4 w-4" />
-                          <span>Administrador</span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {newUser.tipo_acceso === 'ADMIN' ? (
-                  <p className="rounded-lg border border-purple-200 bg-purple-50/50 px-3 py-2 text-xs text-purple-700">
-                    Un administrador accede a todas las secciones, incluida Configuración.
-                  </p>
-                ) : (
-                  <PermisosMatriz
-                    permisos={newUser.permisos}
-                    onChange={(permisos) => setNewUser({ ...newUser, permisos })}
-                  />
-                )}
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="ghost" onClick={() => setIsAddingUser(false)}>
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={() => createMutation.mutate(newUser)}
-                    disabled={!newUser.email || !newUser.nombre || createMutation.isPending}
-                  >
-                    {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Enviar invitación
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+              </DialogContent>
+            </Dialog>
+          }
+        />
 
         {/* Edit user dialog */}
         <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
@@ -257,15 +270,8 @@ export default function UsuariosPage() {
             {editingUser && (
               <div className="space-y-4 pt-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Email
-                  </label>
-                  <Input
-                    type="email"
-                    value={editingUser.email}
-                    disabled
-                    className="bg-slate-50"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                  <Input type="email" value={editingUser.email} disabled className="bg-slate-50" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -282,7 +288,9 @@ export default function UsuariosPage() {
                   </label>
                   <Select
                     value={editingUser.tipo_acceso}
-                    onValueChange={(v) => setEditingUser({ ...editingUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })}
+                    onValueChange={(v) =>
+                      setEditingUser({ ...editingUser, tipo_acceso: v as 'ADMIN' | 'VIEWER' })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -314,7 +322,9 @@ export default function UsuariosPage() {
                       onChange={(permisos) => setEditingUser({ ...editingUser, permisos })}
                     />
                     {/* El alcance del conteo solo tiene sentido si puede entrar a Conteo. */}
-                    {(editingUser.permisos ?? []).some((p) => p.startsWith('conciliacion.stock:')) && (
+                    {(editingUser.permisos ?? []).some((p) =>
+                      p.startsWith('conciliacion.stock:')
+                    ) && (
                       <DepositosPermitidos
                         valor={editingUser.depositos ?? []}
                         onChange={(depositos) => setEditingUser({ ...editingUser, depositos })}
@@ -323,15 +333,11 @@ export default function UsuariosPage() {
                   </>
                 )}
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-slate-700">
-                    Estado
-                  </label>
+                  <label className="text-sm font-medium text-slate-700">Estado</label>
                   <button
                     onClick={() => setEditingUser({ ...editingUser, activo: !editingUser.activo })}
                     className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      editingUser.activo
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
+                      editingUser.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                     }`}
                   >
                     {editingUser.activo ? 'Activo' : 'Inactivo'}
@@ -352,8 +358,8 @@ export default function UsuariosPage() {
                           permisos: editingUser.permisos ?? [],
                           depositos: editingUser.depositos ?? [],
                         },
-                      })
-                      setEditingUser(null)
+                      });
+                      setEditingUser(null);
                     }}
                     disabled={updateMutation.isPending}
                   >
@@ -413,36 +419,42 @@ export default function UsuariosPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => updateMutation.mutate({
-                          id: usuario.id,
-                          updates: { canSendDocs: !usuario.canSendDocs },
-                        })}
+                        onClick={() =>
+                          updateMutation.mutate({
+                            id: usuario.id,
+                            updates: { canSendDocs: !usuario.canSendDocs },
+                          })
+                        }
                         className={`p-1.5 rounded-full ${
                           usuario.canSendDocs
                             ? 'bg-green-100 text-green-600'
                             : 'bg-slate-100 text-slate-400'
                         }`}
-                        title={usuario.canSendDocs ? 'Puede enviar documentos' : 'No puede enviar documentos'}
+                        title={
+                          usuario.canSendDocs
+                            ? 'Puede enviar documentos'
+                            : 'No puede enviar documentos'
+                        }
                       >
-                        {usuario.canSendDocs ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                        {usuario.canSendDocs ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <X className="h-4 w-4" />
+                        )}
                       </button>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                        usuario.activo
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                          usuario.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}
+                      >
                         {usuario.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingUser(usuario)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => setEditingUser(usuario)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
@@ -451,7 +463,7 @@ export default function UsuariosPage() {
                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           onClick={() => {
                             if (confirm('¿Eliminar este usuario?')) {
-                              deleteMutation.mutate(usuario.id)
+                              deleteMutation.mutate(usuario.id);
                             }
                           }}
                         >
@@ -464,13 +476,11 @@ export default function UsuariosPage() {
               </tbody>
             </table>
             {usuarios.length === 0 && (
-              <div className="text-center py-12 text-slate-500">
-                No hay usuarios registrados
-              </div>
+              <div className="text-center py-12 text-slate-500">No hay usuarios registrados</div>
             )}
           </div>
         )}
       </div>
     </DashboardLayout>
-  )
+  );
 }
