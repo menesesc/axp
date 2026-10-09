@@ -106,17 +106,26 @@ export default function PDFViewer({ url }: PDFViewerProps) {
         </div>
       </div>
       
-      <div 
-        className="relative bg-gray-100" 
-        style={{ height: 'calc(100vh - 200px)' }}
-      >
-        <iframe
-          ref={iframeRef}
-          key={`${zoom}-${page}-${rotation}`}
-          src={getPdfUrl()}
-          className="w-full h-full border-0"
-          title="PDF Viewer"
-        />
+      {/* Marco con proporción A4 (210 x 297 mm). Antes era una altura fija
+          atada al viewport, así que la hoja quedaba achatada o estirada según
+          la pantalla y sobraba gris a los costados.
+
+          El ancho máximo sale de la altura disponible por 0.707 (=210/297):
+          en pantalla ancha manda el alto y la hoja entra entera sin scroll;
+          en pantalla angosta manda el ancho y el alto lo sigue. */}
+      <div className="bg-gray-100 p-3">
+        <div
+          className="relative mx-auto aspect-[210/297] w-full overflow-hidden rounded bg-white shadow-sm"
+          style={{ maxWidth: 'min(100%, calc((100vh - 15rem) * 0.707))' }}
+        >
+          <iframe
+            ref={iframeRef}
+            key={`${zoom}-${page}-${rotation}`}
+            src={getPdfUrl()}
+            className="absolute inset-0 h-full w-full border-0"
+            title="PDF Viewer"
+          />
+        </div>
       </div>
     </div>
   )

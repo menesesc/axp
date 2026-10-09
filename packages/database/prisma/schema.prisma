@@ -234,6 +234,8 @@ model proveedores {
   adminTelefono    String?      @db.VarChar(30)
   diasEntrega      Int? // días desde el pedido hasta la entrega (0 = en el día)
   cbu              String?      @db.VarChar(22) // cuenta destino para transferencias (archivo Galicia)
+  /// Logo del proveedor en R2. Se reutiliza en dashboard, ficha y pedidos.
+  logoKey          String?      @db.VarChar(500)
   activo           Boolean      @default(true)
   createdAt        DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime     @db.Timestamptz(3)

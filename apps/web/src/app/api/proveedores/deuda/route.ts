@@ -25,6 +25,7 @@ export async function GET() {
     const deuda = await prisma.$queryRaw<Array<{
       proveedor_id: string
       razon_social: string
+      logo_key: string | null
       saldo: number
       cantidad_docs: number
       factura_vieja_mas: Date | null
@@ -33,6 +34,7 @@ export async function GET() {
       SELECT
         p.id as proveedor_id,
         p."razonSocial" as razon_social,
+        p."logoKey" as logo_key,
         (
           COALESCE(SUM(CASE WHEN d.tipo = 'FACTURA' THEN d.total ELSE 0 END), 0)
           - COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN ABS(d.total) ELSE 0 END), 0)
@@ -57,7 +59,7 @@ export async function GET() {
       ) pagos ON true
       WHERE p."clienteId" = ${clienteId}::uuid
         AND p.activo = true
-      GROUP BY p.id, p."razonSocial", pagos.total_pagado, pagos.ultimo_pago
+      GROUP BY p.id, p."razonSocial", p."logoKey", pagos.total_pagado, pagos.ultimo_pago
       HAVING (
         COALESCE(SUM(CASE WHEN d.tipo = 'FACTURA' THEN d.total ELSE 0 END), 0)
         - COALESCE(SUM(CASE WHEN d.tipo = 'NOTA_CREDITO' THEN ABS(d.total) ELSE 0 END), 0)
@@ -86,6 +88,7 @@ export async function GET() {
       return {
         proveedorId: row.proveedor_id,
         razonSocial: row.razon_social,
+        conLogo: !!row.logo_key,
         saldo: row.saldo,
         cantidadDocs: Number(row.cantidad_docs),
         facturaViejaMas: facturaVieja,

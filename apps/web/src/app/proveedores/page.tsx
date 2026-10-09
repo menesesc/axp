@@ -60,6 +60,8 @@ import {
   Landmark,
 } from 'lucide-react'
 import { waLink } from '@/lib/whatsapp'
+import Link from 'next/link'
+import { LogoProveedorEditable } from '@/components/proveedores/logo-proveedor'
 
 interface Proveedor {
   id: string
@@ -78,6 +80,7 @@ interface Proveedor {
   diasEntrega: number | null
   cbu: string | null
   activo: boolean
+  conLogo?: boolean
   documentosCount: number
 }
 
@@ -480,11 +483,19 @@ export default function ProveedoresPage() {
                   <TableRow key={proveedor.id} className="group">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center">
-                          <Building2 className="h-4 w-4 text-slate-600" />
-                        </div>
+                        <LogoProveedorEditable
+                          id={proveedor.id}
+                          nombre={proveedor.razonSocial}
+                          conLogo={!!proveedor.conLogo}
+                          size={36}
+                        />
                         <div>
-                          <div className="font-medium text-slate-900">{proveedor.razonSocial}</div>
+                          <Link
+                            href={`/proveedores/${proveedor.id}`}
+                            className="font-medium text-slate-900 hover:text-blue-700 hover:underline"
+                          >
+                            {proveedor.razonSocial}
+                          </Link>
                           {proveedor.alias.length > 0 && (
                             <div className="text-xs text-slate-500 mt-0.5">
                               {proveedor.alias.slice(0, 2).join(', ')}

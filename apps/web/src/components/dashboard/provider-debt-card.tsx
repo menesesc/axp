@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency, cn } from '@/lib/utils'
 import { DollarSign, Calendar, ArrowRight, Wallet } from 'lucide-react'
+import { LogoProveedor } from '@/components/proveedores/logo-proveedor'
 
 interface ProveedorDeuda {
   proveedorId: string
   razonSocial: string
+  conLogo?: boolean
   saldo: number
   cantidadDocs: number
   facturaViejaMas: string | null
@@ -131,12 +133,19 @@ export function ProviderDebtCard({ data, isLoading }: ProviderDebtCardProps) {
                 {/* Row: nombre + monto */}
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <p
-                      className="text-sm text-slate-700 truncate"
+                    <LogoProveedor
+                      id={item.proveedorId}
+                      nombre={item.razonSocial}
+                      conLogo={!!item.conLogo}
+                      size={20}
+                    />
+                    <Link
+                      href={`/proveedores/${item.proveedorId}`}
+                      className="truncate text-sm text-slate-700 hover:text-blue-700 hover:underline"
                       title={item.razonSocial}
                     >
                       {item.razonSocial}
-                    </p>
+                    </Link>
                     {/* Aging indicator dot */}
                     <div
                       className={cn(

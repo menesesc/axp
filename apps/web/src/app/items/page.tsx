@@ -31,6 +31,7 @@ import { useUser } from '@/hooks/use-user'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { SECCION } from '@/lib/permisos'
 import { CategoriaCell, CategoriasPanel, useCategorias } from '@/components/compras/categorias-panel'
+import { LogoProveedor } from '@/components/proveedores/logo-proveedor'
 import {
   Search,
   ChevronLeft,
@@ -107,6 +108,7 @@ interface Item {
   proveedor: {
     id: string
     razonSocial: string
+    conLogo?: boolean
   } | null
   categoria: {
     id: string
@@ -595,70 +597,98 @@ function ItemsPageContent() {
               ) : (
                 <Table>
                   <TableHeader>
+                    {/* Cuatro columnas en vez de ocho. El item y el
+                        comprobante agrupan lo que antes eran dos columnas cada
+                        uno: con ocho, ninguna tenía ancho para mostrarse y
+                        todo quedaba truncado. */}
                     <TableRow>
-                      <TableHead>Documento</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Proveedor</TableHead>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead className="text-right">Cant.</TableHead>
-                      <TableHead className="text-right">P. Unit.</TableHead>
-                      <TableHead className="text-right">Subtotal</TableHead>
+                      <TableHead className="w-full">Item</TableHead>
+                      <TableHead className="hidden w-[230px] md:table-cell">Comprobante</TableHead>
+                      <TableHead className="hidden w-px whitespace-nowrap text-right sm:table-cell">Cant. × P. unit.</TableHead>
+                      <TableHead className="w-px whitespace-nowrap text-right">Subtotal</TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.items.map((item) => (
                       <TableRow key={item.id} className={isFetching ? 'opacity-50' : ''}>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          <Link href={`/documento/${item.documento.id}`} className="text-blue-600 hover:text-blue-800 hover:underline">
-                            {item.documento.fechaEmision ? formatDate(item.documento.fechaEmision) : '-'}
-                          </Link>
-                          {item.documento.numeroCompleto && (
-                            <div className="text-xs text-slate-400">{item.documento.letra ? `${item.documento.letra}-` : ''}{item.documento.numeroCompleto}</div>
-                          )}
-                        </TableCell>
-                        <TableCell className="max-w-xs">
+                        <TableCell className="w-full max-w-0 py-2.5">
                           <div className="truncate font-medium" title={item.descripcion}>
                             {item.descripcion}
                           </div>
-                          {item.insumo && (
-                            <div className="inline-flex items-center gap-1 text-[11px] text-emerald-700" title="Computa en stock y conciliación como este insumo">
-                              <Carrot className="h-3 w-3" />
-                              {item.insumo.nombre}
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <CategoriaCell
+                              descripcion={item.descripcion}
+                              categoria={item.categoria}
+                              categorias={categoriasLista}
+                              canEdit={editaItems}
+                            />
+                            {item.insumo && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700" title="Computa en stock y conciliación como este insumo">
+                                <Carrot className="h-3 w-3" />
+                                {item.insumo.nombre}
+                              </span>
+                            )}
+                            {/* El proveedor también acá en mobile, donde la
+                                columna del comprobante no se muestra. */}
+                            {item.proveedor && (
+                              <Link
+                                href={`/proveedores/${item.proveedor.id}`}
+                                className="max-w-[55%] truncate text-[11px] text-slate-400 hover:text-slate-700 hover:underline md:hidden"
+                              >
+                                {item.proveedor.razonSocial}
+                              </Link>
+                            )}
+                            {/* Y en pantallas chicas también la cantidad, que
+                                pierde su columna. */}
+                            <span className="whitespace-nowrap text-[11px] tabular-nums text-slate-400 sm:hidden">
+                              {item.cantidad?.toLocaleString() || '-'}
+                              {item.precioUnitario ? ` × ${formatCurrency(item.precioUnitario)}` : ''}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden max-w-[230px] py-2.5 md:table-cell">
+                          <div className="flex items-center gap-2">
+                            {item.proveedor && (
+                              <LogoProveedor
+                                id={item.proveedor.id}
+                                nombre={item.proveedor.razonSocial}
+                                conLogo={!!item.proveedor.conLogo}
+                                size={28}
+                              />
+                            )}
+                            <div className="min-w-0">
+                              {item.proveedor ? (
+                                <Link
+                                  href={`/proveedores/${item.proveedor.id}`}
+                                  className="block truncate text-sm text-slate-700 hover:underline"
+                                  title={item.proveedor.razonSocial}
+                                >
+                                  {item.proveedor.razonSocial}
+                                </Link>
+                              ) : (
+                                <span className="text-sm text-slate-400">Sin proveedor</span>
+                              )}
+                              <Link
+                                href={`/documento/${item.documento.id}`}
+                                className="block truncate text-xs text-slate-400 hover:text-slate-700 hover:underline"
+                              >
+                                {item.documento.fechaEmision ? formatDate(item.documento.fechaEmision) : 's/f'}
+                                {item.documento.numeroCompleto
+                                  ? ` · ${item.documento.letra ? `${item.documento.letra}-` : ''}${item.documento.numeroCompleto}`
+                                  : ''}
+                              </Link>
                             </div>
-                          )}
+                          </div>
                         </TableCell>
-                        <TableCell className="text-sm text-slate-600 max-w-[150px] truncate">
-                          {item.proveedor ? (
-                            <Link
-                              href={`/documentos?proveedorId=${item.proveedor.id}`}
-                              className="text-blue-600 hover:text-blue-800 hover:underline"
-                              title="Ver documentos del proveedor"
-                            >
-                              {item.proveedor.razonSocial}
-                            </Link>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <CategoriaCell
-                            descripcion={item.descripcion}
-                            categoria={item.categoria}
-                            categorias={categoriasLista}
-                            canEdit={editaItems}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
+                        <TableCell className="hidden whitespace-nowrap py-2.5 text-right text-sm tabular-nums text-slate-500 sm:table-cell">
                           {item.cantidad?.toLocaleString() || '-'}
+                          {item.precioUnitario ? ` × ${formatCurrency(item.precioUnitario)}` : ''}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {item.precioUnitario ? formatCurrency(item.precioUnitario) : '-'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">
+                        <TableCell className="whitespace-nowrap py-2.5 text-right font-medium tabular-nums">
                           {item.subtotal ? formatCurrency(item.subtotal) : '-'}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-2.5 pl-0 pr-2">
                           <PdfButton pdfKey={item.documento.pdfKey} />
                         </TableCell>
                       </TableRow>

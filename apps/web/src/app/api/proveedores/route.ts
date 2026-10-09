@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
@@ -8,7 +8,7 @@ import { contactosDesde } from '@/lib/proveedores/contactos'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     // Verificar autenticación
     const { clienteId, verImportes, error } = await requireSeccion(SECCION.DOC_PROVEEDORES)
@@ -23,14 +23,29 @@ export async function GET() {
       )
     }
 
-    // Obtener proveedores del cliente
+    // `q` y `limit` los usa el buscador global (⌘K), que pide pocos y
+    // filtrados; sin ellos devuelve el listado completo como siempre.
+    const sp = request.nextUrl.searchParams
+    const q = (sp.get('q') || '').trim()
+    const limitParam = Number(sp.get('limit'))
+    const limit = limitParam > 0 ? Math.min(limitParam, 50) : undefined
+
     const proveedores = await prisma.proveedores.findMany({
       where: {
         clienteId,
+        ...(q
+          ? {
+              OR: [
+                { razonSocial: { contains: q, mode: 'insensitive' as const } },
+                { cuit: { contains: q.replace(/\D/g, '') || q } },
+              ],
+            }
+          : {}),
       },
       orderBy: {
         razonSocial: 'asc',
       },
+      ...(limit ? { take: limit } : {}),
       include: {
         _count: {
           select: {
@@ -42,10 +57,21 @@ export async function GET() {
 
     const cbus = await cbusDelCliente(clienteId)
 
+    // logoKey es columna nueva: el cliente Prisma desplegado no la conoce, así
+    // que se lee aparte con SQL y se cruza por id.
+    const conLogo = new Set(
+      (
+        await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM proveedores WHERE "clienteId" = ${clienteId}::uuid AND "logoKey" IS NOT NULL
+        `
+      ).map((r) => r.id)
+    )
+
     return json({
       proveedores: proveedores.map((p) => ({
         ...p,
         cbu: cbus.get(p.id) ?? null,
+        conLogo: conLogo.has(p.id),
         documentosCount: p._count.documentos,
       })),
     })

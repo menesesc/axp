@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Bell,
   BookOpen,
+  Building2,
   ChevronDown,
   CornerDownLeft,
   FileText,
@@ -86,6 +87,18 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
     staleTime: 30_000,
   })
 
+  const { data: proveedores } = useQuery({
+    queryKey: ['buscador-proveedores', busqueda],
+    queryFn: async () => {
+      const r = await fetch(`/api/proveedores?q=${encodeURIComponent(busqueda)}&limit=5`)
+      if (!r.ok) return []
+      const j = await r.json()
+      return (j.proveedores ?? []) as Array<{ id: string; razonSocial: string; cuit: string | null }>
+    },
+    enabled: abierto && conTexto && can(SECCION.DOC_PROVEEDORES),
+    staleTime: 30_000,
+  })
+
   const { data: items } = useQuery({
     queryKey: ['buscador-items', busqueda],
     queryFn: async () => {
@@ -112,6 +125,18 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
           icono: m.icono,
         }))
     ).slice(0, t ? 6 : 8)
+    // Los proveedores van primero: buscar por nombre de proveedor casi
+    // siempre busca al proveedor, no una factura suya suelta.
+    const marcas: Resultado[] = conTexto
+      ? (proveedores ?? []).map((pr) => ({
+          id: `pr-${pr.id}`,
+          grupo: 'Proveedores',
+          titulo: pr.razonSocial,
+          ...(pr.cuit ? { detalle: `CUIT ${pr.cuit}` } : {}),
+          href: `/proveedores/${pr.id}`,
+          icono: Building2,
+        }))
+      : []
     const comprobantes: Resultado[] = conTexto
       ? (docs ?? []).map((d) => ({
           id: `d-${d.id}`,
@@ -132,8 +157,8 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
           icono: Package,
         }))
       : []
-    return [...pantallas, ...comprobantes, ...articulos]
-  }, [q, docs, items, can, conTexto])
+    return [...marcas, ...pantallas, ...comprobantes, ...articulos]
+  }, [q, docs, items, proveedores, can, conTexto])
 
   useEffect(() => setSel(0), [q])
 
@@ -205,7 +230,7 @@ function Buscador({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => voi
         <div className="flex items-center gap-4 border-t border-[var(--borde)] bg-[var(--pizarra-2)] px-4 py-2.5 text-xs text-[var(--ter)]">
           <span className="flex items-center gap-1.5"><kbd className="ax-tecla">↑</kbd><kbd className="ax-tecla">↓</kbd> para moverte</span>
           <span className="flex items-center gap-1.5"><kbd className="ax-tecla">Enter</kbd> para abrir</span>
-          <span className="ml-auto hidden sm:block">Escribí al menos 2 letras para buscar facturas e items</span>
+          <span className="ml-auto hidden sm:block">Escribí al menos 2 letras para buscar proveedores, facturas e items</span>
         </div>
       </DialogContent>
     </Dialog>

@@ -106,6 +106,7 @@ export async function GET(request: NextRequest) {
       doc_pdf_raw: string | null
       prov_id: string | null
       prov_razon: string | null
+      prov_logo: string | null
       cat_id: string | null
       cat_nombre: string | null
       cat_abrev: string | null
@@ -131,6 +132,7 @@ export async function GET(request: NextRequest) {
         d."pdfRawKey" as doc_pdf_raw,
         p.id as prov_id,
         p."razonSocial" as prov_razon,
+        p."logoKey" as prov_logo,
         cc.id as cat_id,
         cc.nombre as cat_nombre,
         cc.abreviatura as cat_abrev,
@@ -195,6 +197,7 @@ export async function GET(request: NextRequest) {
         proveedor: item.prov_id ? {
           id: item.prov_id,
           razonSocial: item.prov_razon,
+          conLogo: !!item.prov_logo,
         } : null,
         categoria: item.cat_id ? {
           id: item.cat_id,
