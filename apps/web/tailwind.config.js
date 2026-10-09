@@ -10,11 +10,11 @@ module.exports = {
       colors: {
         border: 'hsl(214.3 31.8% 91.4%)',
         input: 'hsl(214.3 31.8% 91.4%)',
-        ring: 'hsl(221.2 83.2% 53.3%)',
+        ring: 'hsl(211 100% 62%)',
         background: 'hsl(0 0% 100%)',
         foreground: 'hsl(222.2 84% 4.9%)',
         primary: {
-          DEFAULT: 'hsl(221.2 83.2% 53.3%)',
+          DEFAULT: 'hsl(212 78% 50%)',
           foreground: 'hsl(210 40% 98%)',
         },
         secondary: {
@@ -49,9 +49,12 @@ module.exports = {
         },
       },
       borderRadius: {
-        lg: '0.5rem',
-        md: '0.375rem',
-        sm: '0.25rem',
+        lg: '0.75rem',
+        md: '0.6rem',
+        sm: '0.4rem',
+      },
+      fontFamily: {
+        display: ['var(--font-display)', 'system-ui', 'sans-serif'],
       },
       keyframes: {
         'accordion-down': {

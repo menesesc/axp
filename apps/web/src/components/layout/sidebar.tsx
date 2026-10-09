@@ -1,404 +1,132 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
+import type { Route } from 'next'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useUser } from '@/hooks/use-user'
-import { useSubscription } from '@/hooks/use-subscription'
-import { cn } from '@/lib/utils'
-import { esRutaComun, seccionesDeRuta, SECCION, type Nivel } from '@/lib/permisos'
-import { useQuery } from '@tanstack/react-query'
-import {
-  Activity,
-  BarChart3,
-  Building2,
-  CalendarDays,
-  Carrot,
-  ChefHat,
-  ChevronLeft,
-  ClipboardCheck,
-  ClipboardList,
-  CreditCard,
-  FileText,
-  LayoutDashboard,
-  LogOut,
-  Mail,
-  MailPlus,
-  Menu,
-  MessageSquareWarning,
-  Package,
-  PackageCheck,
-  PieChart,
-  ShoppingBasket,
-  ShoppingCart,
-  Sparkles,
-  UserCog,
-  Users,
-  Warehouse,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from '@/components/ui/sheet'
-import { useState } from 'react'
+import { CONFIGURACION, MENU, subsVisibles, ubicar, type Contador, type Modulo } from './navegacion'
 
-interface NavItem {
-  name: string
+export type Contadores = Partial<Record<Contador, number>>
+
+const TONO: Record<Contador, string> = {
+  pendientes: 'bg-[rgba(245,165,36,0.2)] text-[var(--ambar-2)]',
+  compras: 'bg-[rgba(239,68,68,0.14)] text-[var(--rojo-t)]',
+  logs: 'bg-[rgba(239,68,68,0.14)] text-[var(--rojo-t)]',
+}
+const PUNTO: Record<Contador, string> = {
+  pendientes: 'bg-[var(--ambar)]',
+  compras: 'bg-[var(--rojo)]',
+  logs: 'bg-[var(--rojo)]',
+}
+
+function ItemLateral({
+  m,
+  href,
+  activo,
+  mini,
+  contador,
+  onNavegar,
+}: {
+  m: Modulo
   href: string
-  icon: React.ComponentType<any>
-  badge?: boolean
-  logsBadge?: boolean
-  annotationsBadge?: boolean
-  /** Cantidad de insumos a pedir ya (Compras sugeridas). */
-  comprasBadge?: boolean
-  /**
-   * Nivel mínimo para ver el ítem. Por defecto 'view': las secciones a las que
-   * pertenece el href se resuelven solas (ver SECCIONES).
-   */
-  minimo?: Nivel
-}
-
-interface NavSection {
-  title: string
-  items: NavItem[]
-}
-
-const navigationSections: NavSection[] = [
-  {
-    title: 'Principal',
-    items: [
-      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    ],
-  },
-  {
-    title: 'Compras',
-    items: [
-      { name: 'Comprobantes', href: '/documentos', icon: FileText, badge: true },
-      { name: 'Items', href: '/items', icon: Package },
-      { name: 'Proveedores', href: '/proveedores', icon: Users },
-      { name: 'Anotaciones', href: '/anotaciones', icon: MessageSquareWarning, annotationsBadge: true },
-    ],
-  },
-  {
-    title: 'Ventas',
-    items: [
-      { name: 'Ventas', href: '/ventas', icon: ShoppingCart },
-    ],
-  },
-  {
-    title: 'Stock',
-    items: [
-      { name: 'Insumos', href: '/conciliacion/insumos', icon: Carrot },
-      { name: 'Conteo', href: '/conciliacion/stock', icon: ClipboardList },
-      { name: 'Pedidos internos', href: '/pedidos', icon: PackageCheck },
-      { name: 'Compras sugeridas', href: '/compras', icon: ShoppingBasket, comprasBadge: true },
-      { name: 'Conciliación', href: '/conciliacion', icon: ClipboardCheck },
-    ],
-  },
-  {
-    title: 'Recetario',
-    items: [
-      { name: 'Recetas', href: '/recetas', icon: ChefHat },
-    ],
-  },
-  {
-    title: 'Finanzas',
-    items: [
-      { name: 'Pagos', href: '/pagos', icon: CreditCard },
-      { name: 'Calendario', href: '/finanzas', icon: CalendarDays },
-      { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
-    ],
-  },
-  {
-    title: 'Informes',
-    items: [
-      { name: 'Resumen Ejecutivo', href: '/informes', icon: PieChart },
-      { name: 'Ventas', href: '/informes/ventas', icon: ShoppingCart },
-      { name: 'Cuenta Corriente', href: '/informes/cuenta-corriente', icon: FileText },
-      { name: 'Análisis de Precios', href: '/informes/precios', icon: BarChart3 },
-      { name: 'Compras', href: '/informes/compras', icon: Package },
-      { name: 'Proyecciones IA', href: '/informes/proyecciones', icon: Sparkles },
-    ],
-  },
-  {
-    title: 'Sistema',
-    items: [
-      { name: 'Procesamiento', href: '/procesamiento', icon: Activity, logsBadge: true },
-    ],
-  },
-  {
-    title: 'Configuración',
-    items: [
-      { name: 'Empresa', href: '/configuracion/empresa', icon: Building2 },
-      { name: 'Usuarios', href: '/configuracion/usuarios', icon: UserCog },
-      { name: 'Canales', href: '/configuracion/canales', icon: Mail },
-      { name: 'Informes por mail', href: '/configuracion/informes', icon: MailPlus },
-      { name: 'Depósitos', href: '/configuracion/depositos', icon: Warehouse },
-      { name: 'Mi Plan', href: '/configuracion/plan', icon: Sparkles },
-    ],
-  },
-]
-
-interface SidebarContentProps {
-  pathname: string
-  user: { nombre?: string } | null
-  isAdmin: boolean
-  can: (seccion: string) => boolean
-  canEdit: (seccion: string) => boolean
-  subscription: { plan_nombre?: string } | null
-  signOut: () => void
-  pendingCount?: number
-  unreadLogsCount?: number
-  collapsed?: boolean
-  onCollapse?: () => void
-}
-
-function SidebarContent({
-  pathname,
-  user,
-  isAdmin,
-  can,
-  canEdit,
-  subscription,
-  signOut,
-  pendingCount = 0,
-  unreadLogsCount = 0,
-  collapsed = false,
-  onCollapse,
-}: SidebarContentProps) {
-  /**
-   * Un ítem se ve si el usuario alcanza el nivel pedido en alguna de las
-   * secciones del href. `/ventas` lo comparten las ocho pestañas: alcanza con
-   * tener una para que el ítem aparezca en el menú.
-   */
-  // Alertas de compra (insumos en o bajo el stock seguro del central). El
-  // cálculo es pesado: se cachea unos minutos y solo si puede ver la sección.
-  const { data: alertasCompra } = useQuery({
-    queryKey: ['compras-alertas'],
-    queryFn: async () => {
-      const res = await fetch('/api/compras/alertas')
-      if (!res.ok) return { pedir: 0 }
-      return res.json() as Promise<{ pedir: number }>
-    },
-    enabled: can(SECCION.CONCILIACION_COMPRAS),
-    staleTime: 5 * 60_000,
-    refetchInterval: 10 * 60_000,
-  })
-  const comprasCount = alertasCompra?.pedir ?? 0
-
-  const puedeVerItem = (item: NavItem) => {
-    if (esRutaComun(item.href)) return true
-    const secciones = seccionesDeRuta(item.href)
-    if (secciones.length === 0) return false
-    return secciones.some((s) =>
-      item.minimo === 'edit' ? canEdit(s.value) : can(s.value)
-    )
-  }
-
+  activo: boolean
+  mini: boolean
+  contador: number
+  onNavegar?: (() => void) | undefined
+}) {
+  const Icono = m.icono
+  const tono = m.contador ?? 'pendientes'
   return (
-    <aside
-      className={cn(
-        'bg-slate-950 flex flex-col h-screen transition-all duration-300',
-        collapsed ? 'w-16' : 'w-56'
-      )}
+    <Link
+      href={href as Route}
+      onClick={() => onNavegar?.()}
+      className="ax-item"
+      data-activo={activo ? '1' : '0'}
+      data-mini={mini ? '1' : '0'}
+      aria-current={activo ? 'page' : undefined}
+      aria-label={mini ? m.nombre : undefined}
     >
-      {/* Logo */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-slate-800">
-        {!collapsed && (
-          <span className="text-lg font-semibold text-white tracking-tight">
-            AXP
-          </span>
-        )}
-        {onCollapse && (
-          <button
-            onClick={onCollapse}
-            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <ChevronLeft
-              className={cn(
-                'h-4 w-4 transition-transform',
-                collapsed && 'rotate-180'
-              )}
-            />
-          </button>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 px-2 py-3 overflow-y-auto scrollbar-hide min-h-0">
-        {navigationSections.map((section, sectionIndex) => {
-          // Cada ítem se filtra por la matriz de permisos del usuario.
-          const visibleItems = section.items.filter(puedeVerItem)
-
-          if (visibleItems.length === 0) return null
-
-          return (
-            <div key={section.title} className={cn(sectionIndex > 0 && 'mt-4')}>
-              {!collapsed && (
-                <p className="px-3 mb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">
-                  {section.title}
-                </p>
-              )}
-              {collapsed && sectionIndex > 0 && (
-                <div className="mx-3 mb-2 border-t border-slate-800" />
-              )}
-              <div className="space-y-0.5">
-                {visibleItems.map((item) => {
-                  // Match exacto: si usáramos startsWith, `/informes` matchearía
-                  // como prefijo de `/informes/ventas`, `/informes/compras`, etc.
-                  // y "Resumen Ejecutivo" quedaría activo en todos los sub-informes.
-                  const isActive = pathname === item.href
-                  const Icon = item.icon
-                  const showBadge = item.badge && pendingCount > 0
-                  const showLogsBadge = (item.logsBadge && unreadLogsCount > 0) || (item.comprasBadge && comprasCount > 0)
-                  const badgeCount = showBadge ? pendingCount : item.comprasBadge ? comprasCount : showLogsBadge ? unreadLogsCount : 0
-                  const badgeColor = showLogsBadge ? 'bg-red-500' : 'bg-amber-500'
-
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href as '/'}
-                      className={cn(
-                        'flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors group relative',
-                        isActive
-                          ? 'bg-slate-800 text-white'
-                          : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                      )}
-                      title={collapsed ? item.name : undefined}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1">{item.name}</span>
-                          {(showBadge || showLogsBadge) && (
-                            <span className={cn(
-                              'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-medium text-white',
-                              badgeColor
-                            )}>
-                              {badgeCount > 99 ? '99+' : badgeCount}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {collapsed && (showBadge || showLogsBadge) && (
-                        <span className={cn(
-                          'absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium text-white',
-                          badgeColor
-                        )}>
-                          {badgeCount > 9 ? '9+' : badgeCount}
-                        </span>
-                      )}
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </nav>
-
-      {/* Footer */}
-      <div className="border-t border-slate-800 p-3 space-y-3">
-        {!collapsed && subscription && (
-          <div className="px-2">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">
-              Plan
-            </p>
-            <p className="text-xs text-slate-300 truncate">
-              {subscription.plan_nombre}
-            </p>
-          </div>
-        )}
-        <div
-          className={cn(
-            'flex items-center',
-            collapsed ? 'justify-center' : 'justify-between px-2'
-          )}
-        >
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-white truncate">
-                {user?.nombre?.split(' ')[0]}
-              </p>
-              <p className="text-xs text-slate-500">
-                {isAdmin ? 'Admin' : 'Acceso limitado'}
-              </p>
-            </div>
-          )}
-          <button
-            onClick={() => signOut()}
-            className={cn(
-              'p-2 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors',
-              collapsed && 'mx-auto'
-            )}
-            title="Cerrar sesión"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </aside>
+      <span className="relative shrink-0">
+        <Icono className="h-[18px] w-[18px]" />
+        {mini && contador > 0 && <span className={`absolute -right-1.5 -top-1 h-2 w-2 rounded-full shadow-[0_0_0_2px_#fff] ${PUNTO[tono]}`} />}
+      </span>
+      {!mini && <span className="truncate">{m.nombre}</span>}
+      {!mini && contador > 0 && <span className={`ax-contador ${TONO[tono]}`}>{contador > 99 ? '99+' : contador}</span>}
+      {mini && <span className="ax-globo">{m.nombre}</span>}
+    </Link>
   )
 }
 
-interface SidebarProps {
-  pendingCount?: number
-  unreadLogsCount?: number
-}
-
-export function Sidebar({ pendingCount = 0, unreadLogsCount = 0 }: SidebarProps) {
+/**
+ * Menú lateral. Muestra solo los módulos con al menos una pantalla que el
+ * usuario puede abrir (misma regla que el middleware); el ítem lleva a la
+ * primera de ellas.
+ */
+export function Sidebar({
+  mini = false,
+  contadores = {},
+  onNavegar,
+  onMini,
+}: {
+  mini?: boolean
+  contadores?: Contadores
+  onNavegar?: () => void
+  onMini?: () => void
+}) {
   const pathname = usePathname()
-  const { user, signOut, isAdmin, can, canEdit } = useUser()
-  const { subscription } = useSubscription()
-  const [collapsed, setCollapsed] = useState(false)
+  const { can } = useUser()
+  const actual = ubicar(pathname)?.modulo.id
+
+  const item = (m: Modulo) => {
+    const subs = subsVisibles(m, can)
+    if (subs.length === 0) return null
+    return (
+      <ItemLateral
+        key={m.id}
+        m={m}
+        href={subs[0]!.href}
+        activo={actual === m.id}
+        mini={mini}
+        contador={m.contador ? contadores[m.contador] ?? 0 : 0}
+        onNavegar={onNavegar}
+      />
+    )
+  }
+
+  const bloques = MENU.map((b) => b.map(item).filter(Boolean)).filter((b) => b.length > 0)
 
   return (
-    <>
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block sticky top-0 h-screen">
-        <SidebarContent
-          pathname={pathname}
-          user={user}
-          isAdmin={isAdmin}
-          can={can}
-          canEdit={canEdit}
-          subscription={subscription}
-          signOut={signOut}
-          pendingCount={pendingCount}
-          unreadLogsCount={unreadLogsCount}
-          collapsed={collapsed}
-          onCollapse={() => setCollapsed(!collapsed)}
-        />
+    <div className="flex h-full flex-col">
+      <div className={`flex h-[4.5rem] shrink-0 items-center justify-center ${mini ? 'px-2' : 'px-5'}`}>
+        <Link href={'/dashboard' as Route} onClick={() => onNavegar?.()} aria-label="AXP, ir al inicio">
+          {mini ? (
+            <Image src="/marca/axp-icono.png" alt="" width={36} height={36} className="rounded-[10px]" priority />
+          ) : (
+            <Image src="/marca/axp-logo.png" alt="AXP" width={91} height={42} priority />
+          )}
+        </Link>
       </div>
 
-      {/* Mobile Sidebar (Sheet) */}
-      <div className="lg:hidden">
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="fixed top-3 right-3 z-40 bg-white shadow-md border"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-56 bg-slate-950 border-slate-800">
-            <SidebarContent
-              pathname={pathname}
-              user={user}
-              isAdmin={isAdmin}
-              can={can}
-              canEdit={canEdit}
-              subscription={subscription}
-              signOut={signOut}
-              pendingCount={pendingCount}
-              unreadLogsCount={unreadLogsCount}
-            />
-          </SheetContent>
-        </Sheet>
+      <nav className={`ax-sin-barra flex-1 overflow-y-auto pb-4 ${mini ? 'px-2.5' : 'px-3'}`} aria-label="Menú principal">
+        {bloques.map((bloque, i) => (
+          <div key={i} className={i > 0 ? 'mt-3 border-t border-[var(--borde)] pt-3' : ''}>
+            <div className="space-y-0.5">{bloque}</div>
+          </div>
+        ))}
+      </nav>
+
+      <div className={`shrink-0 space-y-0.5 border-t border-[var(--borde)] py-3 ${mini ? 'px-2.5' : 'px-3'}`}>
+        {item(CONFIGURACION)}
+        {onMini && (
+          <button type="button" className="ax-item w-full" data-mini={mini ? '1' : '0'} onClick={onMini} aria-label={mini ? 'Expandir menú' : 'Minimizar menú'}>
+            {mini ? <PanelLeftOpen className="h-[18px] w-[18px] shrink-0" /> : <PanelLeftClose className="h-[18px] w-[18px] shrink-0" />}
+            {!mini && <span>Minimizar</span>}
+            {mini && <span className="ax-globo">Expandir menú</span>}
+          </button>
+        )}
       </div>
-    </>
+    </div>
   )
 }

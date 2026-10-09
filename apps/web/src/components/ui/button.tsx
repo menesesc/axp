@@ -4,28 +4,28 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl text-sm font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b9bff] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
         default:
-          'bg-slate-900 text-white shadow hover:bg-slate-800',
+          'bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-white shadow-[0_10px_24px_-12px_rgba(31,127,230,0.8),inset_0_1px_0_rgba(255,255,255,0.25)] hover:shadow-[0_14px_30px_-12px_rgba(31,127,230,0.9),inset_0_1px_0_rgba(255,255,255,0.25)]',
         destructive:
           'bg-red-500 text-white shadow-sm hover:bg-red-600',
         outline:
-          'border border-slate-200 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-900',
+          'border border-slate-900/[0.14] bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:bg-slate-50',
         secondary:
-          'bg-slate-100 text-slate-900 shadow-sm hover:bg-slate-200',
-        ghost: 'hover:bg-slate-100 hover:text-slate-900',
-        link: 'text-slate-900 underline-offset-4 hover:underline',
+          'bg-slate-900/[0.05] text-slate-900 hover:bg-slate-900/[0.09]',
+        ghost: 'hover:bg-slate-900/[0.05] hover:text-slate-900',
+        link: 'text-[#1667c7] underline-offset-4 hover:underline',
         primary:
-          'bg-blue-600 text-white shadow hover:bg-blue-700',
+          'bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-white shadow-[0_10px_24px_-12px_rgba(31,127,230,0.8),inset_0_1px_0_rgba(255,255,255,0.25)] hover:shadow-[0_14px_30px_-12px_rgba(31,127,230,0.9),inset_0_1px_0_rgba(255,255,255,0.25)]',
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-10 rounded-md px-8',
-        icon: 'h-9 w-9',
+        default: 'h-10 px-4 py-2',
+        sm: 'h-8 rounded-lg px-3 text-xs',
+        lg: 'h-11 rounded-xl px-8',
+        icon: 'h-10 w-10',
       },
     },
     defaultVariants: {

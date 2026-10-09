@@ -1,9 +1,12 @@
 import './globals.css';
+import '@/styles/axp.css';
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Bricolage_Grotesque, Inter } from 'next/font/google';
 import { Providers } from '@/components/providers';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+// Títulos de la app y de la landing.
+const display = Bricolage_Grotesque({ subsets: ['latin'], variable: '--font-display', weight: ['500', '600', '700'] });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://axp.com.ar'),
@@ -19,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={inter.className}>
+      <body className={`${inter.className} ${inter.variable} ${display.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

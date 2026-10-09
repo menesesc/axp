@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
+import { jsonImportes } from '@/lib/importes'
 import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 
 export async function GET() {
-  const { user, error } = await requireSeccion(SECCION.FINANZAS_PAGOS)
+  const { user, error, verImportes } = await requireSeccion(SECCION.FINANZAS_PAGOS)
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -109,7 +110,7 @@ export async function GET() {
   const hoyCheque = { cantidad: Number(cheque?.cantidad ?? 0), total: Number(cheque?.total ?? 0) }
   const hoyEcheq = { cantidad: Number(echeq?.cantidad ?? 0), total: Number(echeq?.total ?? 0) }
 
-  return NextResponse.json({
+  return jsonImportes({
     proveedoresConSaldo,
     montoPendiente: documentosConfirmados._sum?.total || 0,
     estados,
@@ -134,5 +135,5 @@ export async function GET() {
       total: o.montoTotal,
       proveedor: o.proveedores,
     })),
-  })
+  }, !!verImportes)
 }

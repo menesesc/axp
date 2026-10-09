@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
+import { jsonImportes } from '@/lib/importes'
 import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
 
@@ -14,7 +15,7 @@ interface CalendarRow {
 }
 
 export async function GET(request: NextRequest) {
-  const { user, error } = await requireSeccion(SECCION.FINANZAS_CALENDARIO)
+  const { user, error, verImportes } = await requireSeccion(SECCION.FINANZAS_CALENDARIO)
   if (error) return error
   if (!user?.clienteId) {
     return NextResponse.json({ error: 'Sin empresa asignada' }, { status: 403 })
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  return NextResponse.json({
+  return jsonImportes({
     eventos: Array.from(eventosPorFecha.values()),
-  })
+  }, !!verImportes)
 }

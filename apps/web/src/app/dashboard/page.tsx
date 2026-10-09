@@ -1,165 +1,137 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  AlertTriangle,
+  CalendarClock,
+  FileText,
+  Receipt,
+  ScanLine,
+  ShoppingBasket,
+  ShoppingCart,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
+import type { NombreEscena } from '@/components/layout/escenas'
 import { useUser } from '@/hooks/use-user'
-import { useQuery } from '@tanstack/react-query'
-import { OperationsKpis, FinanceKpis, PurchasingKpis } from '@/components/dashboard/kpi-cards'
+import { useSubscription } from '@/hooks/use-subscription'
+import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
+import { SECCION } from '@/lib/permisos'
 import { RecentDocumentsCard } from '@/components/dashboard/recent-documents-card'
 import { StatusChart } from '@/components/dashboard/status-chart'
-import { QuickActions } from '@/components/dashboard/quick-actions'
 import { PaymentsSummary } from '@/components/dashboard/payments-summary'
-import { ChequesHoyAlert } from '@/components/dashboard/cheques-hoy-alert'
-import { DocumentsTrendCard } from '@/components/dashboard/documents-trend-card'
 import { ProviderTotalsChart } from '@/components/dashboard/provider-totals-chart'
 import { ProviderDebtCard } from '@/components/dashboard/provider-debt-card'
 import { MonthlyAmountChart } from '@/components/dashboard/monthly-amount-chart'
 import { PurchasingTabContent } from '@/components/dashboard/purchasing-tab'
 import { RubrosBreakdownCard } from '@/components/dashboard/rubros-breakdown-card'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Calendar } from 'lucide-react'
-import { toast } from 'sonner'
-import { useState, useMemo } from 'react'
-import { useRealtimeDocumentos } from '@/hooks/use-realtime-documentos'
-import { UploadDropzone } from '@/components/documents/upload-dropzone'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { AvisosHoy, Kpi, UsoPlan, VencimientosSemana, millones, pesos, type Aviso } from '@/components/dashboard/inicio'
+import { SelectorPeriodo, periodoDe, type Periodo } from '@/components/ui/periodo'
 
-type ComprasQuickFilter = 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom'
+type Vista = 'hoy' | 'finanzas' | 'compras'
 
-function getComprasDateRange(filter: ComprasQuickFilter): { desde: string; hasta: string } {
-  const today = new Date()
-  const fmt = (d: Date) => d.toISOString().split('T')[0]!
-  switch (filter) {
-    case 'month': {
-      const start = new Date(today.getFullYear(), today.getMonth(), 1)
-      return { desde: fmt(start), hasta: fmt(today) }
-    }
-    case 'lastMonth': {
-      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-      const end = new Date(today.getFullYear(), today.getMonth(), 0)
-      return { desde: fmt(start), hasta: fmt(end) }
-    }
-    case 'quarter': {
-      const quarterMonth = Math.floor(today.getMonth() / 3) * 3
-      const start = new Date(today.getFullYear(), quarterMonth, 1)
-      return { desde: fmt(start), hasta: fmt(today) }
-    }
-    case 'year': {
-      const start = new Date(today.getFullYear(), 0, 1)
-      return { desde: fmt(start), hasta: fmt(today) }
-    }
-    default:
-      return { desde: '', hasta: '' }
-  }
+const ESCENA: Record<Vista, NombreEscena> = { hoy: 'inicio', finanzas: 'pagos', compras: 'stock' }
+const BAJADA: Record<Vista, string> = {
+  hoy: 'Lo que pasó hoy y lo que pide tu atención.',
+  finanzas: 'Cuánto debés, qué vence y en qué se va la plata.',
+  compras: 'Qué compraste, a quién y qué subió de precio.',
 }
 
-export default function Home() {
-  const { clienteId, user, clienteNombre } = useUser()
-  const [uploadOpen, setUploadOpen] = useState(false)
+const fechaLarga = () => {
+  const s = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' })
+  return s[0]!.toUpperCase() + s.slice(1)
+}
 
-  // Filtro de fechas del tab Compras (por defecto: mes actual)
-  const [comprasFilter, setComprasFilter] = useState<ComprasQuickFilter>('month')
-  const initialComprasRange = getComprasDateRange('month')
-  const [comprasDesde, setComprasDesde] = useState(initialComprasRange.desde)
-  const [comprasHasta, setComprasHasta] = useState(initialComprasRange.hasta)
+async function get<T>(url: string, vacio: T): Promise<T> {
+  const r = await fetch(url)
+  if (!r.ok) return vacio
+  return r.json()
+}
 
-  const applyComprasFilter = (filter: ComprasQuickFilter) => {
-    setComprasFilter(filter)
-    if (filter !== 'custom') {
-      const { desde, hasta } = getComprasDateRange(filter)
-      setComprasDesde(desde)
-      setComprasHasta(hasta)
-    }
+export default function Inicio() {
+  const { clienteId, user, clienteNombre, can, canSeeImportes } = useUser()
+  const { subscription } = useSubscription()
+  const [vista, setVista] = useState<Vista>('hoy')
+  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDe('mes'))
+
+  useRealtimeDocumentos(clienteId || '')
+
+  // Qué puede ver: cada bloque pide el permiso de su propia sección, igual
+  // que la API que lo alimenta.
+  const ve = {
+    stats: can(SECCION.DASHBOARD),
+    documentos: can(SECCION.DOC_COMPROBANTES),
+    items: can(SECCION.DOC_ITEMS),
+    proveedores: can(SECCION.DOC_PROVEEDORES),
+    pagos: can(SECCION.FINANZAS_PAGOS),
+    calendario: can(SECCION.FINANZAS_CALENDARIO),
+    compras: can(SECCION.CONCILIACION_COMPRAS),
+    ventas: can(SECCION.VENTAS_RANKING),
+  }
+  const importes = {
+    stats: canSeeImportes(SECCION.DASHBOARD),
+    pagos: canSeeImportes(SECCION.FINANZAS_PAGOS),
+    calendario: canSeeImportes(SECCION.FINANZAS_CALENDARIO),
+    items: canSeeImportes(SECCION.DOC_ITEMS),
   }
 
-  // Realtime: actualizar stats cuando el worker procesa documentos nuevos
-  useRealtimeDocumentos(clienteId || '')
+  const vistas = [
+    { v: 'hoy' as const, t: 'Hoy', ok: true },
+    { v: 'finanzas' as const, t: 'Finanzas', ok: ve.pagos || ve.stats || ve.proveedores },
+    { v: 'compras' as const, t: 'Compras', ok: ve.items },
+  ].filter((x) => x.ok)
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats', clienteId],
-    queryFn: async () => {
-      const res = await fetch('/api/stats')
-      if (!res.ok) throw new Error('Failed to fetch')
-      return res.json()
-    },
-    enabled: !!clienteId,
+    queryFn: () => get('/api/stats', null as any),
+    enabled: !!clienteId && ve.stats,
   })
 
   const { data: docs, isLoading: docsLoading } = useQuery({
     queryKey: ['recent-docs', clienteId],
-    queryFn: async () => {
-      const res = await fetch('/api/documentos?pageSize=5&sortBy=createdAt&sortOrder=desc')
-      if (!res.ok) throw new Error('Failed to fetch')
-      return res.json()
-    },
-    enabled: !!clienteId,
+    queryFn: () => get('/api/documentos?pageSize=5&sortBy=createdAt&sortOrder=desc', { documentos: [] } as any),
+    enabled: !!clienteId && ve.documentos,
   })
 
-  const { data: paymentStats, isLoading: paymentsLoading } = useQuery({
+  const { data: pagosStats, isLoading: pagosLoading } = useQuery({
     queryKey: ['payment-stats', clienteId],
-    queryFn: async () => {
-      const res = await fetch('/api/pagos/stats')
-      if (!res.ok) {
-        return {
-          proveedoresConSaldo: 0,
-          montoPendiente: 0,
-          ordenesRecientes: [],
-        }
-      }
-      return res.json()
-    },
-    enabled: !!clienteId,
+    queryFn: () => get('/api/pagos/stats', null as any),
+    enabled: !!clienteId && ve.pagos,
+  })
+
+  const { data: alertasCompra } = useQuery({
+    queryKey: ['compras-alertas'],
+    queryFn: () => get('/api/compras/alertas', { pedir: 0 }),
+    enabled: !!clienteId && ve.compras,
+    staleTime: 5 * 60_000,
   })
 
   const { data: deudaData, isLoading: deudaLoading } = useQuery({
     queryKey: ['provider-debt', clienteId],
-    queryFn: async () => {
-      const res = await fetch('/api/proveedores/deuda')
-      if (!res.ok) return { proveedores: [] }
-      return res.json()
-    },
-    enabled: !!clienteId,
+    queryFn: () => get('/api/proveedores/deuda', { proveedores: [] } as any),
+    enabled: !!clienteId && ve.proveedores && vista === 'finanzas',
   })
 
-  const comprasStatsQuery = useMemo(() => {
-    const params = new URLSearchParams()
-    if (comprasDesde) params.set('fechaDesde', comprasDesde)
-    if (comprasHasta) params.set('fechaHasta', comprasHasta)
-    return params.toString()
-  }, [comprasDesde, comprasHasta])
+  const rango = useMemo(() => new URLSearchParams({ fechaDesde: periodo.desde, fechaHasta: periodo.hasta }).toString(), [periodo])
 
   const { data: itemStats, isLoading: itemsLoading } = useQuery({
-    queryKey: ['item-stats', clienteId, comprasStatsQuery],
-    queryFn: async () => {
-      const res = await fetch(`/api/items/stats?${comprasStatsQuery}`)
-      if (!res.ok) return { topItems: [], byProvider: [], priceVariation: [], monthlyTrend: [] }
-      return res.json()
-    },
-    enabled: !!clienteId,
+    queryKey: ['item-stats', clienteId, rango],
+    queryFn: () => get(`/api/items/stats?${rango}`, { topItems: [], byProvider: [], priceVariation: [], byCategoria: [] } as any),
+    enabled: !!clienteId && ve.items && vista !== 'hoy',
   })
 
-  // Ingresos por rubro (ventas Maxirest) en el mismo período. Si el usuario no
-  // tiene acceso al ranking de ventas, o no ve importes, la tarjeta no se muestra.
-  const { data: ingresosData, isLoading: ingresosLoading } = useQuery({
-    queryKey: ['ingresos-rubro', clienteId, comprasDesde, comprasHasta],
+  const { data: ingresos, isLoading: ingresosLoading } = useQuery({
+    queryKey: ['ingresos-rubro', clienteId, periodo.desde, periodo.hasta],
     queryFn: async () => {
-      const p = new URLSearchParams({ groupBy: 'rubro', limit: '200' })
-      if (comprasDesde) p.set('from', comprasDesde)
-      if (comprasHasta) p.set('to', comprasHasta)
-      const res = await fetch(`/api/sales/ranking?${p}`)
-      if (!res.ok) return null
-      const json = await res.json()
-      if (json.hideMontos) return null
+      const p = new URLSearchParams({ groupBy: 'rubro', limit: '200', from: periodo.desde, to: periodo.hasta })
+      const json = await get<any>(`/api/sales/ranking?${p}`, null)
+      if (!json || json.hideMontos) return null
       return json as { ranking: Array<{ rubroNombre: string | null; importe: number }> }
     },
-    enabled: !!clienteId,
+    enabled: !!clienteId && ve.ventas && vista === 'finanzas',
   })
 
   if (!clienteId) {
@@ -167,268 +139,279 @@ export default function Home() {
       <DashboardLayout>
         <div className="py-12 text-center">
           <p className="text-sm text-slate-500">Sin empresa asignada</p>
-          <p className="text-xs text-slate-400 mt-1">{user?.email}</p>
+          <p className="mt-1 text-xs text-slate-400">{user?.email}</p>
         </div>
       </DashboardLayout>
     )
   }
 
-  // Stats data
   const pendientes = stats?.totalPendientes || 0
-  const confirmados = stats?.totalConfirmados || 0
-  const pagados = stats?.totalPagados || 0
-  const errores = stats?.totalErrores || 0
-  const duplicados = stats?.totalDuplicados || 0
-  const confidencePromedio = stats?.confidencePromedio ?? 0
-  const confidencePorDia = stats?.confidencePorDia || []
-  const documentosPorDia = stats?.documentosPorDia || []
-  const totalesPorProveedor = stats?.totalesPorProveedor || []
-  const documentosHoy = stats?.documentosHoy || 0
-  const documentosEsteMes = stats?.documentosEsteMes || 0
-  const documentosMesLimite = stats?.documentosMesLimite ?? null
-  const totalMes = stats?.totalMes || 0
-  const montoPorMes = stats?.montoPorMes || []
-  const montoPendiente = paymentStats?.montoPendiente || 0
 
-  // Items data — total comprado en el período seleccionado (CON IVA)
-  // Usa la suma de totales de documento (compradoTotal), no la de subtotales de items,
-  // para que refleje el importe facturado real con impuestos.
-  const compradoEnPeriodo = itemStats?.compradoTotal || 0
-  const itemsActivos = itemStats?.topItems?.length || 0
-  const alertasPrecios = itemStats?.priceVariation?.length || 0
-  const comprasFilterLabel: Record<ComprasQuickFilter, string> = {
-    month: 'Este mes',
-    lastMonth: 'Mes anterior',
-    quarter: 'Trimestre',
-    year: 'Año',
-    custom: 'Período',
+  // Avisos del día: solo los que tienen algo que hacer.
+  const avisos: Aviso[] = []
+  const chequesHoy = pagosStats?.chequesHoy
+  if (chequesHoy?.cantidad > 0) {
+    avisos.push({
+      id: 'cheques',
+      texto: importes.pagos
+        ? `Hoy se debitan ${chequesHoy.cantidad === 1 ? 'un cheque' : `${chequesHoy.cantidad} cheques`} por ${pesos(chequesHoy.total)}`
+        : `Hoy se ${chequesHoy.cantidad === 1 ? 'debita un cheque' : `debitan ${chequesHoy.cantidad} cheques`}`,
+      href: '/finanzas',
+      tono: 'ambar',
+      icono: CalendarClock,
+    })
+  }
+  if (ve.documentos && pendientes > 0) {
+    avisos.push({ id: 'revisar', texto: `${pendientes} ${pendientes === 1 ? 'factura para revisar' : 'facturas para revisar'}`, href: '/documentos', tono: 'ambar', icono: AlertTriangle })
+  }
+  if ((alertasCompra?.pedir ?? 0) > 0) {
+    const n = alertasCompra!.pedir
+    avisos.push({ id: 'pedir', texto: `${n} ${n === 1 ? 'insumo para pedir' : 'insumos para pedir'}`, href: '/compras', tono: 'rojo', icono: ShoppingBasket })
   }
 
-  // Período compartido por Finanzas (gastos/ingresos por rubro) y Compras
-  const periodFilter = (
-    <div className="bg-white border rounded-lg p-4 space-y-3">
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-sm text-slate-500 flex items-center gap-1 mr-2">
-          <Calendar className="h-4 w-4" />
-          Período:
-        </span>
-        {([
-          { value: 'month' as const, label: 'Mes actual' },
-          { value: 'lastMonth' as const, label: 'Mes anterior' },
-          { value: 'quarter' as const, label: 'Trimestre' },
-          { value: 'year' as const, label: 'Año' },
-          { value: 'custom' as const, label: 'Personalizado' },
-        ]).map((opt) => (
-          <Button
-            key={opt.value}
-            variant={comprasFilter === opt.value ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => applyComprasFilter(opt.value)}
-          >
-            {opt.label}
-          </Button>
-        ))}
-      </div>
+  const proximos7 = pagosStats?.proximos7
+  const variacionMes = (() => {
+    const serie: Array<{ total: number }> = stats?.montoPorMes ?? []
+    if (serie.length < 2) return undefined
+    const [ant, act] = [serie.at(-2)!.total, serie.at(-1)!.total]
+    return ant > 0 ? ((act - ant) / ant) * 100 : undefined
+  })()
 
-      {comprasFilter === 'custom' && (
-        <div className="flex gap-3 items-end">
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-1 block">Desde</label>
-            <Input
-              type="date"
-              value={comprasDesde}
-              onChange={(e) => setComprasDesde(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-1 block">Hasta</label>
-            <Input
-              type="date"
-              value={comprasHasta}
-              onChange={(e) => setComprasHasta(e.target.value)}
-            />
-          </div>
+  const acciones = (
+    <>
+      {vistas.length > 1 && (
+        <div className="ax-tabs" role="tablist" aria-label="Vista del inicio">
+          {vistas.map((x) => (
+            <button key={x.v} type="button" role="tab" aria-selected={vista === x.v} data-activo={vista === x.v ? '1' : '0'} className="ax-tab" onClick={() => setVista(x.v)}>
+              {x.t}
+            </button>
+          ))}
         </div>
       )}
-    </div>
+      {vista !== 'hoy' && <SelectorPeriodo valor={periodo} onCambiar={setPeriodo} />}
+    </>
   )
-
-  const handleUpload = () => {
-    setUploadOpen(true)
-  }
-
-  const handleEmail = () => {
-    toast.info('Función de email próximamente')
-  }
-
-  const handleExport = (format: 'csv' | 'excel' | 'pdf') => {
-    toast.info(`Exportar a ${format.toUpperCase()} próximamente`)
-  }
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <Header
-          title={clienteNombre || 'Dashboard'}
-          description={`Bienvenido, ${user?.nombre?.split(' ')[0]}`}
-          actions={
-            <QuickActions
-              onUpload={handleUpload}
-              onEmail={handleEmail}
-              onExport={handleExport}
-            />
-          }
-        />
+      <Header title={`Hola, ${user?.nombre?.split(' ')[0] ?? ''}`} description={`${fechaLarga()}${clienteNombre ? ` · ${clienteNombre}` : ''}. ${BAJADA[vista]}`} escena={ESCENA[vista]} actions={acciones} />
 
-        {/* Aviso de cheques/eCheq que vencen hoy (sólo si los hay) */}
-        <ChequesHoyAlert data={paymentStats?.chequesHoy} />
+      {vista === 'hoy' && (
+        <>
+          <AvisosHoy avisos={avisos} />
 
-        {/* Tabs */}
-        <Tabs defaultValue="operaciones">
-          <TabsList>
-            <TabsTrigger value="operaciones">Operaciones</TabsTrigger>
-            <TabsTrigger value="finanzas">Finanzas</TabsTrigger>
-            <TabsTrigger value="compras">Compras</TabsTrigger>
-          </TabsList>
-
-          {/* ─── Tab Operaciones ─── */}
-          <TabsContent value="operaciones">
-            <div className="space-y-4">
-              <OperationsKpis
-                documentosHoy={documentosHoy}
-                pendientes={pendientes}
-                confidencePromedio={confidencePromedio}
-                confidencePorDia={confidencePorDia}
-                documentosEsteMes={documentosEsteMes}
-                documentosMesLimite={documentosMesLimite}
-                isLoading={statsLoading}
+          <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {ve.stats && (
+              <Kpi
+                etiqueta="Facturas cargadas hoy"
+                valor={String(stats?.documentosHoy ?? 0)}
+                nota={`${stats?.documentosEsteMes ?? 0} en el mes`}
+                serie={(stats?.documentosPorDia ?? []).slice(-14).map((d: { count: number }) => d.count)}
+                icono={ScanLine}
+                cargando={statsLoading}
               />
+            )}
+            {ve.documentos && (
+              <Kpi
+                etiqueta="Para revisar"
+                valor={String(pendientes)}
+                nota={pendientes ? 'La IA no está segura de algún dato' : 'Todo revisado'}
+                tono={pendientes ? 'ambar' : 'verde'}
+                icono={AlertTriangle}
+                href="/documentos"
+                cargando={statsLoading}
+              />
+            )}
+            {ve.pagos && (
+              <Kpi
+                etiqueta="Vence en 7 días"
+                valor={importes.pagos ? millones(proximos7?.total ?? 0) : String(proximos7?.cantidad ?? 0)}
+                nota={`${proximos7?.cantidad ?? 0} ${proximos7?.cantidad === 1 ? 'pago' : 'pagos'} programados`}
+                tono="ambar"
+                icono={CalendarClock}
+                href="/finanzas"
+                cargando={pagosLoading}
+              />
+            )}
+            {ve.compras && (
+              <Kpi
+                etiqueta="Insumos para pedir"
+                valor={String(alertasCompra?.pedir ?? 0)}
+                nota="En o bajo el stock seguro"
+                tono={(alertasCompra?.pedir ?? 0) > 0 ? 'rojo' : 'verde'}
+                icono={ShoppingBasket}
+                href="/compras"
+              />
+            )}
+          </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
-                  <RecentDocumentsCard documents={docs?.documentos || []} isLoading={docsLoading} />
-                </div>
-                <div>
-                  <StatusChart
-                    pendientes={pendientes}
-                    confirmados={confirmados}
-                    pagados={pagados}
-                    errores={errores}
-                    duplicados={duplicados}
-                    isLoading={statsLoading}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
-                  <ProviderTotalsChart data={totalesPorProveedor} isLoading={statsLoading} />
-                </div>
-                <div>
-                  <DocumentsTrendCard data={documentosPorDia} isLoading={statsLoading} />
-                </div>
-              </div>
+          {ve.calendario && (
+            <div className="mb-5">
+              <VencimientosSemana verImportes={importes.calendario} />
             </div>
-          </TabsContent>
+          )}
 
-          {/* ─── Tab Finanzas ─── */}
-          <TabsContent value="finanzas">
-            <div className="space-y-4">
-              <FinanceKpis
-                confirmados={confirmados}
-                montoPendiente={montoPendiente}
-                totalMes={totalMes}
-                isLoading={statsLoading || paymentsLoading}
-              />
-
-              {periodFilter}
-
-              <div className={`grid grid-cols-1 gap-4 ${ingresosData !== null ? 'lg:grid-cols-2' : ''}`}>
-                <RubrosBreakdownCard
-                  title={`¿En qué se va la plata? · ${comprasFilterLabel[comprasFilter]}`}
-                  hint="Compras por categoría · subtotal de items sin IVA"
-                  data={(itemStats?.byCategoria || []).map((c: { categoria: string; totalSubtotal: number }) => ({
-                    nombre: c.categoria,
-                    total: c.totalSubtotal,
-                  }))}
-                  barClass="bg-rose-400"
-                  href="/items"
-                  emptyText="Sin compras con items en el período"
-                  isLoading={itemsLoading}
+          <div className="grid gap-5 lg:grid-cols-3">
+            {ve.documentos && (
+              <div className="lg:col-span-2">
+                <RecentDocumentsCard documents={docs?.documentos || []} isLoading={docsLoading} />
+              </div>
+            )}
+            <div className="space-y-5">
+              {ve.stats && (
+                <StatusChart
+                  pendientes={pendientes}
+                  confirmados={stats?.totalConfirmados || 0}
+                  pagados={stats?.totalPagados || 0}
+                  errores={stats?.totalErrores || 0}
+                  duplicados={stats?.totalDuplicados || 0}
+                  isLoading={statsLoading}
                 />
-                {ingresosData !== null && (
-                  <RubrosBreakdownCard
-                    title={`¿De dónde vienen los ingresos? · ${comprasFilterLabel[comprasFilter]}`}
-                    hint="Ventas por rubro · cierres de caja"
-                    data={(ingresosData?.ranking || []).map((r) => ({
-                      nombre: r.rubroNombre || 'Sin rubro',
-                      total: r.importe,
-                    }))}
-                    barClass="bg-emerald-500"
-                    href="/ventas"
-                    emptyText="Sin cierres de caja en el período"
-                    isLoading={ingresosLoading}
-                  />
-                )}
-              </div>
-
-              <MonthlyAmountChart data={montoPorMes} isLoading={statsLoading} />
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
-                  <ProviderDebtCard
-                    data={deudaData?.proveedores || []}
-                    isLoading={deudaLoading}
-                  />
-                </div>
-                <div>
-                  <PaymentsSummary
-                    proveedoresConSaldo={paymentStats?.proveedoresConSaldo || 0}
-                    montoPendiente={paymentStats?.montoPendiente || 0}
-                    ordenesRecientes={paymentStats?.ordenesRecientes || []}
-                    isLoading={paymentsLoading}
-                  />
-                </div>
-              </div>
+              )}
+              {ve.stats && <UsoPlan usados={stats?.documentosEsteMes ?? 0} limite={stats?.documentosMesLimite ?? null} plan={subscription?.plan_nombre} />}
             </div>
-          </TabsContent>
+          </div>
+        </>
+      )}
 
-          {/* ─── Tab Compras ─── */}
-          <TabsContent value="compras">
-            <div className="space-y-4">
-              {periodFilter}
+      {vista === 'finanzas' && (
+        <>
+          <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {ve.pagos && (
+              <Kpi
+                etiqueta="A pagar"
+                valor={importes.pagos ? pesos(pagosStats?.montoPendiente ?? 0) : '—'}
+                nota={`${pagosStats?.proveedoresConSaldo ?? 0} proveedores con saldo`}
+                icono={Wallet}
+                href="/pagos"
+                cargando={pagosLoading}
+              />
+            )}
+            {ve.pagos && (
+              <Kpi
+                etiqueta="Vence en 7 días"
+                valor={importes.pagos ? pesos(proximos7?.total ?? 0) : String(proximos7?.cantidad ?? 0)}
+                nota={`${proximos7?.cantidad ?? 0} pagos programados`}
+                tono="ambar"
+                icono={CalendarClock}
+                href="/finanzas"
+                cargando={pagosLoading}
+              />
+            )}
+            {ve.pagos && (
+              <Kpi
+                etiqueta="Pagado este mes"
+                valor={importes.pagos ? pesos(pagosStats?.pagadoMes?.total ?? 0) : String(pagosStats?.pagadoMes?.count ?? 0)}
+                nota={`${pagosStats?.pagadoMes?.count ?? 0} órdenes pagadas`}
+                tono="verde"
+                icono={Receipt}
+                cargando={pagosLoading}
+              />
+            )}
+            {ve.stats && (
+              <Kpi
+                etiqueta="Facturado este mes"
+                valor={importes.stats ? pesos(stats?.totalMes ?? 0) : '—'}
+                variacion={importes.stats ? variacionMes : undefined}
+                bueno="baja"
+                serie={importes.stats ? (stats?.montoPorMes ?? []).slice(-6).map((m: { total: number }) => m.total) : undefined}
+                nota="Lo que te facturaron tus proveedores"
+                icono={FileText}
+                cargando={statsLoading}
+              />
+            )}
+          </div>
 
-              <PurchasingKpis
-                compradoEsteMes={compradoEnPeriodo}
-                itemsActivos={itemsActivos}
-                alertasPrecios={alertasPrecios}
-                periodoLabel={comprasFilterLabel[comprasFilter]}
+          {ve.items && (
+            <div className={`mb-5 grid gap-5 ${ingresos ? 'lg:grid-cols-2' : ''}`}>
+              <RubrosBreakdownCard
+                title={`¿En qué se va la plata? · ${periodo.etiqueta}`}
+                hint="Compras por categoría, sin IVA"
+                data={(itemStats?.byCategoria || []).map((c: { categoria: string; totalSubtotal: number }) => ({ nombre: c.categoria, total: c.totalSubtotal }))}
+                barClass="bg-[#3b9bff]"
+                href="/items"
+                emptyText="Sin compras con items en el período"
                 isLoading={itemsLoading}
               />
-
-              <PurchasingTabContent
-                topItems={itemStats?.topItems || []}
-                priceVariation={itemStats?.priceVariation || []}
-                byProvider={itemStats?.byProvider || []}
-                isLoading={itemsLoading}
-              />
+              {ingresos && (
+                <RubrosBreakdownCard
+                  title={`¿De dónde vienen los ingresos? · ${periodo.etiqueta}`}
+                  hint="Ventas por rubro, según los cierres de caja"
+                  data={ingresos.ranking.map((r) => ({ nombre: r.rubroNombre || 'Sin rubro', total: r.importe }))}
+                  barClass="bg-[#10b981]"
+                  href="/ventas"
+                  emptyText="Sin cierres de caja en el período"
+                  isLoading={ingresosLoading}
+                />
+              )}
             </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+          )}
 
-      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Subir documentos</DialogTitle>
-          </DialogHeader>
-          <UploadDropzone
-            onUploadComplete={() => setUploadOpen(false)}
-            onClose={() => setUploadOpen(false)}
+          {ve.stats && importes.stats && (
+            <div className="mb-5">
+              <MonthlyAmountChart data={stats?.montoPorMes || []} isLoading={statsLoading} />
+            </div>
+          )}
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            {ve.proveedores && (
+              <div className="lg:col-span-2">
+                <ProviderDebtCard data={deudaData?.proveedores || []} isLoading={deudaLoading} />
+              </div>
+            )}
+            {ve.pagos && (
+              <PaymentsSummary
+                proveedoresConSaldo={pagosStats?.proveedoresConSaldo || 0}
+                montoPendiente={pagosStats?.montoPendiente || 0}
+                ordenesRecientes={pagosStats?.ordenesRecientes || []}
+                isLoading={pagosLoading}
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {vista === 'compras' && (
+        <>
+          <div className="mb-5 grid gap-4 sm:grid-cols-3">
+            <Kpi
+              etiqueta={`Comprado · ${periodo.etiqueta}`}
+              valor={importes.items ? pesos(itemStats?.compradoTotal ?? 0) : '—'}
+              nota="Total facturado, con IVA"
+              icono={ShoppingCart}
+              cargando={itemsLoading}
+            />
+            <Kpi
+              etiqueta="Artículos distintos"
+              valor={String(itemStats?.topItems?.length ?? 0)}
+              nota={`A ${itemStats?.byProvider?.length ?? 0} proveedores`}
+              icono={FileText}
+              href="/items"
+              cargando={itemsLoading}
+            />
+            <Kpi
+              etiqueta="Subieron de precio"
+              valor={String(itemStats?.priceVariation?.length ?? 0)}
+              nota="Contra la compra anterior"
+              tono={(itemStats?.priceVariation?.length ?? 0) > 0 ? 'rojo' : 'verde'}
+              icono={TrendingUp}
+              href="/informes/precios"
+              cargando={itemsLoading}
+            />
+          </div>
+          {ve.stats && importes.stats && (
+            <div className="mb-5">
+              <ProviderTotalsChart data={stats?.totalesPorProveedor || []} isLoading={statsLoading} />
+            </div>
+          )}
+          <PurchasingTabContent
+            topItems={itemStats?.topItems || []}
+            priceVariation={itemStats?.priceVariation || []}
+            byProvider={itemStats?.byProvider || []}
+            isLoading={itemsLoading}
           />
-        </DialogContent>
-      </Dialog>
+        </>
+      )}
     </DashboardLayout>
   )
 }
