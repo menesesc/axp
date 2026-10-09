@@ -6,10 +6,16 @@ import { CheckCircle2, ChevronLeft, ChevronRight, CreditCard, FileEdit, Landmark
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Kpi } from '@/components/dashboard/inicio'
-import { DetalleDia, PaymentCalendar, claveDia, porMetodo, type CalendarEvent } from '@/components/payments/payment-calendar'
+import { DetalleDia, PaymentCalendar, claveDia, type CalendarEvent } from '@/components/payments/payment-calendar'
+import { ChequesPorDebitar, type ChequePendiente } from '@/components/payments/cheques-por-debitar'
 import { useUser } from '@/hooks/use-user'
 import { hoyAR } from '@/lib/fechas'
 import { formatCurrency } from '@/lib/utils'
+
+const fechaCorta = (iso: string) => {
+  const [, m, d] = iso.split('-')
+  return `${Number(d)}/${Number(m)}`
+}
 
 /** Rango que cubre la grilla del mes (con la semana anterior y la siguiente). */
 function rangoDelMes(mes: Date) {
@@ -28,7 +34,7 @@ export default function CalendarioPagos() {
   const [dia, setDia] = useState<string | null>(null)
   const { desde, hasta } = rangoDelMes(mes)
 
-  const { data, isLoading } = useQuery<{ eventos: CalendarEvent[] }>({
+  const { data, isLoading } = useQuery<{ eventos: CalendarEvent[]; porDebitar: ChequePendiente[] }>({
     queryKey: ['pagos-calendario', desde, hasta],
     queryFn: async () => {
       const res = await fetch(`/api/pagos/calendario?desde=${desde}&hasta=${hasta}`)
@@ -39,6 +45,8 @@ export default function CalendarioPagos() {
   })
 
   const eventos = data?.eventos || []
+  const porDebitar = data?.porDebitar || []
+  const totalPorDebitar = porDebitar.reduce((s2, c) => s2 + c.monto, 0)
   const prefijo = claveDia(mes).slice(0, 7)
   const delMes = eventos.filter((e) => e.fecha.startsWith(prefijo))
   const items = delMes.flatMap((e) => e.items)
@@ -48,7 +56,6 @@ export default function CalendarioPagos() {
   // Un cheque entregado sigue siendo plata que todavía no salió: cuenta como
   // pagado sólo cuando el pago ya se hizo efectivo (transferencia, efectivo).
   const pagados = items.filter((i) => i.estado === 'PAGADO' && i.tipo !== 'CHEQUE' && i.tipo !== 'ECHEQ')
-  const metodos = porMetodo(items)
   const suma = (xs: typeof items) => xs.reduce((s, i) => s + i.monto, 0)
 
   // Día elegido por defecto: hoy si es de este mes, si no el primer día con pagos.
@@ -108,9 +115,13 @@ export default function CalendarioPagos() {
         <Kpi etiqueta="Emitidas" valor={formatCurrency(suma(emitidas))} nota={`${emitidas.length} listas para pagar`} icono={CreditCard} cargando={isLoading} />
         <Kpi etiqueta="Borradores" valor={formatCurrency(suma(borradores))} nota={`${borradores.length} sin emitir`} tono="ambar" icono={FileEdit} cargando={isLoading} />
         <Kpi
-          etiqueta="Cheques y eCheq"
-          valor={formatCurrency(metodos.cheque)}
-          nota={`${formatCurrency(metodos.transferencia)} en transferencias`}
+          etiqueta="Por debitar"
+          valor={formatCurrency(totalPorDebitar)}
+          nota={
+            porDebitar.length === 0
+              ? 'sin cheques pendientes'
+              : `${porDebitar.length} cheque${porDebitar.length === 1 ? '' : 's'}, el próximo el ${fechaCorta(porDebitar[0]!.fecha)}`
+          }
           tono="ambar"
           icono={Landmark}
           cargando={isLoading}
@@ -119,8 +130,11 @@ export default function CalendarioPagos() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem]">
         {isLoading ? <div className="h-[34rem] animate-pulse rounded-2xl bg-slate-900/[0.04]" /> : <PaymentCalendar month={mes} eventos={eventos} seleccionado={dia} onSeleccionar={setDia} hoy={hoy} />}
-        <div className="xl:sticky xl:top-20 xl:self-start">
-          <DetalleDia dia={dia} evento={eventos.find((e) => e.fecha === dia)} />
+        <div className="space-y-5 xl:sticky xl:top-20 xl:self-start">
+          <DetalleDia dia={dia} evento={eventos.find((e) => e.fecha === dia)} hoy={hoy} />
+          {/* Los cheques entregados vencen cuando vencen, no en el mes que se
+              esté mirando: van en su propio panel y no dependen del mes. */}
+          <ChequesPorDebitar cheques={porDebitar} cargando={isLoading} />
         </div>
       </div>
     </DashboardLayout>

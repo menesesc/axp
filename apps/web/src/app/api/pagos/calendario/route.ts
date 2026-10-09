@@ -91,7 +91,36 @@ export async function GET(request: NextRequest) {
     })
   }
 
+  // Cheques y eCheq entregados que todavía no se debitaron, miren el mes que
+  // miren: es plata comprometida que hay que tener, y si vence el mes que
+  // viene no aparecía en ninguna parte sin cambiar de mes a mano.
+  const porDebitar = await prisma.$queryRaw<Array<{
+    fecha: string; pago_id: string; numero: number; tipo: string; monto: number; proveedor: string
+  }>>`
+    SELECT to_char((pm.meta->>'fecha')::date, 'YYYY-MM-DD') AS fecha,
+           p.id AS pago_id, p.numero, pm.tipo::text AS tipo,
+           pm.monto::float AS monto, pr."razonSocial" AS proveedor
+      FROM pago_metodos pm
+      JOIN pagos p ON pm."pagoId" = p.id
+      JOIN proveedores pr ON p."proveedorId" = pr.id
+     WHERE p."clienteId" = ${user.clienteId}::uuid
+       AND pm.tipo IN ('CHEQUE', 'ECHEQ')
+       AND p.estado IN ('EMITIDA', 'PAGADO')
+       AND pm.meta->>'fecha' IS NOT NULL
+       AND (pm.meta->>'fecha')::date > CURRENT_DATE
+     ORDER BY (pm.meta->>'fecha')::date
+     LIMIT 40
+  `
+
   return jsonImportes({
     eventos: Array.from(eventosPorFecha.values()),
+    porDebitar: porDebitar.map((c) => ({
+      fecha: c.fecha,
+      pagoId: c.pago_id,
+      numero: c.numero,
+      tipo: c.tipo,
+      monto: c.monto,
+      proveedor: c.proveedor,
+    })),
   }, !!verImportes)
 }

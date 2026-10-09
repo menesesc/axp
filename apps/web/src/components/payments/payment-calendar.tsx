@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { cn, formatCurrency, formatNumeroOrden } from '@/lib/utils'
-import { CalendarDays } from 'lucide-react'
+import { CalendarDays, Clock } from 'lucide-react'
 
 export interface CalendarEventItem {
   pagoId: string
@@ -124,7 +124,15 @@ export function PaymentCalendar({
               </span>
               {evento && m && (
                 <>
-                  <span className={cn('text-[12px] font-semibold tabular-nums', pasado ? 'text-slate-400' : 'text-slate-900')}>{compacto(evento.total)}</span>
+                  <span className={cn('flex items-center gap-1 text-[12px] font-semibold tabular-nums', pasado ? 'text-slate-400' : 'text-slate-900')}>
+                    {compacto(evento.total)}
+                    {/* Un cheque con fecha futura todavía no se debitó: hay que
+                        tener la plata ese día, y de un vistazo no se distinguía
+                        de un pago ya hecho. */}
+                    {!pasado && !esHoy && m.cheque > 0 && (
+                      <Clock className="h-3 w-3 shrink-0" style={{ color: COLOR_METODO.cheque }} aria-label="cheque o eCheq por debitar" />
+                    )}
+                  </span>
                   <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-slate-900/[0.06]">
                     {m.transferencia > 0 && <i style={{ width: `${(m.transferencia / evento.total) * 100}%`, background: COLOR_METODO.transferencia }} />}
                     {m.cheque > 0 && <i style={{ width: `${(m.cheque / evento.total) * 100}%`, background: COLOR_METODO.cheque }} />}
@@ -149,14 +157,38 @@ export function PaymentCalendar({
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.otros }} /> Efectivo
         </span>
+        <span className="flex items-center gap-1.5">
+          <Clock className="h-3 w-3" style={{ color: COLOR_METODO.cheque }} /> Cheque por debitar
+        </span>
       </div>
     </section>
   )
 }
 
+/**
+ * Qué decir de cada pago. Para un cheque lo que importa no es el estado de la
+ * orden sino si ya se debitó: uno entregado con fecha futura sigue siendo
+ * plata que hay que tener.
+ */
+function estadoTexto(it: CalendarEventItem, esFuturo: boolean): string {
+  if (it.estado === 'BORRADOR') return ' · borrador'
+  const esCheque = it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ'
+  if (esCheque) return esFuturo ? ' · por debitar' : it.estado === 'PAGADO' ? ' · debitado' : ' · entregado'
+  return it.estado === 'PAGADO' ? ' · pagado' : ''
+}
+
 /** Panel con los pagos del día elegido. */
-export function DetalleDia({ dia, evento }: { dia: string | null; evento: CalendarEvent | undefined }) {
+export function DetalleDia({
+  dia,
+  evento,
+  hoy,
+}: {
+  dia: string | null
+  evento: CalendarEvent | undefined
+  hoy?: string
+}) {
   if (!dia) return null
+  const esFuturo = !!hoy && dia > hoy
   const fecha = new Date(`${dia}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
   const m = evento ? porMetodo(evento.items) : null
   return (
@@ -212,13 +244,7 @@ export function DetalleDia({ dia, evento }: { dia: string | null; evento: Calend
                     <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
                       <span className="h-1.5 w-1.5 rounded-full" style={{ background: met.color }} />
                       {met.texto} · OP {formatNumeroOrden(it.numero)}
-                      {it.estado === 'BORRADOR'
-                        ? ' · borrador'
-                        : it.estado === 'PAGADO'
-                          ? it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ'
-                            ? ' · entregado'
-                            : ' · pagado'
-                          : ''}
+                      {estadoTexto(it, esFuturo)}
                     </p>
                   </Link>
                 </li>

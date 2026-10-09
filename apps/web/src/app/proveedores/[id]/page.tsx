@@ -38,7 +38,8 @@ interface Resumen {
   porMes: Array<{ mes: string; comprado: number; pagado: number; documentos: number }>
   documentos: Array<{
     id: string; tipo: string; letra: string | null; numeroCompleto: string | null
-    fecha: string | null; total: number | null; estado: string; pagado: number | null; items: number
+    fecha: string | null; total: number | null; estado: string; pagado: number | null
+    pendiente: number | null; items: number
   }>
   pagos: Array<{
     id: string; numero: number; fecha: string; estado: string
@@ -74,6 +75,8 @@ export default function ProveedorPage() {
   const [periodo, setPeriodo] = useState<Periodo>(() => periodoDe('ultimos12m'))
   const [tab, setTab] = useState<Tab>('resumen')
   const [editando, setEditando] = useState(false)
+  const [soloDeuda, setSoloDeuda] = useState(false)
+  const [aPagar, setAPagar] = useState<Set<string>>(new Set())
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -135,10 +138,19 @@ export default function ProveedorPage() {
   const aumento = ultimoIndice?.indice != null ? ultimoIndice.indice - 100 : null
   const indiceFlojo = (ultimoIndice?.items ?? 0) > 0 && (ultimoIndice?.items ?? 0) < 5
 
-  const irAPagar = () => {
-    // Mismo mecanismo que usa el listado de comprobantes para abrir el wizard
-    // con el proveedor ya elegido.
+  const debiendo = data.documentos.filter((d) => (d.pendiente ?? 0) > 0)
+  const totalElegido = data.documentos
+    .filter((d) => aPagar.has(d.id))
+    .reduce((s, d) => s + (d.pendiente ?? 0), 0)
+
+  /**
+   * Abre el wizard de pago. Con comprobantes marcados los lleva ya
+   * seleccionados, que es el camino que antes obligaba a pasar por Pagos y
+   * volver a buscar el proveedor.
+   */
+  const irAPagar = (documentos?: string[]) => {
     sessionStorage.setItem('pendingPaymentProveedor', p.id)
+    if (documentos?.length) sessionStorage.setItem('pendingPaymentDocs', JSON.stringify(documentos))
     router.push('/pagos/nueva')
   }
 
@@ -159,7 +171,7 @@ export default function ProveedorPage() {
               </Button>
             )}
             {isAdmin && (
-              <Button size="sm" className="h-10" onClick={irAPagar}>
+              <Button size="sm" className="h-10" onClick={() => irAPagar()}>
                 <Wallet className="mr-1.5 h-4 w-4" />
                 Pagar
               </Button>
@@ -247,6 +259,14 @@ export default function ProveedorPage() {
             valor={$(saldo.pendiente)}
             detalle={saldo.sinPagar > 0 ? `${saldo.sinPagar} sin pagar · histórico` : 'Todo pagado'}
             tono={saldo.pendiente != null && saldo.pendiente > 1 ? 'alerta' : 'ok'}
+            onClick={
+              debiendo.length > 0
+                ? () => {
+                    setSoloDeuda(true)
+                    setTab('documentos')
+                  }
+                : undefined
+            }
           />
           <Kpi titulo="Factura promedio" valor={$(saldo.ticket)} detalle="en el período" />
           <Kpi
@@ -283,29 +303,30 @@ export default function ProveedorPage() {
           </div>
 
           <div className="p-4">
-            {tab === 'resumen' && <VistaResumen data={data} verImportes={verImportes} onVerTodo={setTab} />}
+            {tab === 'resumen' && (
+              <VistaResumen
+                data={data}
+                verImportes={verImportes}
+                onVerTodo={setTab}
+                soloDeuda={soloDeuda}
+                onSoloDeuda={setSoloDeuda}
+                debiendo={debiendo}
+              />
+            )}
 
             {tab === 'documentos' && (
-              <>
-                <Encabezado titulo="Comprobantes del período" href={`/documentos?proveedorId=${p.id}`} accion="Ver en Compras" />
-                <Tabla
-                  cols={['Comprobante', 'Fecha', 'Items', 'Total', 'Estado']}
-                  vacio="Sin comprobantes en el período."
-                  filas={data.documentos.map((d) => ({
-                    key: d.id,
-                    href: `/documento/${d.id}`,
-                    celdas: [
-                      <span key="c" className="font-medium">
-                        {formatTipoDocumento(d.tipo)} {d.letra} {d.numeroCompleto ?? ''}
-                      </span>,
-                      formatDate(d.fecha),
-                      <span key="i" className="tabular-nums text-slate-500">{d.items}</span>,
-                      <span key="t" className="tabular-nums">{$(d.total)}</span>,
-                      <Estado key="e" valor={d.estado} />,
-                    ],
-                  }))}
-                />
-              </>
+              <VistaComprobantes
+                data={data}
+                proveedorId={p.id}
+                soloDeuda={soloDeuda}
+                onSoloDeuda={setSoloDeuda}
+                elegidos={aPagar}
+                onElegir={setAPagar}
+                debiendo={debiendo}
+                totalElegido={totalElegido}
+                puedePagar={isAdmin}
+                onPagar={irAPagar}
+              />
             )}
 
             {tab === 'pagos' && (
@@ -372,11 +393,18 @@ function VistaResumen({
   data,
   verImportes,
   onVerTodo,
+  soloDeuda,
+  onSoloDeuda,
+  debiendo,
 }: {
   data: Resumen
   verImportes: boolean
   onVerTodo: (t: Tab) => void
+  soloDeuda: boolean
+  onSoloDeuda: (v: boolean) => void
+  debiendo: Resumen['documentos']
 }) {
+  const ultimos = soloDeuda ? debiendo : data.documentos
   const serie = data.porMes.map((m) => ({ ...m, label: mesLabel(m.mes) }))
   const hayMovimiento = serie.some((m) => m.comprado !== 0 || m.pagado !== 0)
   const topItems = data.items.slice(0, 6)
@@ -439,12 +467,36 @@ function VistaResumen({
         </div>
 
         <div>
-          <Encabezado titulo="Últimos comprobantes" accion="Ver todos" onClick={() => onVerTodo('documentos')} />
-          {data.documentos.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">Sin comprobantes en el período.</p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-700">Últimos comprobantes</h2>
+            <div className="flex items-center gap-1 text-xs">
+              {/* Ver qué se le debe sin pasar por Pagos, que era el rodeo. */}
+              {([[false, 'Todos'], [true, 'Se deben']] as Array<[boolean, string]>).map(([v, l]) => (
+                <button
+                  key={l}
+                  onClick={() => onSoloDeuda(v)}
+                  disabled={v && debiendo.length === 0}
+                  className={cn(
+                    'rounded-md px-2 py-1 font-medium transition disabled:opacity-40',
+                    soloDeuda === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+                  )}
+                >
+                  {l}
+                  {v && debiendo.length > 0 && <span className="ml-1 opacity-60">{debiendo.length}</span>}
+                </button>
+              ))}
+              <button onClick={() => onVerTodo('documentos')} className="ml-1 text-slate-500 hover:text-slate-900 hover:underline">
+                Ver todos
+              </button>
+            </div>
+          </div>
+          {ultimos.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">
+              {soloDeuda ? 'No hay comprobantes sin pagar en el período.' : 'Sin comprobantes en el período.'}
+            </p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {data.documentos.slice(0, 6).map((d) => (
+              {ultimos.slice(0, 6).map((d) => (
                 <li key={d.id}>
                   <Link href={`/documento/${d.id}`} className="flex items-center justify-between gap-3 py-2 hover:bg-slate-50">
                     <span className="min-w-0">
@@ -453,7 +505,12 @@ function VistaResumen({
                       </span>
                       <span className="text-xs text-slate-400">{formatDate(d.fecha)} · {d.items} items</span>
                     </span>
-                    <span className="shrink-0 text-sm tabular-nums">{d.total == null ? '—' : formatCurrency(d.total)}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-sm tabular-nums">{d.total == null ? '—' : formatCurrency(d.total)}</span>
+                      {(d.pendiente ?? 0) > 0 && (
+                        <span className="text-[11px] text-amber-700">debe {formatCurrency(d.pendiente ?? 0)}</span>
+                      )}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -462,6 +519,134 @@ function VistaResumen({
         </div>
       </div>
     </div>
+  )
+}
+
+function VistaComprobantes({
+  data,
+  proveedorId,
+  soloDeuda,
+  onSoloDeuda,
+  elegidos,
+  onElegir,
+  debiendo,
+  totalElegido,
+  puedePagar,
+  onPagar,
+}: {
+  data: Resumen
+  proveedorId: string
+  soloDeuda: boolean
+  onSoloDeuda: (v: boolean) => void
+  elegidos: Set<string>
+  onElegir: (s: Set<string>) => void
+  debiendo: Resumen['documentos']
+  totalElegido: number
+  puedePagar: boolean
+  onPagar: (documentos?: string[]) => void
+}) {
+  const lista = soloDeuda ? debiendo : data.documentos
+  // Al wizard sólo pueden ir comprobantes confirmados: es lo que valida el
+  // listado de compras, y si no, el pago se arma y falla después.
+  const pagables = debiendo.filter((d) => d.estado === 'CONFIRMADO')
+
+  const alternar = (id: string) => {
+    const n = new Set(elegidos)
+    if (n.has(id)) n.delete(id)
+    else n.add(id)
+    onElegir(n)
+  }
+
+  return (
+    <>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1 text-xs">
+          {([[false, 'Todos'], [true, 'Se deben']] as Array<[boolean, string]>).map(([v, l]) => (
+            <button
+              key={l}
+              onClick={() => onSoloDeuda(v)}
+              disabled={v && debiendo.length === 0}
+              className={cn(
+                'rounded-md px-2.5 py-1.5 font-medium transition disabled:opacity-40',
+                soloDeuda === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+              )}
+            >
+              {l}
+              <span className="ml-1 opacity-60">{v ? debiendo.length : data.documentos.length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {soloDeuda && pagables.length > 0 && puedePagar && (
+            <>
+              <button
+                onClick={() => onElegir(new Set(elegidos.size === pagables.length ? [] : pagables.map((d) => d.id)))}
+                className="text-xs text-slate-500 hover:text-slate-900 hover:underline"
+              >
+                {elegidos.size === pagables.length ? 'Desmarcar todos' : 'Marcar todos'}
+              </button>
+              <Button size="sm" disabled={elegidos.size === 0} onClick={() => onPagar([...elegidos])}>
+                <Wallet className="mr-1.5 h-4 w-4" />
+                Pagar {elegidos.size > 0 ? `${elegidos.size} · ${formatCurrency(totalElegido)}` : ''}
+              </Button>
+            </>
+          )}
+          <Link
+            href={`/documentos?proveedorId=${proveedorId}`}
+            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 hover:underline"
+          >
+            Ver en Compras
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+        </div>
+      </div>
+
+      <Tabla
+        cols={soloDeuda ? ['Comprobante', 'Fecha', 'Total', 'Pagado', 'Debe'] : ['Comprobante', 'Fecha', 'Items', 'Total', 'Estado']}
+        vacio={soloDeuda ? 'No hay comprobantes sin pagar en el período.' : 'Sin comprobantes en el período.'}
+        filas={lista.map((d) => {
+          const seleccionable = soloDeuda && puedePagar && d.estado === 'CONFIRMADO'
+          const comprobante = (
+            <span key="c" className="inline-flex items-center gap-2">
+              {soloDeuda && puedePagar && (
+                <input
+                  type="checkbox"
+                  checked={elegidos.has(d.id)}
+                  disabled={!seleccionable}
+                  title={seleccionable ? '' : 'Hay que confirmar el comprobante antes de pagarlo'}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => alternar(d.id)}
+                  className="h-4 w-4 shrink-0 rounded border-slate-300 disabled:opacity-40"
+                />
+              )}
+              <Link href={`/documento/${d.id}`} className="truncate font-medium hover:underline">
+                {formatTipoDocumento(d.tipo)} {d.letra} {d.numeroCompleto ?? ''}
+              </Link>
+            </span>
+          )
+          return {
+            key: d.id,
+            celdas: soloDeuda
+              ? [
+                  comprobante,
+                  formatDate(d.fecha),
+                  <span key="t" className="tabular-nums text-slate-500">{d.total == null ? '—' : formatCurrency(d.total)}</span>,
+                  <span key="p" className="tabular-nums text-slate-500">{d.pagado ? formatCurrency(d.pagado) : '—'}</span>,
+                  <span key="d" className="font-medium tabular-nums text-amber-700">
+                    {d.pendiente == null ? '—' : formatCurrency(d.pendiente)}
+                  </span>,
+                ]
+              : [
+                  comprobante,
+                  formatDate(d.fecha),
+                  <span key="i" className="tabular-nums text-slate-500">{d.items}</span>,
+                  <span key="t" className="tabular-nums">{d.total == null ? '—' : formatCurrency(d.total)}</span>,
+                  <Estado key="e" valor={d.estado} />,
+                ],
+          }
+        })}
+      />
+    </>
   )
 }
 
@@ -635,13 +820,32 @@ function VistaItems({ data, proveedorId }: { data: Resumen; proveedorId: string 
 
 /* ------------------------------------------------------------------ */
 
-function Kpi({ titulo, valor, detalle, tono }: { titulo: string; valor: string; detalle: string; tono?: 'ok' | 'alerta' }) {
+function Kpi({
+  titulo,
+  valor,
+  detalle,
+  tono,
+  onClick,
+}: {
+  titulo: string
+  valor: string
+  detalle: string
+  tono?: 'ok' | 'alerta'
+  onClick?: (() => void) | undefined
+}) {
+  const Caja = onClick ? 'button' : 'div'
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <Caja
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={cn(
+        'rounded-xl border border-slate-200 bg-white p-4 text-left',
+        onClick && 'transition hover:border-slate-300 hover:bg-slate-50'
+      )}
+    >
       <p className="text-xs font-medium text-slate-500">{titulo}</p>
       <p className={cn('mt-1 text-xl font-bold tabular-nums', tono === 'alerta' && 'text-amber-700')}>{valor}</p>
       <p className="mt-0.5 text-xs text-slate-400">{detalle}</p>
-    </div>
+    </Caja>
   )
 }
 

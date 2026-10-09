@@ -305,6 +305,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ...d,
       total: $(d.total),
       pagado: $(d.pagado),
+      // Lo que falta pagar de este comprobante. Las notas de crédito no se
+      // deben: restan, así que quedan en cero.
+      pendiente:
+        d.estado === 'PAGADO' || d.tipo === 'NOTA_CREDITO'
+          ? 0
+          : $(Math.max(0, Math.round(((d.total ?? 0) - (d.pagado ?? 0)) * 100) / 100)),
       items: Number(d.items),
     })),
     pagos: pagos.map((p) => ({ ...p, montoTotal: $(p.montoTotal), documentos: Number(p.documentos) })),
