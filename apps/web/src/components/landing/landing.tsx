@@ -636,23 +636,32 @@ function Vistas() {
 const PLANES = [
   {
     nombre: 'Starter',
+    mensual: 29.99,
+    anual: 299.99,
     para: 'Para un local que recién empieza a ordenarse.',
     items: ['Hasta 100 facturas por mes', '2 usuarios', 'Lectura automática de facturas'],
   },
   {
     nombre: 'Professional',
+    mensual: 79.99,
+    anual: 799.99,
     para: 'Para negocios con muchos proveedores y varios depósitos.',
     items: ['Hasta 500 facturas por mes', '5 usuarios', 'Lectura automática de facturas'],
     destacado: true,
   },
   {
     nombre: 'Enterprise',
+    mensual: 199.99,
+    anual: 1999.99,
     para: 'Para cadenas y grupos con varios locales.',
     items: ['Facturas sin límite', 'Usuarios sin límite', 'Soporte prioritario'],
   },
 ]
 
+const usd = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 function Planes() {
+  const [anual, setAnual] = useState(false)
   return (
     <section id="planes" className="lx-seccion scroll-mt-20">
       <div className="mx-auto max-w-6xl px-5 sm:px-8 py-24 lg:py-28">
@@ -662,7 +671,24 @@ function Planes() {
             Antes de decidir, te mostramos AXP funcionando con tus propias facturas.
           </p>
         </div>
-        <div className="mt-14 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 inline-flex items-center rounded-full border border-[var(--borde-fuerte)] bg-white/[0.04] p-1 text-sm" role="group" aria-label="Período de facturación">
+          {[
+            { v: false, t: 'Mensual' },
+            { v: true, t: 'Anual' },
+          ].map((o) => (
+            <button
+              key={o.t}
+              type="button"
+              aria-pressed={anual === o.v}
+              onClick={() => setAnual(o.v)}
+              className={`rounded-full px-4 py-2 transition-colors ${anual === o.v ? 'bg-white text-[var(--noche)] font-medium' : 'text-[var(--sec)] hover:text-[var(--texto)]'}`}
+            >
+              {o.t}
+              {o.v && <span className={`ml-2 text-xs ${anual ? 'text-[#b45309]' : 'text-[var(--ambar-2)]'}`}>2 meses gratis</span>}
+            </button>
+          ))}
+        </div>
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
           {PLANES.map((p, n) => (
             <article
               key={p.nombre}
@@ -678,7 +704,15 @@ function Planes() {
                 )}
               </div>
               <p className="mt-2 text-[15px] lx-sec">{p.para}</p>
-              <ul className="mt-6 space-y-3 flex-1">
+              <p className="mt-6 flex items-baseline gap-1.5">
+                <span className="text-[var(--sec)] text-sm">US$</span>
+                <span className="lx-display text-[2.6rem] font-semibold leading-none tabular-nums">{usd(anual ? p.anual : p.mensual)}</span>
+                <span className="text-[var(--sec)] text-sm">{anual ? 'por año' : 'por mes'}</span>
+              </p>
+              <p className="mt-1.5 h-5 text-xs text-[var(--ter)]">
+                {anual ? `Equivale a US$ ${usd(p.anual / 12)} por mes` : `O US$ ${usd(p.anual)} pagando el año`}
+              </p>
+              <ul className="mt-6 space-y-3 flex-1 border-t border-white/[0.07] pt-6">
                 {p.items.map((i) => (
                   <li key={i} className="flex items-center gap-2.5 text-[15px]">
                     <CircleCheck className="h-[18px] w-[18px] text-[var(--azul-2)]" />
@@ -687,7 +721,7 @@ function Planes() {
                 ))}
               </ul>
               <Link href={DEMO} className={`lx-boton mt-8 ${p.destacado ? 'lx-boton-primario' : 'lx-boton-secundario'}`}>
-                Consultá el precio
+                Pedí una demo
               </Link>
             </article>
           ))}
