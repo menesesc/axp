@@ -244,7 +244,7 @@ function Pagos() {
 
         {vista === 'ordenes' && (<>
         {/* KPI cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="A pagar (emitidas)"
             value={formatCurrency(emitidas?.total ?? 0)}
@@ -314,8 +314,8 @@ function Pagos() {
           }}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 space-y-4">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="min-w-0 space-y-4">
             <PaymentOrdersTable
               orders={orders}
               isLoading={isLoading}
@@ -393,58 +393,40 @@ function StatCard({
   active?: boolean
   onClick?: () => void
 }) {
-  const toneMap: Record<Tone, { iconWrap: string; ring: string }> = {
-    blue: {
-      iconWrap: 'bg-blue-50 text-blue-600',
-      ring: 'ring-blue-300',
-    },
-    amber: {
-      iconWrap: 'bg-amber-50 text-amber-600',
-      ring: 'ring-amber-300',
-    },
-    slate: {
-      iconWrap: 'bg-slate-100 text-slate-600',
-      ring: 'ring-slate-300',
-    },
-    emerald: {
-      iconWrap: 'bg-emerald-50 text-emerald-600',
-      ring: 'ring-emerald-300',
-    },
-  }
-  const t = toneMap[tone]
+  const color: Record<Tone, string> = { blue: '#3b9bff', amber: '#f5a524', slate: '#94a3b8', emerald: '#10b981' }
+  const c = color[tone]
 
   const content = (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-slate-500">{label}</p>
-        <p className="text-xl font-semibold text-slate-900 mt-1 tabular-nums truncate">
-          {value}
-        </p>
-        {hint && (
-          <p className="text-xs text-slate-400 mt-1 truncate">{hint}</p>
-        )}
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-[var(--sec)]">{label}</p>
+        <span className="ax-icono h-8 w-8 [&>svg]:h-4 [&>svg]:w-4" style={{ '--c1': c } as React.CSSProperties}>
+          {icon}
+        </span>
       </div>
-      <div className={`shrink-0 rounded-md p-2 ${t.iconWrap}`}>
-        {icon}
-      </div>
-    </div>
+      <p className="ax-display ax-num mt-2 truncate text-[1.6rem] font-semibold leading-none">{value}</p>
+      {hint && <p className="mt-3 truncate text-xs text-[var(--ter)]">{hint}</p>}
+    </>
   )
 
-  const baseCls =
-    'block rounded-lg border bg-white shadow-sm p-4 text-left transition-all'
-
+  const tonoCard = tone === 'amber' ? 'ambar' : tone === 'emerald' ? 'verde' : undefined
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className={`${baseCls} hover:shadow-md hover:border-slate-300 w-full ${
-          active ? `ring-2 ${t.ring} border-transparent` : 'border-slate-200'
-        }`}
+        aria-pressed={active}
+        className="ax-card ax-entra block w-full p-5 text-left transition-transform hover:-translate-y-0.5"
+        data-tono={tonoCard}
+        style={active ? { boxShadow: `0 0 0 2px ${c}, var(--sombra)` } : undefined}
       >
         {content}
       </button>
     )
   }
-  return <div className={`${baseCls} border-slate-200`}>{content}</div>
+  return (
+    <div className="ax-card ax-entra p-5" data-tono={tonoCard}>
+      {content}
+    </div>
+  )
 }
