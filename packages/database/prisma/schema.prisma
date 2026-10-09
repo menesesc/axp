@@ -345,6 +345,7 @@ enum EstadoRevision {
   CONFIRMADO
   ERROR
   DUPLICADO
+  PAGADO
 }
 
 enum LetraFactura {
