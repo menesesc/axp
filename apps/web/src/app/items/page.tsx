@@ -276,7 +276,7 @@ function ItemsPageContent() {
   const [page, setPage] = useState(1)
   const [searchTags, setSearchTags] = useState<string[]>(initialQ ? [initialQ] : [])
   const [inputValue, setInputValue] = useState('')
-  const [proveedorId, setProveedorId] = useState<string>('')
+  const [proveedorId, setProveedorId] = useState<string>(urlParams.get('proveedorId') || '')
   const [categoriaId, setCategoriaId] = useState<string>(urlParams.get('categoriaId') || '')
   const [insumoFiltro, setInsumoFiltro] = useState<'' | 'con' | 'sin'>('')
   const [periodo, setPeriodo] = useState<Periodo>(() => periodoDe('todo'))

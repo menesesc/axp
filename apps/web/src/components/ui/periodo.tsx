@@ -18,6 +18,7 @@ export type ClavePeriodo =
   | 'ultimos30'
   | 'trimestre'
   | 'anio'
+  | 'ultimos12m'
   | 'personalizado'
 export type AtajoPeriodo = Exclude<ClavePeriodo, 'personalizado'>
 
@@ -77,6 +78,13 @@ export function periodoDe(clave: AtajoPeriodo, hoy: string = hoyAR()): Periodo {
     }
     case 'anio':
       return { clave, desde: `${a}-01-01`, hasta: hoy, etiqueta: `Año ${a}` }
+    case 'ultimos12m': {
+      // Doce meses completos hacia atrás, arrancando el 1 para que el primer
+      // mes del gráfico no quede cortado a la mitad.
+      let desde = inicioDeMesAR(hoy)
+      for (let i = 0; i < 11; i++) desde = inicioDeMesAR(sumarDias(desde, -1))
+      return { clave, desde, hasta: hoy, etiqueta: 'Últimos 12 meses' }
+    }
   }
 }
 
@@ -96,6 +104,7 @@ const TEXTO: Record<AtajoPeriodo, string> = {
   ultimos30: 'Últimos 30 días',
   trimestre: 'Este trimestre',
   anio: 'Este año',
+  ultimos12m: 'Últimos 12 meses',
 }
 
 /** Si el rango coincide con un atajo lo devuelve como tal; si no, como rango a medida. */
@@ -114,6 +123,8 @@ export const ATAJOS_VENTAS: AtajoPeriodo[] = ['hoy', 'ayer', 'ultimos7', 'ultimo
 export const ATAJOS_INFORME: AtajoPeriodo[] = ['mes', 'mesAnterior', 'ultimos30', 'trimestre', 'anio']
 /** Atajos para listados (comprobantes, items): arrancan en "todas las fechas". */
 export const ATAJOS_LISTADO: AtajoPeriodo[] = ['todo', 'hoy', 'ayer', 'semana', 'semanaAnterior', 'mes', 'mesAnterior']
+/** Atajos para la ficha de un proveedor: ventanas largas, que es donde se ve la evolución. */
+export const ATAJOS_PROVEEDOR: AtajoPeriodo[] = ['ultimos12m', 'anio', 'trimestre', 'mes', 'mesAnterior', 'todo']
 
 /**
  * Selector de período compacto: un botón con el período elegido que abre los

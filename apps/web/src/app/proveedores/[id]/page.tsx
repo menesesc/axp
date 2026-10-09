@@ -1,52 +1,110 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
+import {
+  Bar, CartesianGrid, ComposedChart, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { LogoProveedorEditable } from '@/components/proveedores/logo-proveedor'
-import { formatCurrency, formatDate, formatTipoDocumento } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { EditarProveedorDialog } from '@/components/proveedores/editar-proveedor-dialog'
+import { SelectorPeriodo, periodoDe, ATAJOS_PROVEEDOR, type Periodo } from '@/components/ui/periodo'
+import { Button } from '@/components/ui/button'
+import { useUser } from '@/hooks/use-user'
+import { SECCION } from '@/lib/permisos'
+import { formatCurrency, formatDate, formatTipoDocumento, cn } from '@/lib/utils'
 import {
-  ArrowLeft, Building2, CreditCard, FileText, Package, Phone, Receipt, Truck,
+  AlertTriangle, ArrowLeft, ArrowUpRight, Building2, CreditCard, ExternalLink, FileText,
+  LineChart as LineChartIcon, Package, Pencil, Phone, Receipt, TrendingUp, Truck, Wallet,
 } from 'lucide-react'
 
 interface Resumen {
   verImportes: boolean
+  rango: { desde: string; hasta: string; primeraCompra: string | null }
   proveedor: {
     id: string; razonSocial: string; cuit: string | null; email: string | null; telefono: string | null
     pedidos1Nombre: string | null; pedidos1Telefono: string | null
     pedidos2Nombre: string | null; pedidos2Telefono: string | null
     adminNombre: string | null; adminTelefono: string | null
     diasEntrega: number | null; cbu: string | null; activo: boolean; logoKey: string | null
+    alias: string[]; letra: string | null
   }
-  saldo: { facturado: number | null; pagado: number | null; pendiente: number | null; documentos: number; sinPagar: number }
-  documentos: Array<{ id: string; tipo: string; letra: string | null; numeroCompleto: string | null; fecha: string | null; total: number | null; estado: string; pagado: number | null }>
-  pagos: Array<{ id: string; numero: number; fecha: string; estado: string; montoTotal: number | null; documentos: number; metodos: string | null }>
-  porMes: Array<{ mes: string; total: number; documentos: number }>
-  items: Array<{ descripcion: string; veces: number; cantidad: number | null; ultimoPrecio: number | null; total: number | null }>
+  saldo: {
+    comprado: number | null; pagado: number | null; documentos: number
+    ticket: number | null; pendiente: number | null; sinPagar: number
+  }
+  porMes: Array<{ mes: string; comprado: number; pagado: number; documentos: number }>
+  documentos: Array<{
+    id: string; tipo: string; letra: string | null; numeroCompleto: string | null
+    fecha: string | null; total: number | null; estado: string; pagado: number | null; items: number
+  }>
+  pagos: Array<{
+    id: string; numero: number; fecha: string; estado: string
+    montoTotal: number | null; documentos: number; metodos: string | null
+  }>
+  items: Array<{
+    descripcion: string; veces: number; cantidad: number | null; unidad: string | null
+    primerPrecio: number | null; ultimoPrecio: number | null; minimo: number | null; maximo: number | null
+    variacionPct: number | null; total: number | null; ultimaFecha: string | null; atipicos: number
+  }>
+  indice: Array<{ mes: string; indice: number | null; items: number }>
 }
 
-type Tab = 'documentos' | 'pagos' | 'items'
+type Tab = 'resumen' | 'documentos' | 'pagos' | 'items' | 'precios'
+
+const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const mesLabel = (m: string) => `${MES_CORTO[Number(m.slice(5, 7)) - 1] ?? m} ${m.slice(2, 4)}`
+
+/** Importes del eje: en millones, que es la escala de una compra mensual. */
+function compacto(n: number): string {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} M`
+  if (abs >= 1_000) return `${Math.round(n / 1_000)} k`
+  return String(Math.round(n))
+}
 
 export default function ProveedorPage() {
   const { id } = useParams<{ id: string }>()
-  const [tab, setTab] = useState<Tab>('documentos')
+  const router = useRouter()
+  const { canEdit, isAdmin } = useUser()
+  const puedeEditar = canEdit(SECCION.DOC_PROVEEDORES)
+
+  const [periodo, setPeriodo] = useState<Periodo>(() => periodoDe('ultimos12m'))
+  const [tab, setTab] = useState<Tab>('resumen')
+  const [editando, setEditando] = useState(false)
+
+  const qs = useMemo(() => {
+    const p = new URLSearchParams()
+    if (periodo.clave === 'todo') p.set('todo', '1')
+    else {
+      p.set('desde', periodo.desde)
+      p.set('hasta', periodo.hasta)
+    }
+    return p.toString()
+  }, [periodo])
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['proveedor', id],
+    queryKey: ['proveedor', id, qs],
     queryFn: async () => {
-      const res = await fetch(`/api/proveedores/${id}/resumen`)
+      const res = await fetch(`/api/proveedores/${id}/resumen?${qs}`)
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'No se pudo cargar')
       return res.json() as Promise<Resumen>
     },
+    // Al cambiar el período se mantiene lo anterior en pantalla: la ficha no
+    // parpadea en blanco mientras vuelve la consulta.
+    placeholderData: (previa) => previa,
   })
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <DashboardLayout>
-        <div className="h-40 animate-pulse rounded-xl bg-slate-100" />
+        <div className="space-y-4">
+          <div className="h-32 animate-pulse rounded-xl bg-slate-100" />
+          <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+          <div className="h-72 animate-pulse rounded-xl bg-slate-100" />
+        </div>
       </DashboardLayout>
     )
   }
@@ -65,7 +123,6 @@ export default function ProveedorPage() {
 
   const { proveedor: p, saldo, verImportes } = data
   const $ = (n: number | null | undefined) => (n == null ? '—' : formatCurrency(n))
-  const maxMes = Math.max(1, ...data.porMes.map((m) => Math.abs(m.total)))
 
   const contactos = [
     { icono: Phone, rol: 'Pedidos', nombre: p.pedidos1Nombre, tel: p.pedidos1Telefono },
@@ -73,13 +130,42 @@ export default function ProveedorPage() {
     { icono: Receipt, rol: 'Administración', nombre: p.adminNombre, tel: p.adminTelefono },
   ].filter((c) => c.nombre || c.tel)
 
+  // Aumento del período: el último punto del índice contra la base 100.
+  const ultimoIndice = [...data.indice].reverse().find((r) => r.indice != null)
+  const aumento = ultimoIndice?.indice != null ? ultimoIndice.indice - 100 : null
+  const indiceFlojo = (ultimoIndice?.items ?? 0) > 0 && (ultimoIndice?.items ?? 0) < 5
+
+  const irAPagar = () => {
+    // Mismo mecanismo que usa el listado de comprobantes para abrir el wizard
+    // con el proveedor ya elegido.
+    sessionStorage.setItem('pendingPaymentProveedor', p.id)
+    router.push('/pagos/nueva')
+  }
+
   return (
     <DashboardLayout>
-      <div className="space-y-5">
-        <Link href="/proveedores" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900">
-          <ArrowLeft className="h-4 w-4" />
-          Proveedores
-        </Link>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link href="/proveedores" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900">
+            <ArrowLeft className="h-4 w-4" />
+            Proveedores
+          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <SelectorPeriodo valor={periodo} onCambiar={setPeriodo} atajos={ATAJOS_PROVEEDOR} />
+            {puedeEditar && (
+              <Button variant="outline" size="sm" className="h-10" onClick={() => setEditando(true)}>
+                <Pencil className="mr-1.5 h-4 w-4" />
+                Editar
+              </Button>
+            )}
+            {isAdmin && (
+              <Button size="sm" className="h-10" onClick={irAPagar}>
+                <Wallet className="mr-1.5 h-4 w-4" />
+                Pagar
+              </Button>
+            )}
+          </div>
+        </div>
 
         {/* Ficha */}
         <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -88,6 +174,9 @@ export default function ProveedorPage() {
             <div className="min-w-[14rem] flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold leading-tight">{p.razonSocial}</h1>
+                {p.letra && (
+                  <span className="rounded border border-slate-200 px-1.5 text-xs font-bold text-slate-500">{p.letra}</span>
+                )}
                 {!p.activo && (
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">Inactivo</span>
                 )}
@@ -103,6 +192,9 @@ export default function ProveedorPage() {
                 )}
                 {p.cbu && <span className="inline-flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5" />CBU {p.cbu}</span>}
               </div>
+              {p.alias?.length > 0 && (
+                <p className="mt-1 text-xs text-slate-400">También aparece como: {p.alias.join(' · ')}</p>
+              )}
             </div>
           </div>
 
@@ -132,128 +224,416 @@ export default function ProveedorPage() {
             </div>
           ) : (
             <p className="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-400">
-              Sin contactos cargados. Se editan desde el listado de proveedores.
+              Sin contactos cargados.{' '}
+              {puedeEditar && (
+                <button onClick={() => setEditando(true)} className="font-medium text-slate-600 underline">
+                  Cargarlos
+                </button>
+              )}
             </p>
           )}
         </div>
 
-        {/* Saldo */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi titulo="Comprado" valor={$(saldo.facturado)} detalle={`${saldo.documentos} comprobantes`} />
-          <Kpi titulo="Pagado" valor={$(saldo.pagado)} detalle={`${data.pagos.length} órdenes`} />
+        {/* Indicadores del período */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Kpi
+            titulo="Comprado"
+            valor={$(saldo.comprado)}
+            detalle={`${saldo.documentos} comprobantes · ${periodo.etiqueta.toLowerCase()}`}
+          />
+          <Kpi titulo="Pagado" valor={$(saldo.pagado)} detalle={`${data.pagos.length} órdenes en el período`} />
           <Kpi
             titulo="Saldo pendiente"
             valor={$(saldo.pendiente)}
-            detalle={saldo.sinPagar > 0 ? `${saldo.sinPagar} sin pagar` : 'Todo pagado'}
+            detalle={saldo.sinPagar > 0 ? `${saldo.sinPagar} sin pagar · histórico` : 'Todo pagado'}
             tono={saldo.pendiente != null && saldo.pendiente > 1 ? 'alerta' : 'ok'}
           />
-          <Kpi titulo="Items distintos" valor={String(data.items.length)} detalle="comprados alguna vez" />
+          <Kpi titulo="Factura promedio" valor={$(saldo.ticket)} detalle="en el período" />
+          <Kpi
+            titulo="Aumento de precios"
+            valor={aumento == null ? '—' : `${aumento > 0 ? '+' : ''}${aumento.toFixed(1)}%`}
+            detalle={aumento == null ? 'sin items repetidos' : `${data.items.length} items del período`}
+            tono={aumento != null && aumento > 0 ? 'alerta' : 'ok'}
+          />
         </div>
 
-        {/* Compras por mes */}
-        {verImportes && data.porMes.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="text-sm font-semibold text-slate-700">Compras por mes</h2>
-            <div className="mt-4 flex items-end gap-1.5" style={{ height: 120 }}>
-              {data.porMes.map((m) => (
-                <div key={m.mes} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                  <div
-                    title={`${m.mes}: ${formatCurrency(m.total)} · ${m.documentos} comprobantes`}
-                    className="w-full rounded-t bg-slate-800 transition-all hover:bg-slate-700"
-                    style={{ height: `${Math.max(2, (Math.abs(m.total) / maxMes) * 100)}%` }}
-                  />
-                  <span className="truncate text-[10px] text-slate-400">{m.mes.slice(5)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Pestañas */}
+        {/* Submenú */}
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="flex gap-1 border-b border-slate-100 p-1.5">
+          <div className="flex gap-1 overflow-x-auto border-b border-slate-100 p-1.5">
             {([
+              ['resumen', 'Resumen', TrendingUp, null],
               ['documentos', 'Comprobantes', FileText, data.documentos.length],
               ['pagos', 'Pagos', CreditCard, data.pagos.length],
               ['items', 'Items', Package, data.items.length],
-            ] as Array<[Tab, string, typeof FileText, number]>).map(([v, l, Icono, n]) => (
+              ['precios', 'Precios', LineChartIcon, null],
+            ] as Array<[Tab, string, typeof FileText, number | null]>).map(([v, l, Icono, n]) => (
               <button
                 key={v}
                 onClick={() => setTab(v)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition',
+                  'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition',
                   tab === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
                 )}
               >
                 <Icono className="h-4 w-4" />
                 {l}
-                <span className={cn('text-xs', tab === v ? 'text-white/60' : 'text-slate-400')}>{n}</span>
+                {n != null && <span className={cn('text-xs', tab === v ? 'text-white/60' : 'text-slate-400')}>{n}</span>}
               </button>
             ))}
           </div>
 
-          <div className="max-h-[32rem] overflow-y-auto">
+          <div className="p-4">
+            {tab === 'resumen' && <VistaResumen data={data} verImportes={verImportes} onVerTodo={setTab} />}
+
             {tab === 'documentos' && (
-              <Tabla
-                cols={['Comprobante', 'Fecha', 'Total', 'Estado']}
-                vacio="Sin comprobantes."
-                filas={data.documentos.map((d) => ({
-                  key: d.id,
-                  href: `/documento/${d.id}`,
-                  celdas: [
-                    <span key="c" className="font-medium">
-                      {formatTipoDocumento(d.tipo)} {d.letra} {d.numeroCompleto ?? ''}
-                    </span>,
-                    formatDate(d.fecha),
-                    <span key="t" className="tabular-nums">{$(d.total)}</span>,
-                    <Estado key="e" valor={d.estado} />,
-                  ],
-                }))}
-              />
+              <>
+                <Encabezado titulo="Comprobantes del período" href={`/documentos?proveedorId=${p.id}`} accion="Ver en Compras" />
+                <Tabla
+                  cols={['Comprobante', 'Fecha', 'Items', 'Total', 'Estado']}
+                  vacio="Sin comprobantes en el período."
+                  filas={data.documentos.map((d) => ({
+                    key: d.id,
+                    href: `/documento/${d.id}`,
+                    celdas: [
+                      <span key="c" className="font-medium">
+                        {formatTipoDocumento(d.tipo)} {d.letra} {d.numeroCompleto ?? ''}
+                      </span>,
+                      formatDate(d.fecha),
+                      <span key="i" className="tabular-nums text-slate-500">{d.items}</span>,
+                      <span key="t" className="tabular-nums">{$(d.total)}</span>,
+                      <Estado key="e" valor={d.estado} />,
+                    ],
+                  }))}
+                />
+              </>
             )}
+
             {tab === 'pagos' && (
-              <Tabla
-                cols={['Orden', 'Fecha', 'Monto', 'Estado']}
-                vacio="Sin pagos registrados."
-                filas={data.pagos.map((p2) => ({
-                  key: p2.id,
-                  href: `/pagos/${p2.id}`,
-                  celdas: [
-                    <span key="o" className="font-medium">
-                      OP {String(p2.numero).padStart(6, '0')}
-                      <span className="ml-2 text-xs text-slate-400">
-                        {p2.documentos} doc{p2.documentos === 1 ? '' : 's'}
-                        {p2.metodos ? ` · ${p2.metodos.toLowerCase()}` : ''}
-                      </span>
-                    </span>,
-                    formatDate(p2.fecha),
-                    <span key="m" className="tabular-nums">{$(p2.montoTotal)}</span>,
-                    <Estado key="e" valor={p2.estado} />,
-                  ],
-                }))}
-              />
+              <>
+                <Encabezado titulo="Órdenes de pago del período" href="/pagos" accion="Ver todas" />
+                <Tabla
+                  cols={['Orden', 'Fecha', 'Documentos', 'Monto', 'Estado']}
+                  vacio="Sin pagos en el período."
+                  filas={data.pagos.map((pg) => ({
+                    key: pg.id,
+                    href: `/pagos/${pg.id}`,
+                    celdas: [
+                      <span key="o" className="font-medium">
+                        OP {String(pg.numero).padStart(6, '0')}
+                        {pg.metodos && <span className="ml-2 text-xs text-slate-400">{pg.metodos.toLowerCase()}</span>}
+                      </span>,
+                      formatDate(pg.fecha),
+                      <span key="d" className="tabular-nums text-slate-500">{pg.documentos}</span>,
+                      <span key="m" className="tabular-nums">{$(pg.montoTotal)}</span>,
+                      <Estado key="e" valor={pg.estado} />,
+                    ],
+                  }))}
+                />
+              </>
             )}
-            {tab === 'items' && (
-              <Tabla
-                cols={['Descripción', 'Veces', 'Último precio', 'Total']}
-                vacio="Sin items."
-                filas={data.items.map((it, k) => ({
-                  key: `${it.descripcion}-${k}`,
-                  celdas: [
-                    <span key="d" className="font-medium">{it.descripcion}</span>,
-                    <span key="v" className="tabular-nums text-slate-500">{it.veces}</span>,
-                    <span key="p" className="tabular-nums">{$(it.ultimoPrecio)}</span>,
-                    <span key="t" className="tabular-nums">{$(it.total)}</span>,
-                  ],
-                }))}
-              />
-            )}
+
+            {tab === 'items' && <VistaItems data={data} proveedorId={p.id} />}
+
+            {tab === 'precios' && <VistaPrecios data={data} aumento={aumento} indiceFlojo={indiceFlojo} />}
           </div>
         </div>
       </div>
+
+      {puedeEditar && (
+        <EditarProveedorDialog
+          proveedor={{
+            id: p.id,
+            razonSocial: p.razonSocial,
+            cuit: p.cuit,
+            letra: p.letra,
+            alias: p.alias ?? [],
+            email: p.email,
+            pedidos1Nombre: p.pedidos1Nombre,
+            pedidos1Telefono: p.pedidos1Telefono,
+            pedidos2Nombre: p.pedidos2Nombre,
+            pedidos2Telefono: p.pedidos2Telefono,
+            adminNombre: p.adminNombre,
+            adminTelefono: p.adminTelefono,
+            diasEntrega: p.diasEntrega,
+            cbu: p.cbu,
+            activo: p.activo,
+          }}
+          abierto={editando}
+          onCerrar={() => setEditando(false)}
+        />
+      )}
     </DashboardLayout>
   )
 }
+
+/* ------------------------------------------------------------------ */
+
+function VistaResumen({
+  data,
+  verImportes,
+  onVerTodo,
+}: {
+  data: Resumen
+  verImportes: boolean
+  onVerTodo: (t: Tab) => void
+}) {
+  const serie = data.porMes.map((m) => ({ ...m, label: mesLabel(m.mes) }))
+  const hayMovimiento = serie.some((m) => m.comprado !== 0 || m.pagado !== 0)
+  const topItems = data.items.slice(0, 6)
+  const maxItem = Math.max(1, ...topItems.map((i) => Math.abs(i.total ?? 0)))
+
+  return (
+    <div className="space-y-6">
+      {verImportes && (
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700">Compras y pagos por mes</h2>
+          {!hayMovimiento ? (
+            <p className="py-12 text-center text-sm text-slate-400">Sin movimientos en el período.</p>
+          ) : (
+            <div className="mt-3 h-64">
+              <ResponsiveContainer>
+                <ComposedChart data={serie} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+                  <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis tickFormatter={compacto} tick={{ fontSize: 11 }} width={52} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    formatter={((v: number, n: string) => [formatCurrency(v), n === 'comprado' ? 'Comprado' : 'Pagado']) as never}
+                  />
+                  <Legend
+                    formatter={(v) => <span className="text-xs text-slate-500">{v === 'comprado' ? 'Comprado' : 'Pagado'}</span>}
+                  />
+                  <Bar dataKey="comprado" fill="#1e293b" radius={[4, 4, 0, 0]} maxBarSize={38} />
+                  <Line type="monotone" dataKey="pagado" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div>
+          <Encabezado titulo="Lo que más se le compra" accion="Ver todos" onClick={() => onVerTodo('items')} />
+          {topItems.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">Sin items en el período.</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {topItems.map((it) => (
+                <li key={it.descripcion}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="truncate text-sm text-slate-700" title={it.descripcion}>{it.descripcion}</span>
+                    <span className="shrink-0 text-sm font-medium tabular-nums">
+                      {it.total == null ? `${it.veces}×` : formatCurrency(it.total)}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-slate-800"
+                      style={{ width: `${Math.max(2, (Math.abs(it.total ?? 0) / maxItem) * 100)}%` }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <Encabezado titulo="Últimos comprobantes" accion="Ver todos" onClick={() => onVerTodo('documentos')} />
+          {data.documentos.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">Sin comprobantes en el período.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {data.documentos.slice(0, 6).map((d) => (
+                <li key={d.id}>
+                  <Link href={`/documento/${d.id}`} className="flex items-center justify-between gap-3 py-2 hover:bg-slate-50">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">
+                        {formatTipoDocumento(d.tipo)} {d.letra} {d.numeroCompleto ?? ''}
+                      </span>
+                      <span className="text-xs text-slate-400">{formatDate(d.fecha)} · {d.items} items</span>
+                    </span>
+                    <span className="shrink-0 text-sm tabular-nums">{d.total == null ? '—' : formatCurrency(d.total)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function VistaPrecios({
+  data,
+  aumento,
+  indiceFlojo,
+}: {
+  data: Resumen
+  aumento: number | null
+  indiceFlojo: boolean
+}) {
+  const serie = data.indice.map((r) => ({ ...r, label: mesLabel(r.mes) }))
+  const conVariacion = data.items
+    .filter((i) => i.variacionPct != null)
+    .sort((a, b) => Math.abs(b.variacionPct ?? 0) - Math.abs(a.variacionPct ?? 0))
+  const atipicos = data.items.reduce((n, i) => n + i.atipicos, 0)
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-sm font-semibold text-slate-700">Índice de precios</h2>
+        <p className="mt-0.5 max-w-3xl text-xs text-slate-400">
+          Base 100 en el primer mes. Compara cada item contra su propia compra anterior y promedia ponderando por lo
+          que pesa en la factura, así el índice mide precios y no cambios en lo que se compró.
+        </p>
+        {serie.length < 2 ? (
+          <p className="py-12 text-center text-sm text-slate-400">
+            Hace falta más de un mes con items repetidos para medir la evolución.
+          </p>
+        ) : (
+          <div className="mt-3 h-56">
+            <ResponsiveContainer>
+              <LineChart data={serie} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
+                <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11 }} width={44} domain={['auto', 'auto']} tickLine={false} axisLine={false} />
+                <Tooltip
+                  formatter={((v: number, _n: string, o: { payload?: { items?: number } }) => [
+                    `${v.toFixed(1)} (${o?.payload?.items ?? 0} items comparados)`,
+                    'Índice',
+                  ]) as never}
+                />
+                <Line type="monotone" dataKey="indice" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="mt-2 space-y-1 text-xs text-slate-500">
+          {aumento != null && (
+            <p>
+              Acumulado del período:{' '}
+              <strong className={aumento > 0 ? 'text-amber-700' : 'text-emerald-700'}>
+                {aumento > 0 ? '+' : ''}{aumento.toFixed(1)}%
+              </strong>
+            </p>
+          )}
+          {indiceFlojo && (
+            <p className="inline-flex items-center gap-1 text-amber-700">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              El último mes se apoya en menos de 5 items: tomalo como provisorio.
+            </p>
+          )}
+          {atipicos > 0 && (
+            <p>
+              {atipicos} línea{atipicos === 1 ? '' : 's'} quedaron afuera del cálculo por tener un precio muy lejos de la
+              mediana de su item: casi siempre es el extractor leyendo mal un número del PDF.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <Encabezado titulo="Items que más se movieron" />
+        <Tabla
+          cols={['Item', 'Compras', 'Primero', 'Último', 'Variación']}
+          vacio="Ningún item se compró dos veces en el período."
+          filas={conVariacion.slice(0, 50).map((it) => ({
+            key: it.descripcion,
+            celdas: [
+              <span key="d" className="font-medium">
+                {it.descripcion}
+                {it.atipicos > 0 && (
+                  <span
+                    className="ml-1.5 text-[10px] text-amber-600"
+                    title={`${it.atipicos} línea(s) con precio atípico, excluidas del cálculo`}
+                  >
+                    ⚠ {it.atipicos}
+                  </span>
+                )}
+              </span>,
+              <span key="v" className="tabular-nums text-slate-500">{it.veces}</span>,
+              <span key="p" className="tabular-nums text-slate-500">
+                {it.primerPrecio == null ? '—' : formatCurrency(it.primerPrecio)}
+              </span>,
+              <span key="u" className="tabular-nums">{it.ultimoPrecio == null ? '—' : formatCurrency(it.ultimoPrecio)}</span>,
+              <Variacion key="x" pct={it.variacionPct} />,
+            ],
+          }))}
+        />
+      </div>
+    </div>
+  )
+}
+
+function VistaItems({ data, proveedorId }: { data: Resumen; proveedorId: string }) {
+  type Orden = 'total' | 'variacion' | 'veces' | 'nombre'
+  const [orden, setOrden] = useState<Orden>('total')
+
+  const items = useMemo(() => {
+    const xs = [...data.items]
+    if (orden === 'variacion') xs.sort((a, b) => (b.variacionPct ?? -Infinity) - (a.variacionPct ?? -Infinity))
+    if (orden === 'veces') xs.sort((a, b) => b.veces - a.veces)
+    if (orden === 'nombre') xs.sort((a, b) => a.descripcion.localeCompare(b.descripcion))
+    return xs
+  }, [data.items, orden])
+
+  return (
+    <>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-slate-700">Items comprados en el período</h2>
+        <div className="flex items-center gap-2 text-xs">
+          <Link
+            href={`/items?proveedorId=${proveedorId}`}
+            className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-900 hover:underline"
+          >
+            Ver en Items
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+          <span className="text-slate-400">Ordenar por</span>
+          {([['total', 'monto'], ['variacion', 'aumento'], ['veces', 'compras'], ['nombre', 'nombre']] as Array<
+            [Orden, string]
+          >).map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setOrden(v)}
+              className={cn(
+                'rounded-md px-2 py-1 font-medium transition',
+                orden === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+              )}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Tabla
+        cols={['Item', 'Compras', 'Cantidad', 'Último precio', 'Variación', 'Total']}
+        vacio="Sin items en el período."
+        filas={items.map((it) => ({
+          key: it.descripcion,
+          celdas: [
+            <span key="d" className="font-medium">{it.descripcion}</span>,
+            <span key="v" className="tabular-nums text-slate-500">{it.veces}</span>,
+            <span key="c" className="tabular-nums text-slate-500">
+              {it.cantidad == null ? '—' : it.cantidad.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+              {it.unidad ? ` ${it.unidad.toLowerCase()}` : ''}
+            </span>,
+            <span key="p" className="tabular-nums">
+              {it.ultimoPrecio == null ? '—' : formatCurrency(it.ultimoPrecio)}
+              {it.ultimaFecha && <span className="ml-1.5 text-xs text-slate-400">{formatDate(it.ultimaFecha)}</span>}
+            </span>,
+            <Variacion key="x" pct={it.variacionPct} />,
+            <span key="t" className="tabular-nums">{it.total == null ? '—' : formatCurrency(it.total)}</span>,
+          ],
+        }))}
+      />
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 
 function Kpi({ titulo, valor, detalle, tono }: { titulo: string; valor: string; detalle: string; tono?: 'ok' | 'alerta' }) {
   return (
@@ -261,6 +641,51 @@ function Kpi({ titulo, valor, detalle, tono }: { titulo: string; valor: string; 
       <p className="text-xs font-medium text-slate-500">{titulo}</p>
       <p className={cn('mt-1 text-xl font-bold tabular-nums', tono === 'alerta' && 'text-amber-700')}>{valor}</p>
       <p className="mt-0.5 text-xs text-slate-400">{detalle}</p>
+    </div>
+  )
+}
+
+function Variacion({ pct }: { pct: number | null }) {
+  if (pct == null) return <span className="text-slate-300">—</span>
+  const sube = pct > 0
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums',
+        sube ? 'bg-amber-50 text-amber-700' : pct < 0 ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400'
+      )}
+    >
+      {sube && <ArrowUpRight className="h-3 w-3" />}
+      {pct > 0 ? '+' : ''}{pct.toFixed(1)}%
+    </span>
+  )
+}
+
+function Encabezado({
+  titulo,
+  href,
+  accion,
+  onClick,
+}: {
+  titulo: string
+  href?: string
+  accion?: string
+  onClick?: () => void
+}) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <h2 className="text-sm font-semibold text-slate-700">{titulo}</h2>
+      {accion && href && (
+        <Link href={href} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 hover:underline">
+          {accion}
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      )}
+      {accion && !href && onClick && (
+        <button onClick={onClick} className="text-xs text-slate-500 hover:text-slate-900 hover:underline">
+          {accion}
+        </button>
+      )}
     </div>
   )
 }
@@ -288,31 +713,38 @@ function Tabla({
 }) {
   if (filas.length === 0) return <p className="p-10 text-center text-sm text-slate-400">{vacio}</p>
   return (
-    <table className="w-full text-sm">
-      <thead className="sticky top-0 bg-slate-50 text-left text-xs font-medium text-slate-500">
-        <tr>
-          {cols.map((c, i) => (
-            <th key={c} className={cn('px-4 py-2', i > 0 && 'text-right', i === cols.length - 1 && 'text-right')}>
-              {c}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
-        {filas.map((f) => (
-          <tr key={f.key} className={cn('hover:bg-slate-50', f.href && 'cursor-pointer')}>
-            {f.celdas.map((c, i) => (
-              <td key={i} className={cn('px-4 py-2.5', i > 0 && 'text-right whitespace-nowrap')}>
-                {i === 0 && f.href ? (
-                  <Link href={f.href} className="block hover:underline">{c}</Link>
-                ) : (
-                  c
-                )}
-              </td>
+    <div className="max-h-[32rem] overflow-y-auto rounded-lg border border-slate-100">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-medium text-slate-500">
+          <tr>
+            {cols.map((c, i) => (
+              <th key={c} className={cn('px-4 py-2', i > 0 ? 'text-right' : 'w-full')}>
+                {c}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {filas.map((f) => (
+            <tr key={f.key} className="hover:bg-slate-50">
+              {f.celdas.map((celda, i) => (
+                <td
+                  key={i}
+                  className={cn('px-4 py-2.5', i > 0 ? 'whitespace-nowrap text-right' : 'w-full max-w-0 truncate')}
+                >
+                  {f.href && i === 0 ? (
+                    <Link href={f.href} className="block truncate hover:underline">
+                      {celda}
+                    </Link>
+                  ) : (
+                    celda
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
