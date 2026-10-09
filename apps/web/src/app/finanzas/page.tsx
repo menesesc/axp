@@ -1,57 +1,32 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ChevronLeft, ChevronRight, CreditCard, FileEdit, Landmark, Wallet } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
-import { PaymentCalendar } from '@/components/payments/payment-calendar'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Kpi } from '@/components/dashboard/inicio'
+import { DetalleDia, PaymentCalendar, claveDia, porMetodo, type CalendarEvent } from '@/components/payments/payment-calendar'
 import { useUser } from '@/hooks/use-user'
+import { hoyAR } from '@/lib/fechas'
 import { formatCurrency } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, FileText, Clock, CreditCard } from 'lucide-react'
 
-interface CalendarEventItem {
-  pagoId: string
-  numero: number
-  proveedor: string
-  estado: string
-  monto: number
-  tipo: string
+/** Rango que cubre la grilla del mes (con la semana anterior y la siguiente). */
+function rangoDelMes(mes: Date) {
+  const desde = new Date(mes.getFullYear(), mes.getMonth(), 1 - 7)
+  const hasta = new Date(mes.getFullYear(), mes.getMonth() + 1, 7)
+  return { desde: claveDia(desde), hasta: claveDia(hasta) }
 }
 
-interface CalendarEvent {
-  fecha: string
-  total: number
-  items: CalendarEventItem[]
-}
-
-function getMonthRange(month: Date): { desde: string; hasta: string } {
-  const year = month.getFullYear()
-  const m = month.getMonth()
-  const firstDay = new Date(year, m, 1)
-  const lastDay = new Date(year, m + 1, 0)
-
-  // Include a few days before/after for calendar padding
-  firstDay.setDate(firstDay.getDate() - 7)
-  lastDay.setDate(lastDay.getDate() + 7)
-
-  return {
-    desde: firstDay.toISOString().split('T')[0]!,
-    hasta: lastDay.toISOString().split('T')[0]!,
-  }
-}
-
-function formatMonthYear(date: Date): string {
-  return date.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-}
-
-export default function FinanzasPage() {
+export default function CalendarioPagos() {
   const { clienteId } = useUser()
-  const [currentMonth, setCurrentMonth] = useState(new Date())
-
-  const { desde, hasta } = getMonthRange(currentMonth)
+  const hoy = hoyAR()
+  const [mes, setMes] = useState(() => {
+    const [a, m] = hoy.split('-').map(Number) as [number, number]
+    return new Date(a, m - 1, 1)
+  })
+  const [dia, setDia] = useState<string | null>(null)
+  const { desde, hasta } = rangoDelMes(mes)
 
   const { data, isLoading } = useQuery<{ eventos: CalendarEvent[] }>({
     queryKey: ['pagos-calendario', desde, hasta],
@@ -64,125 +39,85 @@ export default function FinanzasPage() {
   })
 
   const eventos = data?.eventos || []
+  const prefijo = claveDia(mes).slice(0, 7)
+  const delMes = eventos.filter((e) => e.fecha.startsWith(prefijo))
+  const items = delMes.flatMap((e) => e.items)
+  const total = delMes.reduce((s, e) => s + e.total, 0)
+  const emitidas = items.filter((i) => i.estado === 'EMITIDA')
+  const borradores = items.filter((i) => i.estado === 'BORRADOR')
+  const metodos = porMetodo(items)
+  const suma = (xs: typeof items) => xs.reduce((s, i) => s + i.monto, 0)
 
-  // Calcular resumen del mes
-  const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
-  const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0)
-  const monthEvents = eventos.filter((e) => {
-    const d = new Date(e.fecha + 'T12:00:00')
-    return d >= monthStart && d <= monthEnd
-  })
+  // Día elegido por defecto: hoy si es de este mes, si no el primer día con pagos.
+  useEffect(() => {
+    if (isLoading) return
+    if (hoy.startsWith(prefijo)) setDia(hoy)
+    else setDia(delMes[0]?.fecha ?? `${prefijo}-01`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefijo, isLoading])
 
-  const totalMes = monthEvents.reduce((sum, e) => sum + e.total, 0)
-  const totalEmitido = monthEvents.reduce((sum, e) => {
-    return sum + e.items.filter((i) => i.estado === 'EMITIDA').reduce((s, i) => s + i.monto, 0)
-  }, 0)
-  const totalBorradores = monthEvents.reduce((sum, e) => {
-    return sum + e.items.filter((i) => i.estado === 'BORRADOR').reduce((s, i) => s + i.monto, 0)
-  }, 0)
-
-  const prevMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))
-  }
-
-  const nextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))
-  }
-
-  const goToday = () => {
-    setCurrentMonth(new Date())
-  }
+  const mover = (n: number) => setMes((m) => new Date(m.getFullYear(), m.getMonth() + n, 1))
+  const nombreMes = mes.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
 
   if (!clienteId) {
     return (
       <DashboardLayout>
-        <div className="text-center py-8 text-sm text-slate-500">
-          No tienes acceso
-        </div>
+        <p className="py-8 text-center text-sm text-slate-500">No tenés acceso.</p>
       </DashboardLayout>
     )
   }
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <Header title="Calendario financiero" />
-
-        {/* Month summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border shadow-sm">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Total programado</p>
-                  <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
-                    {isLoading ? '-' : formatCurrency(totalMes)}
-                  </p>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-100">
-                  <FileText className="h-4 w-4 text-slate-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border shadow-sm">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Emitidas</p>
-                  <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
-                    {isLoading ? '-' : formatCurrency(totalEmitido)}
-                  </p>
-                </div>
-                <div className="p-2 rounded-lg bg-blue-50">
-                  <CreditCard className="h-4 w-4 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border shadow-sm">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Borradores</p>
-                  <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
-                    {isLoading ? '-' : formatCurrency(totalBorradores)}
-                  </p>
-                </div>
-                <div className="p-2 rounded-lg bg-amber-50">
-                  <Clock className="h-4 w-4 text-amber-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Month navigation */}
-        <div className="flex items-center justify-between">
+      <Header
+        title="Calendario de pagos"
+        description="Qué sale de la cuenta cada día: transferencias, cheques y eCheq."
+        actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={prevMonth}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={nextMonth}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={goToday}>
-              Hoy
-            </Button>
+            <div className="flex items-center rounded-xl border border-slate-900/[0.12] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+              <button type="button" onClick={() => mover(-1)} className="grid h-10 w-10 place-items-center rounded-l-xl text-slate-500 hover:bg-slate-50 hover:text-slate-900" aria-label="Mes anterior">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-[9.5rem] px-2 text-center text-sm font-medium capitalize">{nombreMes}</span>
+              <button type="button" onClick={() => mover(1)} className="grid h-10 w-10 place-items-center rounded-r-xl text-slate-500 hover:bg-slate-50 hover:text-slate-900" aria-label="Mes siguiente">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            {!hoy.startsWith(prefijo) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const [a, m] = hoy.split('-').map(Number) as [number, number]
+                  setMes(new Date(a, m - 1, 1))
+                }}
+                className="inline-flex h-10 items-center rounded-xl px-3 text-sm text-[var(--azul-2)] hover:bg-slate-900/[0.05]"
+              >
+                Volver a hoy
+              </button>
+            )}
           </div>
-          <h2 className="text-lg font-semibold text-slate-900 capitalize">
-            {formatMonthYear(currentMonth)}
-          </h2>
-        </div>
+        }
+      />
 
-        {/* Calendar */}
-        {isLoading ? (
-          <Skeleton className="h-[500px] w-full" />
-        ) : (
-          <PaymentCalendar month={currentMonth} eventos={eventos} />
-        )}
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi etiqueta="Programado en el mes" valor={formatCurrency(total)} nota={`${items.length} pagos`} icono={Wallet} cargando={isLoading} />
+        <Kpi etiqueta="Emitidas" valor={formatCurrency(suma(emitidas))} nota={`${emitidas.length} órdenes listas para pagar`} icono={CreditCard} cargando={isLoading} />
+        <Kpi etiqueta="Borradores" valor={formatCurrency(suma(borradores))} nota={`${borradores.length} sin emitir`} tono="ambar" icono={FileEdit} cargando={isLoading} />
+        <Kpi
+          etiqueta="Cheques y eCheq"
+          valor={formatCurrency(metodos.cheque)}
+          nota={`${formatCurrency(metodos.transferencia)} en transferencias`}
+          tono="ambar"
+          icono={Landmark}
+          cargando={isLoading}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem]">
+        {isLoading ? <div className="h-[34rem] animate-pulse rounded-2xl bg-slate-900/[0.04]" /> : <PaymentCalendar month={mes} eventos={eventos} seleccionado={dia} onSeleccionar={setDia} hoy={hoy} />}
+        <div className="xl:sticky xl:top-20 xl:self-start">
+          <DetalleDia dia={dia} evento={eventos.find((e) => e.fecha === dia)} />
+        </div>
       </div>
     </DashboardLayout>
   )

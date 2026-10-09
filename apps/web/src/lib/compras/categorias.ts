@@ -37,6 +37,7 @@ export const CATEGORIAS_DEFAULT: Array<{ nombre: string; abreviatura: string; or
   { nombre: 'Mantenimiento', abreviatura: 'MANT', orden: 150 },
   { nombre: 'Bazar y vajilla', abreviatura: 'BAZ', orden: 155 },
   { nombre: 'Indumentaria y blanquería', abreviatura: 'IND', orden: 160 },
+  { nombre: 'Bienes de uso', abreviatura: 'BU', orden: 165 },
   { nombre: 'Servicios', abreviatura: 'SERV', orden: 170 },
   { nombre: 'Otros', abreviatura: 'OTR', orden: 999 },
 ]
@@ -115,7 +116,8 @@ Criterios:
 - Limpieza: productos químicos, detergentes, lavandina, alcohol, trapos, esponjas.
 - Descartables: envases, bandejas, film, papel, bolsas, servilletas, vasos descartables.
 - Mantenimiento: repuestos, ferretería, gas, reparaciones, electricidad.
-- Bazar y vajilla: utensilios de cocina, ollas, cazos, coladores, vajilla, copas, vasos, cubiertos, equipamiento gastronómico.
+- Bazar y vajilla: utensilios de cocina, ollas, cazos, coladores, vajilla, copas, vasos, cubiertos y accesorios chicos.
+- Bienes de uso: equipamiento y maquinaria durable que se usa varios años (abatidores, heladeras, freezers, cámaras, hornos, cocinas, anafes, freidoras, planchas, campanas, lavavajillas, máquinas de café, batidoras y procesadoras industriales, balanzas, mobiliario, computadoras, impresoras fiscales).
 - Indumentaria y blanquería: ropa de trabajo, uniformes, manteles, repasadores.
 - Servicios: fletes, honorarios, abonos, alquileres, cargos no físicos.
 - Otros: solo si ninguna otra aplica.

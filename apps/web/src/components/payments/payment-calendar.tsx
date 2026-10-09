@@ -1,14 +1,10 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
-import { formatCurrency, formatNumeroOrden } from '@/lib/utils'
-import { PaymentMethodBadge } from '@/components/ui/payment-method-badge'
-import type { PaymentMethod } from '@/components/ui/payment-method-badge'
-import { X, Building2, CreditCard } from 'lucide-react'
+import { cn, formatCurrency, formatNumeroOrden } from '@/lib/utils'
+import { CalendarDays } from 'lucide-react'
 
-interface CalendarEventItem {
+export interface CalendarEventItem {
   pagoId: string
   numero: number
   proveedor: string
@@ -17,251 +13,214 @@ interface CalendarEventItem {
   tipo: string
 }
 
-/** Suma diferenciada por medio de pago: transferencia vs cheques/eCheq (vs resto). */
-function splitByMethod(items: CalendarEventItem[]) {
-  let transferencia = 0
-  let chequeEcheq = 0
-  let otros = 0
-  for (const it of items) {
-    if (it.tipo === 'TRANSFERENCIA') transferencia += it.monto
-    else if (it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ') chequeEcheq += it.monto
-    else otros += it.monto
-  }
-  return { transferencia, chequeEcheq, otros }
-}
-
-/** Monto compacto para celdas chicas: $1,2M · $50k · $300. */
-function formatCompactARS(n: number): string {
-  const abs = Math.abs(n)
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
-  if (abs >= 1_000) return `$${Math.round(n / 1_000)}k`
-  return `$${Math.round(n)}`
-}
-
-interface CalendarEvent {
+export interface CalendarEvent {
   fecha: string
   total: number
   items: CalendarEventItem[]
 }
 
-interface PaymentCalendarProps {
+export const COLOR_METODO = { transferencia: '#3b9bff', cheque: '#f5a524', otros: '#10b981' }
+
+/** Suma por medio de pago: transferencia, cheques/eCheq y resto. */
+export function porMetodo(items: CalendarEventItem[]) {
+  let transferencia = 0
+  let cheque = 0
+  let otros = 0
+  for (const it of items) {
+    if (it.tipo === 'TRANSFERENCIA') transferencia += it.monto
+    else if (it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ') cheque += it.monto
+    else otros += it.monto
+  }
+  return { transferencia, cheque, otros }
+}
+
+/** Monto compacto para celdas chicas: $ 1,2 M · $ 50 mil. */
+function compacto(n: number): string {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `$ ${(n / 1_000_000).toLocaleString('es-AR', { maximumFractionDigits: 1 })} M`
+  if (abs >= 1_000) return `$ ${Math.round(n / 1_000)} mil`
+  return `$ ${Math.round(n)}`
+}
+
+const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const METODO: Record<string, { texto: string; color: string }> = {
+  TRANSFERENCIA: { texto: 'Transferencia', color: COLOR_METODO.transferencia },
+  ECHEQ: { texto: 'eCheq', color: COLOR_METODO.cheque },
+  CHEQUE: { texto: 'Cheque', color: COLOR_METODO.cheque },
+  EFECTIVO: { texto: 'Efectivo', color: COLOR_METODO.otros },
+}
+
+export const claveDia = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const capitalizar = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase())
+
+/** 6 semanas (lunes a domingo) que contienen al mes. */
+function diasDelCalendario(mes: Date): Date[] {
+  const primero = new Date(mes.getFullYear(), mes.getMonth(), 1)
+  const desplazamiento = (primero.getDay() + 6) % 7
+  const inicio = new Date(primero)
+  inicio.setDate(1 - desplazamiento)
+  return Array.from({ length: 42 }, (_, i) => new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i))
+}
+
+/** Grilla mensual: cada día con el total y la barra de transferencias / cheques. */
+export function PaymentCalendar({
+  month,
+  eventos,
+  seleccionado,
+  onSeleccionar,
+  hoy,
+}: {
   month: Date
   eventos: CalendarEvent[]
-}
-
-const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
-
-function getCalendarDays(month: Date): Date[] {
-  const year = month.getFullYear()
-  const m = month.getMonth()
-
-  // First day of the month
-  const firstDay = new Date(year, m, 1)
-
-  // Day of week for first day (0=Sun, adjust to Mon=0)
-  let startDow = firstDay.getDay() - 1
-  if (startDow < 0) startDow = 6
-
-  // Build array starting from the Monday before the first day
-  const days: Date[] = []
-  const start = new Date(firstDay)
-  start.setDate(start.getDate() - startDow)
-
-  // Always show 6 weeks (42 days) for consistent layout
-  for (let i = 0; i < 42; i++) {
-    days.push(new Date(start))
-    start.setDate(start.getDate() + 1)
-  }
-
-  return days
-}
-
-function formatDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-
-export function PaymentCalendar({ month, eventos }: PaymentCalendarProps) {
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
-  const days = getCalendarDays(month)
-  const today = new Date()
-
-  // Map events by date key
-  const eventsByDay = new Map<string, CalendarEvent>()
-  for (const e of eventos) {
-    eventsByDay.set(e.fecha, e)
-  }
-
-  const selectedEvent = selectedDay ? eventsByDay.get(selectedDay) : null
+  seleccionado: string | null
+  onSeleccionar: (dia: string) => void
+  hoy: string
+}) {
+  const dias = diasDelCalendario(month)
+  const porDia = new Map(eventos.map((e) => [e.fecha, e]))
 
   return (
-    <div className="space-y-4">
-      <div className="border rounded-lg overflow-hidden">
-        {/* Day-of-week headers */}
-        <div className="grid grid-cols-7 bg-slate-50 border-b">
-          {DAY_NAMES.map((d) => (
-            <div key={d} className="px-2 py-2 text-xs font-medium text-slate-500 text-center">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* Day cells */}
-        <div className="grid grid-cols-7">
-          {days.map((day) => {
-            const key = formatDateKey(day)
-            const event = eventsByDay.get(key)
-            const isToday = isSameDay(day, today)
-            const isCurrentMonth = day.getMonth() === month.getMonth()
-            const isSelected = selectedDay === key
-
-            return (
-              <div
-                key={key}
-                onClick={() => event && setSelectedDay(isSelected ? null : key)}
-                className={cn(
-                  'min-h-[80px] p-1.5 border-b border-r text-xs transition-colors',
-                  !isCurrentMonth && 'bg-slate-50/50 text-slate-300',
-                  isToday && 'ring-2 ring-inset ring-blue-500',
-                  isSelected && 'bg-blue-50',
-                  event && 'cursor-pointer hover:bg-slate-50'
-                )}
-              >
-                <div className={cn(
-                  'font-medium',
-                  isToday && 'text-blue-600',
-                  !isCurrentMonth && 'text-slate-300',
-                )}>
-                  {day.getDate()}
-                </div>
-                {event && isCurrentMonth && (() => {
-                  const split = splitByMethod(event.items)
-                  return (
-                  <div className="mt-1 space-y-0.5">
-                    <div className="font-semibold text-slate-900 tabular-nums text-[11px]">
-                      {formatCurrency(event.total)}
-                    </div>
-                    {(split.transferencia > 0 || split.chequeEcheq > 0) && (
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] leading-tight">
-                        {split.transferencia > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-blue-600 tabular-nums">
-                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                            {formatCompactARS(split.transferencia)}
-                          </span>
-                        )}
-                        {split.chequeEcheq > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-orange-600 tabular-nums">
-                            <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
-                            {formatCompactARS(split.chequeEcheq)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {event.items.slice(0, 2).map((item, i) => (
-                      <div
-                        key={i}
-                        className={cn(
-                          'truncate rounded px-1 py-0.5 text-[10px]',
-                          item.estado === 'BORRADOR'
-                            ? 'bg-slate-100 text-slate-500 border border-dashed border-slate-300'
-                            : 'bg-blue-50 text-blue-700'
-                        )}
-                      >
-                        {item.proveedor}
-                      </div>
-                    ))}
-                    {event.items.length > 2 && (
-                      <div className="text-[10px] text-slate-400">
-                        +{event.items.length - 2} más
-                      </div>
-                    )}
-                  </div>
-                  )
-                })()}
-              </div>
-            )
-          })}
-        </div>
+    <section className="ax-card overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-slate-900/[0.08] bg-[#f7f9fc]">
+        {DIAS.map((d, i) => (
+          <div key={d} className={cn('px-2 py-2.5 text-center text-xs font-medium', i >= 5 ? 'text-slate-400' : 'text-slate-500')}>
+            {d}
+          </div>
+        ))}
       </div>
-
-      {/* Day detail panel */}
-      {selectedEvent && selectedDay && (
-        <div className="border rounded-lg p-4 bg-white shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-slate-900">
-              {new Date(selectedDay + 'T12:00:00').toLocaleDateString('es-AR', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
-            </h4>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-slate-900 tabular-nums">
-                Total: {formatCurrency(selectedEvent.total)}
-              </span>
-              <button
-                onClick={() => setSelectedDay(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          {(() => {
-            const split = splitByMethod(selectedEvent.items)
-            if (split.transferencia <= 0 && split.chequeEcheq <= 0) return null
-            return (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {split.transferencia > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
-                    <Building2 className="h-3 w-3" />
-                    Transferencia
-                    <span className="font-semibold tabular-nums">{formatCurrency(split.transferencia)}</span>
-                  </span>
-                )}
-                {split.chequeEcheq > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs text-orange-700">
-                    <CreditCard className="h-3 w-3" />
-                    Cheques/eCheq
-                    <span className="font-semibold tabular-nums">{formatCurrency(split.chequeEcheq)}</span>
-                  </span>
-                )}
-              </div>
-            )
-          })()}
-          <div className="space-y-2">
-            {selectedEvent.items.map((item, i) => (
-              <Link
-                key={`${item.pagoId}-${i}`}
-                href={`/pagos/${item.pagoId}`}
+      <div className="grid grid-cols-7">
+        {dias.map((dia, i) => {
+          const clave = claveDia(dia)
+          const enMes = dia.getMonth() === month.getMonth()
+          const evento = enMes ? porDia.get(clave) : undefined
+          const esHoy = clave === hoy
+          const elegido = clave === seleccionado
+          const pasado = clave < hoy
+          const m = evento ? porMetodo(evento.items) : null
+          const finde = i % 7 >= 5
+          return (
+            <button
+              key={clave}
+              type="button"
+              disabled={!enMes}
+              onClick={() => onSeleccionar(clave)}
+              aria-pressed={elegido}
+              aria-label={`${dia.getDate()}${evento ? `, ${evento.items.length} pagos` : ''}`}
+              className={cn(
+                'relative flex min-h-[5.75rem] flex-col items-stretch gap-1 border-b border-r border-slate-900/[0.06] p-2 text-left transition-colors [&:nth-child(7n)]:border-r-0',
+                !enMes && 'cursor-default bg-slate-50/60',
+                enMes && finde && 'bg-slate-50/40',
+                enMes && 'hover:bg-[rgba(59,155,255,0.05)]',
+                elegido && 'bg-[rgba(59,155,255,0.08)] shadow-[inset_0_0_0_2px_#3b9bff] hover:bg-[rgba(59,155,255,0.08)]'
+              )}
+            >
+              <span
                 className={cn(
-                  'flex items-center justify-between p-2 rounded-md hover:bg-slate-50 transition-colors',
-                  item.estado === 'BORRADOR' && 'border border-dashed border-slate-200'
+                  'grid h-6 w-6 place-items-center rounded-full text-xs font-medium tabular-nums',
+                  esHoy ? 'bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-white' : !enMes ? 'text-slate-300' : pasado ? 'text-slate-400' : 'text-slate-700'
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-400 tabular-nums">
-                    #{formatNumeroOrden(item.numero)}
+                {dia.getDate()}
+              </span>
+              {evento && m && (
+                <>
+                  <span className={cn('text-[12px] font-semibold tabular-nums', pasado ? 'text-slate-400' : 'text-slate-900')}>{compacto(evento.total)}</span>
+                  <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-slate-900/[0.06]">
+                    {m.transferencia > 0 && <i style={{ width: `${(m.transferencia / evento.total) * 100}%`, background: COLOR_METODO.transferencia }} />}
+                    {m.cheque > 0 && <i style={{ width: `${(m.cheque / evento.total) * 100}%`, background: COLOR_METODO.cheque }} />}
+                    {m.otros > 0 && <i style={{ width: `${(m.otros / evento.total) * 100}%`, background: COLOR_METODO.otros }} />}
                   </span>
-                  <span className="text-sm text-slate-700">{item.proveedor}</span>
-                  <PaymentMethodBadge method={item.tipo as PaymentMethod} showIcon={false} />
-                  {item.estado === 'BORRADOR' && (
-                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
-                      Borrador
-                    </span>
-                  )}
-                </div>
-                <span className="text-sm font-medium text-slate-900 tabular-nums">
-                  {formatCurrency(item.monto)}
-                </span>
-              </Link>
-            ))}
-          </div>
+                  <span className="hidden truncate text-[11px] text-slate-500 md:block">
+                    {evento.items.length === 1 ? capitalizar(evento.items[0]!.proveedor) : `${evento.items.length} pagos`}
+                  </span>
+                </>
+              )}
+            </button>
+          )
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-4 border-t border-slate-900/[0.06] px-4 py-2.5 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.transferencia }} /> Transferencias
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.cheque }} /> Cheques y eCheq
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.otros }} /> Efectivo
+        </span>
+      </div>
+    </section>
+  )
+}
+
+/** Panel con los pagos del día elegido. */
+export function DetalleDia({ dia, evento }: { dia: string | null; evento: CalendarEvent | undefined }) {
+  if (!dia) return null
+  const fecha = new Date(`${dia}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const m = evento ? porMetodo(evento.items) : null
+  return (
+    <section className="ax-card ax-entra p-5">
+      <p className="text-xs text-[var(--ter)]">Pagos del</p>
+      <h2 className="ax-display mt-0.5 text-lg font-semibold first-letter:uppercase">{fecha}</h2>
+      {!evento ? (
+        <div className="mt-6 flex flex-col items-center py-6 text-center">
+          <span className="ax-icono h-10 w-10">
+            <CalendarDays className="h-5 w-5" />
+          </span>
+          <p className="mt-3 text-sm text-[var(--sec)]">No hay pagos programados este día.</p>
         </div>
+      ) : (
+        <>
+          <p className="ax-display ax-num mt-3 text-2xl font-semibold">{formatCurrency(evento.total)}</p>
+          {m && (
+            <div className="mt-3 space-y-1.5 text-xs">
+              {m.transferencia > 0 && (
+                <p className="flex items-center justify-between text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.transferencia }} /> Transferencias
+                  </span>
+                  <span className="tabular-nums">{formatCurrency(m.transferencia)}</span>
+                </p>
+              )}
+              {m.cheque > 0 && (
+                <p className="flex items-center justify-between text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.cheque }} /> Cheques y eCheq
+                  </span>
+                  <span className="tabular-nums">{formatCurrency(m.cheque)}</span>
+                </p>
+              )}
+            </div>
+          )}
+          <ul className="mt-4 space-y-1.5 border-t border-slate-900/[0.06] pt-4">
+            {evento.items.map((it, i) => {
+              const met = METODO[it.tipo] ?? { texto: it.tipo, color: '#94a3b8' }
+              return (
+                <li key={`${it.pagoId}-${i}`}>
+                  <Link
+                    href={`/pagos/${it.pagoId}`}
+                    className={cn(
+                      'block rounded-xl px-3 py-2 transition-colors hover:bg-[rgba(59,155,255,0.06)]',
+                      it.estado === 'BORRADOR' && 'border border-dashed border-slate-900/[0.14]'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">{capitalizar(it.proveedor)}</span>
+                      <span className="shrink-0 text-sm font-medium tabular-nums">{formatCurrency(it.monto)}</span>
+                    </div>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: met.color }} />
+                      {met.texto} · OP {formatNumeroOrden(it.numero)}
+                      {it.estado === 'BORRADOR' ? ' · borrador' : it.estado === 'PAGADO' ? ' · entregado' : ''}
+                    </p>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </>
       )}
-    </div>
+    </section>
   )
 }
