@@ -34,7 +34,7 @@ export default function ProveedorPage() {
   const { id } = useParams<{ id: string }>()
   const [tab, setTab] = useState<Tab>('documentos')
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['proveedor', id],
     queryFn: async () => {
       const res = await fetch(`/api/proveedores/${id}/resumen`)
@@ -51,10 +51,12 @@ export default function ProveedorPage() {
     )
   }
   if (!data) {
+    // El motivo a la vista: un 404 y un error del servidor se veían igual y
+    // mandaban a buscar el problema donde no estaba.
     return (
       <DashboardLayout>
         <p className="py-16 text-center text-sm text-slate-500">
-          No encontramos este proveedor.{' '}
+          {error instanceof Error ? error.message : 'No encontramos este proveedor.'}{' '}
           <Link href="/proveedores" className="font-semibold text-slate-900 underline">Volver</Link>
         </p>
       </DashboardLayout>

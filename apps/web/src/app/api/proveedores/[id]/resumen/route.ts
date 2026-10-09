@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         FROM documentos d
        WHERE d."proveedorId" = ${id}::uuid AND d."clienteId" = ${clienteId}::uuid
          AND d."estadoRevision"::text = ANY(${estados}::text[])
-         AND d."fechaEmision" >= date_trunc('month', CURRENT_DATE) - make_interval(months => ${meses - 1})
+         AND d."fechaEmision" >= date_trunc('month', CURRENT_DATE) - make_interval(months => (${meses - 1})::int)
        GROUP BY 1 ORDER BY 1
     `,
     prisma.$queryRaw<Array<{ descripcion: string; veces: bigint; cantidad: number | null; ultimo: number | null; total: number | null }>>`
