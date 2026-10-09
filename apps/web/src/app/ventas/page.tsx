@@ -3,7 +3,7 @@
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { useUser } from '@/hooks/use-user';
 import { useTabsPermitidas } from '@/components/layout/tabs-permitidas';
-import { MODULO } from '@/lib/permisos';
+import { MODULO, SECCION } from '@/lib/permisos';
 import { Tabs, TabsContent, TabsListLinea, TabsTriggerLinea } from '@/components/ui/tabs';
 import { Header } from '@/components/layout/header';
 import { ClosuresTab } from '@/components/sales/closures-tab';
@@ -14,13 +14,18 @@ import { BillingTab } from '@/components/sales/billing-tab';
 import { ByShiftTab } from '@/components/sales/by-shift-tab';
 import { AuditTab } from '@/components/sales/audit-tab';
 import { CsvTab } from '@/components/sales/csv-tab';
-import { SalesRangeProvider, useSalesRange } from '@/components/sales/range-context';
-import { DateRange } from '@/components/sales/date-range';
+import { SalesRangeProvider, useSalesRange, useSalesTurno, type Turno } from '@/components/sales/range-context';
+import { SubirPdfMaxirest } from '@/components/sales/subir-pdf-maxirest';
+import { BarraFiltros } from '@/components/ui/barra-filtros';
+import { ATAJOS_VENTAS, periodoDesdeRango } from '@/components/ui/periodo';
+import { useState } from 'react';
 import { defaultRange, yesterdayRange } from '@/components/sales/shared';
 
 export default function VentasPage() {
-  const { clienteId, isLoading } = useUser();
+  const { clienteId, isLoading, canEdit } = useUser();
   const tabs = useTabsPermitidas(MODULO.VENTAS);
+  const [elegida, setElegida] = useState<string | null>(null);
+  const tab = elegida ?? tabs.primera;
   if (isLoading) return null;
 
   // El middleware ya impide llegar acá sin ninguna pestaña, pero si pasara
@@ -40,19 +45,20 @@ export default function VentasPage() {
         <Header
           title="Ventas"
           description="Los cierres de caja de Maxirest entran solos. Mirá cómo te fue por día, turno, mozo y producto."
+          actions={tabs.puede('cierres') && canEdit(SECCION.VENTAS_CIERRES) ? <SubirPdfMaxirest /> : undefined}
         />
 
-        {/* Un solo rango para todas las pestañas. Si la primera es el ranking
+        {/* Un solo rango y un solo turno para todas las pestañas. Si la primera es el ranking
             (operador restringido), arranca en ayer como el panel. */}
         <SalesRangeProvider
           fijo
           initial={tabs.primera === 'ranking' ? yesterdayRange : defaultRange}
         >
-          <Tabs defaultValue={tabs.primera}>
+          <Tabs value={tab} onValueChange={setElegida}>
             {/* Barra fija: submenú y período. El período queda puesto al
               cambiar de pestaña. */}
-            <div className="ax-barra-fija sticky top-16 z-20 -mx-4 mb-6 flex flex-wrap items-end gap-x-3 border-b border-slate-900/[0.08] px-4 pt-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-              <TabsListLinea className="min-w-0 flex-1 border-b-0">
+            <div className="ax-barra-fija sticky top-16 z-20 -mx-4 mb-5 border-b border-slate-900/[0.06] px-4 pt-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+              <TabsListLinea>
                 {tabs.puede('cierres') && (
                   <TabsTriggerLinea value="cierres">Cierres</TabsTriggerLinea>
                 )}
@@ -74,9 +80,7 @@ export default function VentasPage() {
                 )}
                 {tabs.puede('csv') && <TabsTriggerLinea value="csv">Ventas (CSV)</TabsTriggerLinea>}
               </TabsListLinea>
-              <div className="pb-2">
-                <FiltroVentas />
-              </div>
+              <FiltrosVentas conTurno={tab === 'cierres' || tab === 'ranking'} />
             </div>
 
             {tabs.puede('cierres') && (
@@ -126,8 +130,34 @@ export default function VentasPage() {
   );
 }
 
-/** Período compartido por todas las pestañas de ventas. */
-function FiltroVentas() {
+/**
+ * Filtros de ventas con la barra común de la app: período (todas las
+ * pestañas) y turno (cierres y ranking). Quedan puestos al cambiar de pestaña.
+ */
+function FiltrosVentas({ conTurno }: { conTurno: boolean }) {
   const [{ from, to }, setRange] = useSalesRange(defaultRange);
-  return <DateRange principal from={from} to={to} onChange={setRange} />;
+  const [turno, setTurno] = useSalesTurno();
+  return (
+    <BarraFiltros
+      className="mb-0 py-3"
+      periodo={{
+        valor: periodoDesdeRango(from, to, ATAJOS_VENTAS),
+        onCambiar: (p) => setRange({ from: p.desde, to: p.hasta }),
+        atajos: ATAJOS_VENTAS,
+      }}
+      estados={
+        conTurno
+          ? {
+              valor: turno || 'todos',
+              onCambiar: (v) => setTurno(v === 'todos' ? '' : (v as Turno)),
+              opciones: [
+                { valor: 'todos', texto: 'Todos los turnos' },
+                { valor: 'ALMUERZO', texto: 'Mediodía' },
+                { valor: 'CENA', texto: 'Noche' },
+              ],
+            }
+          : undefined
+      }
+    />
+  );
 }

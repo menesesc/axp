@@ -155,7 +155,7 @@ export function CsvTab({ clienteId }: { clienteId: string | null | undefined }) 
         </div>
       )}
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="ax-card overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
         ) : ventas.length === 0 ? (
@@ -218,7 +218,7 @@ export function CsvTab({ clienteId }: { clienteId: string | null | undefined }) 
 
 function KPI({ label, value, hint, highlight }: { label: string; value: string; hint?: string | undefined; highlight?: boolean | undefined }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4">
+    <div className="ax-card p-4">
       <p className="text-xs text-slate-500">{label}</p>
       <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-emerald-700' : 'text-slate-800'}`}>{value}</p>
       {hint && <p className="text-xs text-slate-400 mt-0.5">{hint}</p>}

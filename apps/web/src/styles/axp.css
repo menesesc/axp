@@ -550,14 +550,14 @@
 }
 @media (min-width: 768px) {
   .ax-hero {
-    grid-template-columns: minmax(0, 1fr) 22rem;
-    min-height: 13rem;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    min-height: 10.5rem;
   }
   .ax-hero-escena {
     display: block;
     position: relative;
-    height: 15rem;
-    margin: -1rem 0 -1.5rem;
+    height: 13rem;
+    margin: -1.25rem 0 -1.25rem;
   }
   /* Halo y grilla de puntos solo detrás de la escena. */
   .ax-hero-escena::before {

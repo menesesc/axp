@@ -144,7 +144,7 @@ export function BillingTab() {
       {isLoading ? (
         <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
       ) : !hasData ? (
-        <div className="p-12 text-center bg-white rounded-lg border border-slate-200">
+        <div className="p-12 text-center ax-card">
           <FileText className="h-10 w-10 mx-auto text-slate-300 mb-3" />
           <p className="text-slate-500 font-medium">Sin facturación en este rango</p>
           <p className="text-slate-400 text-sm mt-1">
@@ -175,7 +175,7 @@ export function BillingTab() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Gráfico de líneas */}
-            <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 p-4">
+            <div className="lg:col-span-2 ax-card p-4">
               <h3 className="text-sm font-medium text-slate-700 mb-3">Facturación diaria por tipo</h3>
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer>
@@ -216,7 +216,7 @@ export function BillingTab() {
             </div>
 
             {/* Pie chart (solo facturas) */}
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="ax-card p-4">
               <h3 className="text-sm font-medium text-slate-700 mb-3">Distribución (facturas)</h3>
               <div style={{ width: '100%', height: 240 }}>
                 <ResponsiveContainer>
@@ -254,7 +254,7 @@ export function BillingTab() {
           </div>
 
           {/* Por día de la semana */}
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="ax-card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-slate-700">Facturación por día de la semana</h3>
               <div className="inline-flex bg-slate-100 rounded-md p-0.5">
@@ -311,7 +311,7 @@ export function BillingTab() {
           </div>
 
           {/* Tabla */}
-          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="ax-card overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
                 <tr>
@@ -403,7 +403,7 @@ function KPI({
   color?: string | undefined
 }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4 relative overflow-hidden">
+    <div className="ax-card p-4 relative overflow-hidden">
       {color && (
         <span
           className="absolute top-0 left-0 h-full w-1"

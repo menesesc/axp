@@ -97,7 +97,7 @@ export function ByShiftTab() {
       </div>
 
       {/* Gráfico de línea */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
+      <div className="ax-card p-4">
         <h3 className="text-sm font-medium text-slate-700 mb-3">Ventas por día y turno</h3>
         {isLoading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
@@ -138,7 +138,7 @@ export function ByShiftTab() {
       </div>
 
       {/* Gráfico por día de la semana */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
+      <div className="ax-card p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-slate-700">Ventas por día de la semana</h3>
           <div className="inline-flex bg-slate-100 rounded-md p-0.5">
@@ -207,7 +207,7 @@ function ShiftCard({
   cierres: number
 }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4">
+    <div className="ax-card p-4">
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <span className="text-sm font-medium text-slate-600">{label}</span>

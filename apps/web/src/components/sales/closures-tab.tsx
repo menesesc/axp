@@ -1,13 +1,11 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button } from '@/components/ui/button'
-import { Upload, Receipt, ChevronDown, ChevronUp, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
-import { toast } from 'sonner'
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Receipt, ChevronDown, ChevronUp, ArrowUp, ArrowDown } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip as RTooltip, XAxis } from 'recharts'
 import { DateRange } from './date-range'
-import { useSalesRange } from './range-context'
+import { useSalesRange, useSalesTurno } from './range-context'
 import { fmtAR, fmtNumAR, fmtFecha, defaultRange, previousRange, TURNO_LABEL, TURNO_BADGE, useSort, type SortDir } from './shared'
 import { ClosureDetail } from './closure-detail'
 
@@ -42,13 +40,10 @@ function sumTotals(closures: ClosureRow[]) {
 }
 
 export function ClosuresTab() {
-  const queryClient = useQueryClient()
   const [{ from, to }, setRange] = useSalesRange(defaultRange)
   const [sucursal, setSucursal] = useState('')
-  const [turno, setTurno] = useState('')
+  const [turno] = useSalesTurno()
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ from, to, pageSize: '200' })
@@ -136,35 +131,10 @@ export function ClosuresTab() {
     { key: 'nroCierre', dir: 'desc' }
   )
 
-  async function handleUpload(file: File) {
-    setUploading(true)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch('/api/sales/closures/upload', { method: 'POST', body: form })
-      const body = await res.json()
-      if (res.ok && body.status === 'OK') {
-        toast.success(`Cierre #${body.nroCierre} del ${body.fecha} importado`)
-        queryClient.invalidateQueries({ queryKey: ['sales-closures'] })
-        queryClient.invalidateQueries({ queryKey: ['sales-ranking'] })
-        queryClient.invalidateQueries({ queryKey: ['sales-waiters'] })
-        queryClient.invalidateQueries({ queryKey: ['sales-payments'] })
-        queryClient.invalidateQueries({ queryKey: ['sales-by-shift'] })
-      } else {
-        toast.error(body.message || 'No se pudo procesar el PDF')
-      }
-    } catch (err) {
-      toast.error((err as Error).message)
-    } finally {
-      setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
   return (
     <div className="space-y-4">
-      {/* Filtros + upload */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Sucursal (si hay más de una); período y turno están en la barra fija */}
+      <div className="flex flex-wrap items-center gap-3 empty:hidden">
         <DateRange
           from={from}
           to={to}
@@ -173,43 +143,10 @@ export function ClosuresTab() {
           sucursal={sucursal}
           onSucursalChange={setSucursal}
         />
-        <div className="flex items-center gap-2">
-          <select
-            value={turno}
-            onChange={(e) => setTurno(e.target.value)}
-            className="border border-slate-200 rounded-md px-2 py-1.5 text-sm bg-white"
-          >
-            <option value="">Todos los turnos</option>
-            <option value="ALMUERZO">Almuerzo</option>
-            <option value="CENA">Cena</option>
-            <option value="OTRO">Otro</option>
-          </select>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) handleUpload(f)
-            }}
-          />
-          <Button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            size="sm"
-          >
-            {uploading ? (
-              <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Procesando...</>
-            ) : (
-              <><Upload className="h-4 w-4 mr-1.5" /> Subir PDF Maxirest</>
-            )}
-          </Button>
-        </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <KPI
           label="Cierres"
           value={fmtNumAR(closures.length)}
@@ -255,7 +192,7 @@ export function ClosuresTab() {
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="ax-card overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
         ) : closures.length === 0 ? (
@@ -331,9 +268,9 @@ function KPI({
   const tone = pct == null ? 'text-slate-400' : up ? 'text-emerald-600' : 'text-rose-600'
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4">
+    <div className="ax-card ax-entra p-5">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-sm text-[var(--sec)]">{label}</p>
         {pct != null && (
           <span className={`text-xs font-medium inline-flex items-center gap-0.5 shrink-0 ${tone}`}>
             {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
@@ -341,7 +278,7 @@ function KPI({
           </span>
         )}
       </div>
-      <p className={`text-2xl font-semibold mt-1 ${highlight ? 'text-emerald-700' : 'text-slate-800'}`}>
+      <p className={`ax-display ax-num mt-2 text-[1.6rem] font-semibold leading-none ${highlight ? 'text-emerald-700' : 'text-slate-900'}`}>
         {value}
       </p>
       <p className="text-xs text-slate-500 mt-1">

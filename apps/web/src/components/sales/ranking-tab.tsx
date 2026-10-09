@@ -224,7 +224,7 @@ export function RankingTab({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+      <div className="ax-card overflow-x-auto">
         {isLoading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
         ) : sorted.length === 0 ? (
@@ -479,7 +479,7 @@ export function ProductDetail({
           <h4 className="text-sm font-medium text-slate-800">{nombre ?? data.nombre ?? codigo}</h4>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+          <div className="inline-flex ax-card p-0.5">
             <button
               onClick={() => setView('fecha')}
               className={`px-2.5 py-1 text-xs rounded-md ${
@@ -498,7 +498,7 @@ export function ProductDetail({
             </button>
           </div>
           {!hideMontos && (
-            <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+            <div className="inline-flex ax-card p-0.5">
               <button
                 onClick={() => setMetric('unidades')}
                 className={`px-2.5 py-1 text-xs rounded-md ${
@@ -518,7 +518,7 @@ export function ProductDetail({
             </div>
           )}
           {view === 'weekday' ? (
-            <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+            <div className="inline-flex ax-card p-0.5">
               <button
                 onClick={() => setWdMetric('avg')}
                 className={`px-2.5 py-1 text-xs rounded-md ${

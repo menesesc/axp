@@ -258,7 +258,7 @@ export function AuditTab() {
       )}
 
       {/* Filtros + tabla de eventos */}
-      <div className="bg-white rounded-lg border border-slate-200">
+      <div className="ax-card">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2 flex-wrap">
           <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Filtrar eventos:</span>
           <select
@@ -398,7 +398,7 @@ function KPI({
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4">
+    <div className="ax-card p-4">
       <div className="flex items-center gap-2 mb-3">
         {icon}
         <h3 className="text-sm font-medium text-slate-700">{title}</h3>

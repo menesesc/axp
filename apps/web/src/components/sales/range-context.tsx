@@ -15,6 +15,11 @@ const SalesRangeContext = createContext<RangeState | null>(null)
 /** El rango se elige en una barra fija de la página, no en cada pestaña. */
 const RangoFijoContext = createContext(false)
 
+export type Turno = '' | 'ALMUERZO' | 'CENA'
+type TurnoState = [Turno, (t: Turno) => void]
+/** Turno compartido por las pestañas que lo usan (cierres, ranking). */
+const TurnoContext = createContext<TurnoState | null>(null)
+
 const STORAGE_KEY = 'ventas:rango'
 
 function leerGuardado(): Range | null {
@@ -38,9 +43,12 @@ export function SalesRangeProvider({ initial, fijo = false, children }: { initia
       // sin storage (modo privado): el rango igual se comparte en memoria
     }
   }, [])
+  const turno = useState<Turno>('')
   return (
     <RangoFijoContext.Provider value={fijo}>
-      <SalesRangeContext.Provider value={[range, setRange]}>{children}</SalesRangeContext.Provider>
+      <TurnoContext.Provider value={turno}>
+        <SalesRangeContext.Provider value={[range, setRange]}>{children}</SalesRangeContext.Provider>
+      </TurnoContext.Provider>
     </RangoFijoContext.Provider>
   )
 }
@@ -58,4 +66,11 @@ export function useSalesRange(fallback: () => Range): RangeState {
 /** ¿El rango está en la barra fija de la página? Las pestañas no lo repiten. */
 export function useRangoFijo() {
   return useContext(RangoFijoContext)
+}
+
+/** Turno elegido: el compartido dentro de `SalesRangeProvider`, o uno local. */
+export function useSalesTurno(): TurnoState {
+  const ctx = useContext(TurnoContext)
+  const local = useState<Turno>('')
+  return ctx ?? local
 }

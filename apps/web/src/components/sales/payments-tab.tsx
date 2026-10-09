@@ -49,13 +49,13 @@ export function PaymentsTab() {
       {isLoading ? (
         <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
       ) : payments.length === 0 ? (
-        <div className="p-12 text-center bg-white rounded-lg border border-slate-200">
+        <div className="p-12 text-center ax-card">
           <CreditCard className="h-10 w-10 mx-auto text-slate-300 mb-3" />
           <p className="text-slate-500 font-medium">Sin datos de cobros en este rango</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="ax-card p-4">
             <h3 className="text-sm font-medium text-slate-700 mb-3">Distribución de cobros</h3>
             <div style={{ width: '100%', height: 320 }}>
               <ResponsiveContainer>
@@ -84,7 +84,7 @@ export function PaymentsTab() {
             </p>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="ax-card overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
                 <tr>
