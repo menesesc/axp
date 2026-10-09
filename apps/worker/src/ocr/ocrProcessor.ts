@@ -206,17 +206,22 @@ async function processOCRFile(file: InboxFile): Promise<void> {
   const failedInfo = failedFiles.get(fileKey);
   if (failedInfo) {
     if (failedInfo.attempts >= MAX_RETRY_ATTEMPTS) {
-      logger.error(`❌ File exceeded max retry attempts (${MAX_RETRY_ATTEMPTS}), skipping: ${file.key}`);
+      logger.error(`❌ File exceeded max retry attempts (${MAX_RETRY_ATTEMPTS}), moving to error/: ${file.key}`);
       logger.error(`   Last error: ${failedInfo.lastError}`);
-      // Log error a la base de datos
+      // Se registra una sola vez y el archivo sale del inbox: si quedaba ahí,
+      // cada vuelta del polling (30 s) volvía a grabar el mismo error.
       const dbLogger = getDbLogger(file.clienteId);
-      dbLogger.error(`Archivo abandonado después de ${MAX_RETRY_ATTEMPTS} intentos fallidos`, {
-        filename: file.filename,
-        details: {
-          attempts: failedInfo.attempts,
-          lastError: failedInfo.lastError,
-        },
-      });
+      dbLogger.error(
+        `Archivo abandonado después de ${MAX_RETRY_ATTEMPTS} intentos fallidos`,
+        { attempts: failedInfo.attempts, lastError: failedInfo.lastError },
+        file.filename
+      );
+      failedFiles.delete(fileKey);
+      try {
+        await moveR2Object(file.bucket, file.key, file.key.replace('inbox/', 'error/abandoned_'));
+      } catch (moveError) {
+        logger.error(`Failed to move abandoned file ${file.key}:`, moveError);
+      }
       return;
     }
 
@@ -287,13 +292,11 @@ async function processOCRFile(file: InboxFile): Promise<void> {
         logger.error(`❌ Document format not supported: ${file.filename}`);
 
         const dbLogger = getDbLogger(file.clienteId);
-        dbLogger.error(`Formato de documento no soportado - requiere revisión manual`, {
-          filename: file.filename,
-          details: {
-            reason: 'UnsupportedDocument',
-            error: ocrError.message?.substring(0, 200),
-          },
-        });
+        dbLogger.error(
+          `Formato de documento no soportado - requiere revisión manual`,
+          { reason: 'UnsupportedDocument', error: ocrError.message?.substring(0, 200) },
+          file.filename
+        );
 
         const errorKey = file.key.replace('inbox/', 'error/unsupported_');
         logger.info(`📦 Moving to error folder: ${errorKey}`);
@@ -703,16 +706,17 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
     // Log de éxito a la base de datos
     const dbLogger = getDbLogger(file.clienteId);
-    dbLogger.success(`Documento procesado: ${parsed.tipo || 'FACTURA'} ${parsed.numeroCompleto || ''}`, {
-      filename: file.filename,
-      documentoId: documento.id,
-      details: {
+    dbLogger.success(
+      `Documento procesado: ${parsed.tipo || 'FACTURA'} ${parsed.numeroCompleto || ''}`,
+      {
         proveedor: parsed.proveedor,
         total: parsed.total,
         items: parsed.items?.length || 0,
         confidence: parsed.confidenceScore,
       },
-    });
+      file.filename,
+      documento.id
+    );
 
     // Éxito: limpiar tracking
     processingFiles.delete(fileKey);
@@ -723,14 +727,11 @@ async function processOCRFile(file: InboxFile): Promise<void> {
 
     // Log de error a la base de datos
     const dbLogger = getDbLogger(file.clienteId);
-    dbLogger.error(`Error procesando archivo: ${error.message || 'Error desconocido'}`, {
-      filename: file.filename,
-      details: {
-        errorName: error.name,
-        errorCode: error.code,
-        stack: error.stack?.substring(0, 500),
-      },
-    });
+    dbLogger.error(
+      `Error procesando archivo: ${error.message || 'Error desconocido'}`,
+      { errorName: error.name, errorCode: error.code, stack: error.stack?.substring(0, 500) },
+      file.filename
+    );
 
     // Limpiar de processingFiles para permitir reintentos
     processingFiles.delete(fileKey);
