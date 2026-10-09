@@ -42,9 +42,11 @@ export function UpcomingPayments() {
   const manana = sumarDias(desde, 1)
 
   const { data, isLoading } = useQuery<{ eventos: CalendarEvent[] }>({
-    queryKey: ['pagos-calendario', desde, hasta],
+    queryKey: ['pagos-calendario', desde, hasta, 'pendientes'],
     queryFn: async () => {
-      const res = await fetch(`/api/pagos/calendario?desde=${desde}&hasta=${hasta}`)
+      // Acá sólo lo que falta pagar: una transferencia ya hecha no es un
+      // próximo pago, aunque sí sea un movimiento del calendario.
+      const res = await fetch(`/api/pagos/calendario?desde=${desde}&hasta=${hasta}&pendientes=1`)
       if (!res.ok) throw new Error('Error al cargar')
       return res.json()
     },
@@ -117,6 +119,7 @@ export function UpcomingPayments() {
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.color }} />
                           {m.texto} · OP {formatNumeroOrden(item.numero)}
                           {item.estado === 'BORRADOR' && <span className="text-slate-400">· borrador</span>}
+                          {item.estado === 'PAGADO' && <span className="text-slate-400">· entregado</span>}
                         </div>
                       </Link>
                     )

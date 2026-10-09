@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CreditCard, FileEdit, Landmark, Wallet } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, CreditCard, FileEdit, Landmark, Wallet } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Kpi } from '@/components/dashboard/inicio'
@@ -45,6 +45,9 @@ export default function CalendarioPagos() {
   const total = delMes.reduce((s, e) => s + e.total, 0)
   const emitidas = items.filter((i) => i.estado === 'EMITIDA')
   const borradores = items.filter((i) => i.estado === 'BORRADOR')
+  // Un cheque entregado sigue siendo plata que todavía no salió: cuenta como
+  // pagado sólo cuando el pago ya se hizo efectivo (transferencia, efectivo).
+  const pagados = items.filter((i) => i.estado === 'PAGADO' && i.tipo !== 'CHEQUE' && i.tipo !== 'ECHEQ')
   const metodos = porMetodo(items)
   const suma = (xs: typeof items) => xs.reduce((s, i) => s + i.monto, 0)
 
@@ -71,7 +74,7 @@ export default function CalendarioPagos() {
     <DashboardLayout>
       <Header
         title="Calendario de pagos"
-        description="Qué sale de la cuenta cada día: transferencias, cheques y eCheq."
+        description="Qué salió y qué sale de la cuenta cada día: transferencias, cheques y eCheq."
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-xl border border-slate-900/[0.12] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
@@ -99,9 +102,10 @@ export default function CalendarioPagos() {
         }
       />
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi etiqueta="Programado en el mes" valor={formatCurrency(total)} nota={`${items.length} pagos`} icono={Wallet} cargando={isLoading} />
-        <Kpi etiqueta="Emitidas" valor={formatCurrency(suma(emitidas))} nota={`${emitidas.length} órdenes listas para pagar`} icono={CreditCard} cargando={isLoading} />
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Kpi etiqueta="Movimientos del mes" valor={formatCurrency(total)} nota={`${items.length} pagos`} icono={Wallet} cargando={isLoading} />
+        <Kpi etiqueta="Ya pagado" valor={formatCurrency(suma(pagados))} nota={`${pagados.length} órdenes hechas`} tono="verde" icono={CheckCircle2} cargando={isLoading} />
+        <Kpi etiqueta="Emitidas" valor={formatCurrency(suma(emitidas))} nota={`${emitidas.length} listas para pagar`} icono={CreditCard} cargando={isLoading} />
         <Kpi etiqueta="Borradores" valor={formatCurrency(suma(borradores))} nota={`${borradores.length} sin emitir`} tono="ambar" icono={FileEdit} cargando={isLoading} />
         <Kpi
           etiqueta="Cheques y eCheq"

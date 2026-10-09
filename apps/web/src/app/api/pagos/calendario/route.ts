@@ -24,6 +24,10 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const desde = searchParams.get('desde')
   const hasta = searchParams.get('hasta')
+  // El calendario muestra todo lo que mueve la cuenta, incluidas las
+  // transferencias ya pagadas. El widget de "próximos pagos" del inicio pide
+  // `pendientes=1`, porque ahí lo que importa es lo que falta pagar.
+  const soloPendientes = searchParams.get('pendientes') === '1'
 
   if (!desde || !hasta) {
     return NextResponse.json(
@@ -49,9 +53,12 @@ export async function GET(request: NextRequest) {
     JOIN pagos p ON pm."pagoId" = p.id
     JOIN proveedores pr ON p."proveedorId" = pr.id
     WHERE p."clienteId" = ${user.clienteId}::uuid
-      -- Un cheque/eCheq entregado (orden PAGADO) se debita recién en su fecha:
-      -- sigue en el calendario. Transferencias pagadas, no.
-      AND (p.estado IN ('BORRADOR', 'EMITIDA') OR (p.estado = 'PAGADO' AND pm.tipo IN ('CHEQUE', 'ECHEQ')))
+      -- Un cheque o eCheq entregado (orden PAGADO) se debita recién en su
+      -- fecha, así que va al día que corresponde y no al de la orden.
+      AND (
+        p.estado IN ('BORRADOR', 'EMITIDA')
+        OR (p.estado = 'PAGADO' AND (NOT ${soloPendientes} OR pm.tipo IN ('CHEQUE', 'ECHEQ')))
+      )
       AND CASE
         WHEN pm.tipo IN ('CHEQUE', 'ECHEQ') AND pm.meta->>'fecha' IS NOT NULL
           THEN (pm.meta->>'fecha')::date

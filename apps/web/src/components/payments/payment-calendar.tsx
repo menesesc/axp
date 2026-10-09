@@ -212,7 +212,13 @@ export function DetalleDia({ dia, evento }: { dia: string | null; evento: Calend
                     <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
                       <span className="h-1.5 w-1.5 rounded-full" style={{ background: met.color }} />
                       {met.texto} · OP {formatNumeroOrden(it.numero)}
-                      {it.estado === 'BORRADOR' ? ' · borrador' : it.estado === 'PAGADO' ? ' · entregado' : ''}
+                      {it.estado === 'BORRADOR'
+                        ? ' · borrador'
+                        : it.estado === 'PAGADO'
+                          ? it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ'
+                            ? ' · entregado'
+                            : ' · pagado'
+                          : ''}
                     </p>
                   </Link>
                 </li>
