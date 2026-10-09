@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, ChevronLeft, ChevronRight, CreditCard, FileEdit, Landmark, Wallet } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, CreditCard, FileEdit, Landmark, Settings2, Wallet } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Kpi } from '@/components/dashboard/inicio'
 import { DetalleDia, PaymentCalendar, claveDia, type CalendarEvent } from '@/components/payments/payment-calendar'
 import { ChequesPorDebitar, type ChequePendiente } from '@/components/payments/cheques-por-debitar'
+import { ObligacionesDialog } from '@/components/payments/obligaciones-dialog'
 import { useUser } from '@/hooks/use-user'
 import { hoyAR } from '@/lib/fechas'
 import { formatCurrency } from '@/lib/utils'
@@ -32,6 +33,7 @@ export default function CalendarioPagos() {
     return new Date(a, m - 1, 1)
   })
   const [dia, setDia] = useState<string | null>(null)
+  const [obligaciones, setObligaciones] = useState(false)
   const { desde, hasta } = rangoDelMes(mes)
 
   const { data, isLoading } = useQuery<{ eventos: CalendarEvent[]; porDebitar: ChequePendiente[] }>({
@@ -51,11 +53,14 @@ export default function CalendarioPagos() {
   const delMes = eventos.filter((e) => e.fecha.startsWith(prefijo))
   const items = delMes.flatMap((e) => e.items)
   const total = delMes.reduce((s, e) => s + e.total, 0)
-  const emitidas = items.filter((i) => i.estado === 'EMITIDA')
-  const borradores = items.filter((i) => i.estado === 'BORRADOR')
+  const vencen = items.filter((i) => i.clase === 'vencimiento')
+  const estimados = items.filter((i) => i.clase === 'estimado')
+  const ordenes = items.filter((i) => (i.clase ?? 'pago') === 'pago')
+  const emitidas = ordenes.filter((i) => i.estado === 'EMITIDA')
+  const borradores = ordenes.filter((i) => i.estado === 'BORRADOR')
   // Un cheque entregado sigue siendo plata que todavía no salió: cuenta como
   // pagado sólo cuando el pago ya se hizo efectivo (transferencia, efectivo).
-  const pagados = items.filter((i) => i.estado === 'PAGADO' && i.tipo !== 'CHEQUE' && i.tipo !== 'ECHEQ')
+  const pagados = ordenes.filter((i) => i.estado === 'PAGADO' && i.tipo !== 'CHEQUE' && i.tipo !== 'ECHEQ')
   const suma = (xs: typeof items) => xs.reduce((s, i) => s + i.monto, 0)
 
   // Día elegido por defecto: hoy si es de este mes, si no el primer día con pagos.
@@ -93,6 +98,14 @@ export default function CalendarioPagos() {
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setObligaciones(true)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-900/[0.12] bg-white px-3 text-sm text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:bg-slate-50"
+            >
+              <Settings2 className="h-4 w-4 text-slate-400" />
+              Vencimientos fijos
+            </button>
             {!hoy.startsWith(prefijo) && (
               <button
                 type="button"
@@ -109,11 +122,34 @@ export default function CalendarioPagos() {
         }
       />
 
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Kpi etiqueta="Movimientos del mes" valor={formatCurrency(total)} nota={`${items.length} pagos`} icono={Wallet} cargando={isLoading} />
         <Kpi etiqueta="Ya pagado" valor={formatCurrency(suma(pagados))} nota={`${pagados.length} órdenes hechas`} tono="verde" icono={CheckCircle2} cargando={isLoading} />
+        <Kpi
+          etiqueta="Vence sin orden"
+          valor={formatCurrency(suma(vencen))}
+          nota={
+            vencen.length === 0
+              ? 'todo con orden armada'
+              : `${vencen.length} comprobante${vencen.length === 1 ? '' : 's'} sin orden de pago`
+          }
+          tono="rojo"
+          icono={AlertTriangle}
+          cargando={isLoading}
+        />
         <Kpi etiqueta="Emitidas" valor={formatCurrency(suma(emitidas))} nota={`${emitidas.length} listas para pagar`} icono={CreditCard} cargando={isLoading} />
         <Kpi etiqueta="Borradores" valor={formatCurrency(suma(borradores))} nota={`${borradores.length} sin emitir`} tono="ambar" icono={FileEdit} cargando={isLoading} />
+        <Kpi
+          etiqueta="Estimado"
+          valor={formatCurrency(suma(estimados))}
+          nota={
+            estimados.length === 0
+              ? 'sin obligaciones proyectadas'
+              : `${estimados.length} vencimiento${estimados.length === 1 ? '' : 's'} sin comprobante todavía`
+          }
+          icono={CalendarClock}
+          cargando={isLoading}
+        />
         <Kpi
           etiqueta="Por debitar"
           valor={formatCurrency(totalPorDebitar)}
@@ -137,6 +173,7 @@ export default function CalendarioPagos() {
           <ChequesPorDebitar cheques={porDebitar} cargando={isLoading} />
         </div>
       </div>
+      <ObligacionesDialog abierto={obligaciones} onCerrar={() => setObligaciones(false)} />
     </DashboardLayout>
   )
 }

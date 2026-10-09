@@ -246,6 +246,9 @@ export async function GET(request: NextRequest) {
           WHERE d."clienteId" = $1::uuid
             AND di."precioUnitario" IS NOT NULL
             AND di."precioUnitario" > 0
+            -- Sólo mercadería: los servicios e impuestos no tienen líneas
+            -- comparables y ensuciarían la variación de precios.
+            AND COALESCE(p.rubro, 'MERCADERIA') = 'MERCADERIA'
             ${dateFilter}
         ),
         first_last AS (

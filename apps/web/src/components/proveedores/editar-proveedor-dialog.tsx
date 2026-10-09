@@ -30,6 +30,7 @@ export interface ProveedorEditable {
   diasEntrega: number | null
   cbu: string | null
   activo: boolean
+  rubro?: string
 }
 
 type Form = {
@@ -47,6 +48,7 @@ type Form = {
   diasEntrega: string
   cbu: string
   activo: boolean
+  rubro: string
 }
 
 const desde = (p: ProveedorEditable): Form => ({
@@ -64,6 +66,7 @@ const desde = (p: ProveedorEditable): Form => ({
   diasEntrega: p.diasEntrega == null ? '' : String(p.diasEntrega),
   cbu: p.cbu ?? '',
   activo: p.activo,
+  rubro: p.rubro ?? 'MERCADERIA',
 })
 
 export function EditarProveedorDialog({
@@ -107,6 +110,7 @@ export function EditarProveedorDialog({
           diasEntrega: form.diasEntrega === '' ? null : Number(form.diasEntrega),
           cbu: vacio(form.cbu),
           activo: form.activo,
+          rubro: form.rubro,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -150,6 +154,20 @@ export function EditarProveedorDialog({
           </Campo>
           <Campo className="sm:col-span-2" etiqueta="Alias (separados por coma)">
             <Input value={form.alias} onChange={(e) => set('alias')(e.target.value)} placeholder="PUELCHE, PUELCHE SA" />
+          </Campo>
+          <Campo etiqueta="Rubro">
+            {/* Lo que no es mercadería (ARCA, Rentas, la luz) queda fuera del
+                análisis de precios, que compara líneas de productos. */}
+            <select
+              value={form.rubro}
+              onChange={(e) => set('rubro')(e.target.value)}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="MERCADERIA">Mercadería</option>
+              <option value="SERVICIO">Servicio</option>
+              <option value="IMPUESTO">Impuesto</option>
+              <option value="OTRO">Otro</option>
+            </select>
           </Campo>
           <Campo etiqueta="Email">
             <Input value={form.email} onChange={(e) => set('email')(e.target.value)} type="email" />

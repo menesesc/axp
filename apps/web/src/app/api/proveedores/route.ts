@@ -57,21 +57,20 @@ export async function GET(request: NextRequest) {
 
     const cbus = await cbusDelCliente(clienteId)
 
-    // logoKey es columna nueva: el cliente Prisma desplegado no la conoce, así
-    // que se lee aparte con SQL y se cruza por id.
-    const conLogo = new Set(
-      (
-        await prisma.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM proveedores WHERE "clienteId" = ${clienteId}::uuid AND "logoKey" IS NOT NULL
-        `
-      ).map((r) => r.id)
-    )
+    // logoKey y rubro son columnas nuevas: el cliente Prisma desplegado no las
+    // conoce, así que se leen aparte con SQL y se cruzan por id.
+    const extra = await prisma.$queryRaw<Array<{ id: string; conLogo: boolean; rubro: string }>>`
+      SELECT id, ("logoKey" IS NOT NULL) AS "conLogo", rubro
+        FROM proveedores WHERE "clienteId" = ${clienteId}::uuid
+    `
+    const porId = new Map(extra.map((r) => [r.id, r]))
 
     return json({
       proveedores: proveedores.map((p) => ({
         ...p,
         cbu: cbus.get(p.id) ?? null,
-        conLogo: conLogo.has(p.id),
+        conLogo: porId.get(p.id)?.conLogo ?? false,
+        rubro: porId.get(p.id)?.rubro ?? 'MERCADERIA',
         documentosCount: p._count.documentos,
       })),
     })

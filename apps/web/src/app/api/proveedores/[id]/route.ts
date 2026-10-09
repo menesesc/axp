@@ -22,6 +22,7 @@ const updateProveedorSchema = z.object({
   diasEntrega: z.number().int().min(0).max(60).nullable().optional(),
   cbu: z.string().nullable().optional(),
   activo: z.boolean().optional(),
+  rubro: z.enum(['MERCADERIA', 'SERVICIO', 'IMPUESTO', 'OTRO']).optional(),
 })
 
 // GET: Obtener proveedor por ID
@@ -153,6 +154,15 @@ export async function PATCH(
         },
       },
     })
+
+    // rubro va por SQL crudo: es columna nueva y el cliente Prisma desplegado
+    // no la conoce, así que no se puede meter en el update de arriba.
+    if (data.rubro !== undefined) {
+      await prisma.$executeRaw`
+        UPDATE proveedores SET rubro = ${data.rubro}
+         WHERE id = ${id}::uuid AND "clienteId" = ${user.clienteId}::uuid
+      `
+    }
 
     if (cbuIn.cbu !== undefined) await guardarCbu(user.clienteId, id, cbuIn.cbu)
     const cbus = await cbusDelCliente(user.clienteId)

@@ -4,13 +4,26 @@ import Link from 'next/link'
 import { cn, formatCurrency, formatNumeroOrden } from '@/lib/utils'
 import { CalendarDays, Clock } from 'lucide-react'
 
+/**
+ * Un día del calendario mezcla tres cosas distintas y conviene no confundirlas:
+ * lo que ya tiene orden de pago (`pago`), lo que vence y todavía no la tiene
+ * (`vencimiento`) y lo que sabemos que vence aunque no haya llegado el papel
+ * (`estimado`, de las obligaciones periódicas).
+ */
+export type ClaseEvento = 'pago' | 'vencimiento' | 'estimado'
+
 export interface CalendarEventItem {
-  pagoId: string
-  numero: number
+  clase?: ClaseEvento
+  pagoId: string | null
+  documentoId?: string | null
+  obligacionId?: string | null
+  numero: number | null
+  etiqueta?: string
   proveedor: string
   estado: string
   monto: number
   tipo: string
+  rubro?: string | null
 }
 
 export interface CalendarEvent {
@@ -19,19 +32,32 @@ export interface CalendarEvent {
   items: CalendarEventItem[]
 }
 
-export const COLOR_METODO = { transferencia: '#3b9bff', cheque: '#f5a524', otros: '#10b981' }
+export const COLOR_METODO = {
+  transferencia: '#3b9bff',
+  cheque: '#f5a524',
+  otros: '#10b981',
+  vencimiento: '#ef4444',
+  estimado: '#94a3b8',
+}
 
-/** Suma por medio de pago: transferencia, cheques/eCheq y resto. */
+const clase = (it: CalendarEventItem): ClaseEvento => it.clase ?? 'pago'
+
+/** Suma del día partida en lo que se compara: medio de pago y clase. */
 export function porMetodo(items: CalendarEventItem[]) {
   let transferencia = 0
   let cheque = 0
   let otros = 0
+  let vencimiento = 0
+  let estimado = 0
   for (const it of items) {
-    if (it.tipo === 'TRANSFERENCIA') transferencia += it.monto
+    const c = clase(it)
+    if (c === 'vencimiento') vencimiento += it.monto
+    else if (c === 'estimado') estimado += it.monto
+    else if (it.tipo === 'TRANSFERENCIA') transferencia += it.monto
     else if (it.tipo === 'CHEQUE' || it.tipo === 'ECHEQ') cheque += it.monto
     else otros += it.monto
   }
-  return { transferencia, cheque, otros }
+  return { transferencia, cheque, otros, vencimiento, estimado }
 }
 
 /** Monto compacto para celdas chicas: $ 1,2 M · $ 50 mil. */
@@ -137,6 +163,8 @@ export function PaymentCalendar({
                     {m.transferencia > 0 && <i style={{ width: `${(m.transferencia / evento.total) * 100}%`, background: COLOR_METODO.transferencia }} />}
                     {m.cheque > 0 && <i style={{ width: `${(m.cheque / evento.total) * 100}%`, background: COLOR_METODO.cheque }} />}
                     {m.otros > 0 && <i style={{ width: `${(m.otros / evento.total) * 100}%`, background: COLOR_METODO.otros }} />}
+                    {m.vencimiento > 0 && <i style={{ width: `${(m.vencimiento / evento.total) * 100}%`, background: COLOR_METODO.vencimiento }} />}
+                    {m.estimado > 0 && <i style={{ width: `${(m.estimado / evento.total) * 100}%`, background: COLOR_METODO.estimado }} />}
                   </span>
                   <span className="hidden truncate text-[11px] text-slate-500 md:block">
                     {evento.items.length === 1 ? capitalizar(evento.items[0]!.proveedor) : `${evento.items.length} pagos`}
@@ -158,10 +186,65 @@ export function PaymentCalendar({
           <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.otros }} /> Efectivo
         </span>
         <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.vencimiento }} /> Vence sin orden
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.estimado }} /> Estimado
+        </span>
+        <span className="flex items-center gap-1.5">
           <Clock className="h-3 w-3" style={{ color: COLOR_METODO.cheque }} /> Cheque por debitar
         </span>
       </div>
     </section>
+  )
+}
+
+/**
+ * Una línea del detalle del día. Un pago lleva a su orden, un vencimiento al
+ * comprobante y un estimado no lleva a ningún lado porque todavía no existe.
+ */
+function ItemDelDia({ it, esFuturo }: { it: CalendarEventItem; esFuturo: boolean }) {
+  const c = clase(it)
+  const met =
+    c === 'vencimiento'
+      ? { texto: 'Vence sin orden', color: COLOR_METODO.vencimiento }
+      : c === 'estimado'
+        ? { texto: 'Estimado', color: COLOR_METODO.estimado }
+        : (METODO[it.tipo] ?? { texto: it.tipo, color: '#94a3b8' })
+
+  const detalle =
+    c === 'pago'
+      ? `${met.texto} · OP ${formatNumeroOrden(it.numero ?? 0)}${estadoTexto(it, esFuturo)}`
+      : `${met.texto}${it.etiqueta ? ` · ${it.etiqueta}` : ''}`
+
+  const cuerpo = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-medium">{capitalizar(it.proveedor)}</span>
+        <span className={cn('shrink-0 text-sm font-medium tabular-nums', c === 'estimado' && 'text-slate-500')}>
+          {it.monto > 0 ? formatCurrency(it.monto) : 'a confirmar'}
+        </span>
+      </div>
+      <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: met.color }} />
+        <span className="truncate">{detalle}</span>
+      </p>
+    </>
+  )
+
+  const estilo = cn(
+    'block rounded-xl px-3 py-2',
+    it.estado === 'BORRADOR' && 'border border-dashed border-slate-900/[0.14]',
+    c === 'estimado' && 'border border-dashed border-slate-900/[0.14] bg-slate-50/60'
+  )
+
+  const destino = c === 'pago' && it.pagoId ? `/pagos/${it.pagoId}` : c === 'vencimiento' && it.documentoId ? `/documento/${it.documentoId}` : null
+
+  if (!destino) return <div className={estilo}>{cuerpo}</div>
+  return (
+    <Link href={destino} className={cn(estilo, 'transition-colors hover:bg-[rgba(59,155,255,0.06)]')}>
+      {cuerpo}
+    </Link>
   )
 }
 
@@ -223,33 +306,30 @@ export function DetalleDia({
                   <span className="tabular-nums">{formatCurrency(m.cheque)}</span>
                 </p>
               )}
+              {m.vencimiento > 0 && (
+                <p className="flex items-center justify-between text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.vencimiento }} /> Vence sin orden
+                  </span>
+                  <span className="tabular-nums">{formatCurrency(m.vencimiento)}</span>
+                </p>
+              )}
+              {m.estimado > 0 && (
+                <p className="flex items-center justify-between text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: COLOR_METODO.estimado }} /> Estimado
+                  </span>
+                  <span className="tabular-nums">{formatCurrency(m.estimado)}</span>
+                </p>
+              )}
             </div>
           )}
           <ul className="mt-4 space-y-1.5 border-t border-slate-900/[0.06] pt-4">
-            {evento.items.map((it, i) => {
-              const met = METODO[it.tipo] ?? { texto: it.tipo, color: '#94a3b8' }
-              return (
-                <li key={`${it.pagoId}-${i}`}>
-                  <Link
-                    href={`/pagos/${it.pagoId}`}
-                    className={cn(
-                      'block rounded-xl px-3 py-2 transition-colors hover:bg-[rgba(59,155,255,0.06)]',
-                      it.estado === 'BORRADOR' && 'border border-dashed border-slate-900/[0.14]'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{capitalizar(it.proveedor)}</span>
-                      <span className="shrink-0 text-sm font-medium tabular-nums">{formatCurrency(it.monto)}</span>
-                    </div>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: met.color }} />
-                      {met.texto} · OP {formatNumeroOrden(it.numero)}
-                      {estadoTexto(it, esFuturo)}
-                    </p>
-                  </Link>
-                </li>
-              )
-            })}
+            {evento.items.map((it, i) => (
+              <li key={`${it.pagoId ?? it.documentoId ?? it.obligacionId}-${i}`}>
+                <ItemDelDia it={it} esFuturo={esFuturo} />
+              </li>
+            ))}
           </ul>
         </>
       )}

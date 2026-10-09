@@ -29,7 +29,7 @@ interface Resumen {
     pedidos2Nombre: string | null; pedidos2Telefono: string | null
     adminNombre: string | null; adminTelefono: string | null
     diasEntrega: number | null; cbu: string | null; activo: boolean; logoKey: string | null
-    alias: string[]; letra: string | null
+    alias: string[]; letra: string | null; rubro: string
   }
   saldo: {
     comprado: number | null; pagado: number | null; documentos: number
@@ -188,6 +188,11 @@ export default function ProveedorPage() {
                 <h1 className="text-2xl font-bold leading-tight">{p.razonSocial}</h1>
                 {p.letra && (
                   <span className="rounded border border-slate-200 px-1.5 text-xs font-bold text-slate-500">{p.letra}</span>
+                )}
+                {p.rubro && p.rubro !== 'MERCADERIA' && (
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
+                    {p.rubro === 'SERVICIO' ? 'Servicio' : p.rubro === 'IMPUESTO' ? 'Impuesto' : 'Otro'}
+                  </span>
                 )}
                 {!p.activo && (
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">Inactivo</span>
@@ -378,6 +383,7 @@ export default function ProveedorPage() {
             diasEntrega: p.diasEntrega,
             cbu: p.cbu,
             activo: p.activo,
+            rubro: p.rubro,
           }}
           abierto={editando}
           onCerrar={() => setEditando(false)}

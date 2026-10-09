@@ -68,6 +68,9 @@ export async function GET(request: NextRequest) {
           AND di."precioUnitario" IS NOT NULL
           AND di."precioUnitario" > 0
           AND d."estadoRevision" NOT IN ('ERROR', 'DUPLICADO')
+          -- Sólo mercadería: una boleta de luz o un VEP de ARCA no tienen
+          -- líneas comparables y moverían el análisis sin querer decir nada.
+          AND p.rubro = 'MERCADERIA'
           ${proveedorFilter}
           ${searchFilter}
       ),

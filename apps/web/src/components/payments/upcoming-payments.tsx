@@ -8,8 +8,11 @@ import { hoyAR, sumarDias } from '@/lib/fechas'
 import { cn } from '@/lib/utils'
 
 interface CalendarEventItem {
-  pagoId: string
-  numero: number
+  clase?: 'pago' | 'vencimiento' | 'estimado'
+  pagoId: string | null
+  documentoId?: string | null
+  numero: number | null
+  etiqueta?: string
   proveedor: string
   estado: string
   monto: number
@@ -30,6 +33,7 @@ const METODO: Record<string, { texto: string; color: string }> = {
   ECHEQ: { texto: 'eCheq', color: '#f5a524' },
   CHEQUE: { texto: 'Cheque', color: '#f5a524' },
   EFECTIVO: { texto: 'Efectivo', color: '#10b981' },
+  VENCIMIENTO: { texto: 'Vence sin orden', color: '#ef4444' },
 }
 
 const capitalizar = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase())
@@ -104,8 +108,8 @@ export function UpcomingPayments() {
                     const m = METODO[item.tipo] ?? { texto: item.tipo, color: '#94a3b8' }
                     return (
                       <Link
-                        key={`${item.pagoId}-${i}`}
-                        href={`/pagos/${item.pagoId}`}
+                        key={`${item.pagoId ?? item.documentoId}-${i}`}
+                        href={item.clase === 'vencimiento' && item.documentoId ? `/documento/${item.documentoId}` : `/pagos/${item.pagoId}`}
                         className={cn(
                           'block rounded-lg px-2.5 py-1.5 transition-colors hover:bg-[rgba(59,155,255,0.06)]',
                           item.estado === 'BORRADOR' && 'border border-dashed border-slate-900/[0.12]'
@@ -117,7 +121,12 @@ export function UpcomingPayments() {
                         </div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.color }} />
-                          {m.texto} · OP {formatNumeroOrden(item.numero)}
+                          {m.texto}
+                          {item.clase === 'vencimiento'
+                            ? item.etiqueta
+                              ? ` · ${item.etiqueta}`
+                              : ''
+                            : ` · OP ${formatNumeroOrden(item.numero ?? 0)}`}
                           {item.estado === 'BORRADOR' && <span className="text-slate-400">· borrador</span>}
                           {item.estado === 'PAGADO' && <span className="text-slate-400">· entregado</span>}
                         </div>

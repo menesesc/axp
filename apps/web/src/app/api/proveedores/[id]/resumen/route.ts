@@ -41,12 +41,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     pedidos2Nombre: string | null; pedidos2Telefono: string | null
     adminNombre: string | null; adminTelefono: string | null
     diasEntrega: number | null; cbu: string | null; activo: boolean; logoKey: string | null
-    alias: string[]; letra: string | null; primera_compra: string | null
+    alias: string[]; letra: string | null; rubro: string; primera_compra: string | null
   }>>`
     SELECT id, "razonSocial", cuit, email, telefono,
            "pedidos1Nombre", "pedidos1Telefono", "pedidos2Nombre", "pedidos2Telefono",
            "adminNombre", "adminTelefono", "diasEntrega", cbu, activo, "logoKey",
-           alias, letra::text AS letra,
+           alias, letra::text AS letra, rubro,
            (SELECT to_char(MIN(d."fechaEmision"), 'YYYY-MM-DD') FROM documentos d
              WHERE d."proveedorId" = proveedores.id AND d."clienteId" = proveedores."clienteId") AS primera_compra
       FROM proveedores WHERE id = ${id}::uuid AND "clienteId" = ${clienteId}::uuid

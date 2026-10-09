@@ -3,6 +3,7 @@ import { requireSeccion } from '@/lib/auth'
 import { jsonImportes } from '@/lib/importes'
 import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
+import { periodoDe, vencimientosEntre, type Periodicidad } from '@/lib/finanzas/obligaciones'
 
 interface CalendarRow {
   fecha_efectiva: Date
@@ -25,8 +26,9 @@ export async function GET(request: NextRequest) {
   const desde = searchParams.get('desde')
   const hasta = searchParams.get('hasta')
   // El calendario muestra todo lo que mueve la cuenta, incluidas las
-  // transferencias ya pagadas. El widget de "próximos pagos" del inicio pide
-  // `pendientes=1`, porque ahí lo que importa es lo que falta pagar.
+  // transferencias ya pagadas y los vencimientos estimados. El widget de
+  // "próximos pagos" del inicio pide `pendientes=1`: ahí sólo lo que falta
+  // pagar de verdad, sin lo ya pagado y sin estimaciones.
   const soloPendientes = searchParams.get('pendientes') === '1'
 
   if (!desde || !hasta) {
@@ -67,21 +69,107 @@ export async function GET(request: NextRequest) {
     ORDER BY fecha_efectiva ASC
   `
 
-  // Agrupar por fecha
-  const eventosPorFecha = new Map<string, {
-    fecha: string
-    total: number
-    items: { pagoId: string; numero: number; proveedor: string; estado: string; monto: number; tipo: string }[]
-  }>()
+  /*
+   * Vencimientos que todavía no tienen orden de pago: una boleta de luz que
+   * vence el 20 no aparecía en el calendario hasta que alguien armaba el pago,
+   * que es justo cuando ya es tarde para enterarse.
+   *
+   * Se excluyen las que ya están en una orden (aunque sea borrador), porque
+   * esa orden ya figura por su lado y si no se contaría dos veces.
+   */
+  const vencimientos = await prisma.$queryRaw<Array<{
+        fecha: string; documento_id: string; numero: string | null; tipo: string; letra: string | null
+        monto: number; proveedor: string | null; proveedor_id: string | null; rubro: string | null
+      }>>`
+        SELECT to_char(d."fechaVencimiento", 'YYYY-MM-DD') AS fecha,
+               d.id AS documento_id, d."numeroCompleto" AS numero,
+               d.tipo::text AS tipo, d.letra::text AS letra,
+               (d.total - COALESCE((SELECT SUM(pd."montoAplicado") FROM pago_documentos pd
+                                     WHERE pd."documentoId" = d.id), 0))::float AS monto,
+               pr."razonSocial" AS proveedor, pr.id AS proveedor_id, pr.rubro AS rubro
+          FROM documentos d
+          LEFT JOIN proveedores pr ON pr.id = d."proveedorId"
+         WHERE d."clienteId" = ${user.clienteId}::uuid
+           AND d."fechaVencimiento" BETWEEN ${desde}::date AND ${hasta}::date
+           AND d.tipo::text <> 'NOTA_CREDITO'
+           AND d."estadoRevision"::text NOT IN ('PAGADO', 'ERROR', 'DUPLICADO')
+           AND d.total > 0
+           AND NOT EXISTS (
+             SELECT 1 FROM pago_documentos pd
+               JOIN pagos pg ON pg.id = pd."pagoId"
+              WHERE pd."documentoId" = d.id AND pg.estado::text <> 'ANULADO'
+           )
+         ORDER BY d."fechaVencimiento"
+  `
 
-  for (const row of rows) {
-    const fechaKey = new Date(row.fecha_efectiva).toISOString().split('T')[0]!
+  // Obligaciones periódicas: se proyectan sobre el rango y se descartan las
+  // que ya tienen el comprobante real de ese mes, que es el que manda.
+  const obligaciones = soloPendientes
+    ? []
+    : await prisma.$queryRaw<Array<{
+        id: string; nombre: string; rubro: string; periodicidad: string
+        dia: number; ancla: number | null; monto: number | null
+        proveedor_id: string | null; proveedor: string | null
+      }>>`
+        SELECT o.id, o.nombre, o.rubro, o.periodicidad,
+               o."diaVencimiento" AS dia, o."mesAncla" AS ancla,
+               o."montoEstimado"::float AS monto,
+               o."proveedorId" AS proveedor_id, p."razonSocial" AS proveedor
+          FROM obligaciones o
+          LEFT JOIN proveedores p ON p.id = o."proveedorId"
+         WHERE o."clienteId" = ${user.clienteId}::uuid AND o.activa = true
+      `
+
+  // Qué períodos ya tienen comprobante real, por proveedor: si la boleta de
+  // Camuzzi de septiembre ya está cargada, el estimado de septiembre sobra.
+  const periodosConPapel = new Set<string>()
+  if (obligaciones.length > 0) {
+    const conProveedor = obligaciones.map((o) => o.proveedor_id).filter((x): x is string => !!x)
+    if (conProveedor.length > 0) {
+      const papeles = await prisma.$queryRaw<Array<{ proveedor_id: string; periodo: string }>>`
+        SELECT d."proveedorId" AS proveedor_id,
+               to_char(COALESCE(d."fechaVencimiento", d."fechaEmision"), 'YYYY-MM') AS periodo
+          FROM documentos d
+         WHERE d."clienteId" = ${user.clienteId}::uuid
+           AND d."proveedorId" = ANY(${conProveedor}::uuid[])
+           AND d."estadoRevision"::text NOT IN ('ERROR', 'DUPLICADO')
+           AND COALESCE(d."fechaVencimiento", d."fechaEmision")
+               BETWEEN (${desde}::date - interval '1 month') AND (${hasta}::date + interval '1 month')
+      `
+      for (const p2 of papeles) periodosConPapel.add(`${p2.proveedor_id}#${p2.periodo}`)
+    }
+  }
+
+  // Agrupar por fecha
+  interface ItemCalendario {
+    clase: 'pago' | 'vencimiento' | 'estimado'
+    pagoId: string | null
+    documentoId?: string | null
+    obligacionId?: string | null
+    proveedorId?: string | null
+    numero: number | null
+    etiqueta?: string
+    proveedor: string
+    estado: string
+    monto: number
+    tipo: string
+    rubro?: string | null
+  }
+  const eventosPorFecha = new Map<string, { fecha: string; total: number; items: ItemCalendario[] }>()
+
+  const agregar = (fechaKey: string, item: ItemCalendario) => {
     if (!eventosPorFecha.has(fechaKey)) {
       eventosPorFecha.set(fechaKey, { fecha: fechaKey, total: 0, items: [] })
     }
     const evento = eventosPorFecha.get(fechaKey)!
-    evento.total += row.monto
-    evento.items.push({
+    evento.total += item.monto
+    evento.items.push(item)
+  }
+
+  for (const row of rows) {
+    const fechaKey = new Date(row.fecha_efectiva).toISOString().split('T')[0]!
+    agregar(fechaKey, {
+      clase: 'pago',
       pagoId: row.pago_id,
       numero: row.numero,
       proveedor: row.proveedor,
@@ -89,6 +177,47 @@ export async function GET(request: NextRequest) {
       monto: row.monto,
       tipo: row.tipo,
     })
+  }
+
+  for (const v of vencimientos) {
+    if (!v.fecha || !(v.monto > 0)) continue
+    agregar(v.fecha, {
+      clase: 'vencimiento',
+      pagoId: null,
+      documentoId: v.documento_id,
+      proveedorId: v.proveedor_id,
+      numero: null,
+      etiqueta: [v.tipo === 'FACTURA' ? 'Factura' : v.tipo, v.letra, v.numero].filter(Boolean).join(' '),
+      proveedor: v.proveedor ?? 'Sin proveedor',
+      estado: 'SIN_ORDEN',
+      monto: v.monto,
+      tipo: 'VENCIMIENTO',
+      rubro: v.rubro,
+    })
+  }
+
+  for (const o of obligaciones) {
+    const fechas = vencimientosEntre(
+      { periodicidad: o.periodicidad as Periodicidad, diaVencimiento: o.dia, mesAncla: o.ancla },
+      desde,
+      hasta
+    )
+    for (const f of fechas) {
+      if (o.proveedor_id && periodosConPapel.has(`${o.proveedor_id}#${periodoDe(f)}`)) continue
+      agregar(f, {
+        clase: 'estimado',
+        pagoId: null,
+        obligacionId: o.id,
+        proveedorId: o.proveedor_id,
+        numero: null,
+        etiqueta: o.nombre,
+        proveedor: o.proveedor ?? o.nombre,
+        estado: 'ESTIMADO',
+        monto: o.monto ?? 0,
+        tipo: 'ESTIMADO',
+        rubro: o.rubro,
+      })
+    }
   }
 
   // Cheques y eCheq entregados que todavía no se debitaron, miren el mes que
@@ -113,7 +242,9 @@ export async function GET(request: NextRequest) {
   `
 
   return jsonImportes({
-    eventos: Array.from(eventosPorFecha.values()),
+    // Ordenados por fecha: al mezclar pagos, vencimientos y estimados el
+    // Map quedó en el orden en que se fueron agregando, no cronológico.
+    eventos: Array.from(eventosPorFecha.values()).sort((a, b) => a.fecha.localeCompare(b.fecha)),
     porDebitar: porDebitar.map((c) => ({
       fecha: c.fecha,
       pagoId: c.pago_id,
