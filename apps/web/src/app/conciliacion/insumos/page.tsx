@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { InsumoDetalle } from '@/components/conciliacion/insumo-detalle'
 import { InsumoConsumo } from '@/components/conciliacion/insumo-consumo'
+import { cn } from '@/lib/utils'
 import { InsumoClasificacion } from '@/components/conciliacion/insumo-clasificacion'
 import { DateRange } from '@/components/sales/date-range'
 import { defaultRange } from '@/components/sales/shared'
@@ -40,6 +41,9 @@ export default function InsumosPage() {
   const [nombre, setNombre] = useState('')
   const [unidadBase, setUnidadBase] = useState('u')
   const [{ from, to }, setRange] = useState(defaultRange())
+  const [categoria, setCategoria] = useState('')
+  const [tipo, setTipo] = useState<'todos' | 'directa' | 'receta' | 'sinAlias'>('todos')
+  const [listaAbierta, setListaAbierta] = useState(false)
 
   const { data, isLoading: loadingInsumos } = useQuery({
     queryKey: ['conciliacion-insumos'],
@@ -85,10 +89,27 @@ export default function InsumosPage() {
 
   if (isLoading) return null
 
-  const insumos = (data?.insumos ?? []).filter((i) =>
-    i.nombre.toLowerCase().includes(search.trim().toLowerCase())
-  )
+  const q = search.trim().toLowerCase()
+  const insumos = (data?.insumos ?? []).filter((i) => {
+    if (q && !i.nombre.toLowerCase().includes(q)) return false
+    if (categoria) {
+      const c = i.categoria?.trim() || i.categoriaHeredada?.trim() || ''
+      if (c !== categoria) return false
+    }
+    if (tipo === 'directa' && !i.productMasterId) return false
+    if (tipo === 'receta' && (i.productMasterId || i.recetasCount === 0)) return false
+    if (tipo === 'sinAlias' && i.aliasCount > 0) return false
+    return true
+  })
   const selected = data?.insumos.find((i) => i.id === selectedId) ?? null
+  const sinAlias = (data?.insumos ?? []).filter((i) => i.aliasCount === 0).length
+
+  const FILTROS_TIPO = [
+    ['todos', 'Todos'],
+    ['receta', 'En recetas'],
+    ['directa', 'Venta directa'],
+    ['sinAlias', `Sin alias${sinAlias ? ` (${sinAlias})` : ''}`],
+  ] as const
 
   return (
     <DashboardLayout>
@@ -134,34 +155,89 @@ export default function InsumosPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 items-start">
-        {/* Lista */}
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="p-3 border-b border-slate-100">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar insumo..." className="pl-8 text-sm" />
-            </div>
+      {/*
+        Con un insumo elegido la lista se guarda en un desplegable y el detalle
+        se queda con todo el ancho: la configuración de un insumo (alias,
+        recetas, stock por depósito) no entra cómoda en lo que sobra al costado
+        de una columna fija.
+      */}
+      <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setListaAbierta(true)
+              }}
+              placeholder="Buscar insumo..."
+              className="pl-8 text-sm"
+            />
           </div>
-          {loadingInsumos ? (
-            <div className="p-8 text-center text-slate-400 text-sm">Cargando...</div>
-          ) : insumos.length === 0 ? (
-            <div className="p-10 text-center">
-              <Carrot className="h-9 w-9 mx-auto text-slate-300 mb-2" />
-              <p className="text-slate-500 text-sm">{search ? 'Sin resultados' : 'No hay insumos todavía'}</p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
-              {insumos.map((i) => (
-                <li key={i.id}>
-                  <button
-                    onClick={() => setSelectedId(i.id)}
-                    className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 transition flex items-center justify-between gap-2 ${
-                      selectedId === i.id ? 'bg-indigo-50' : ''
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <span className="text-sm text-slate-800 block truncate">
+
+          <select
+            value={categoria}
+            onChange={(e) => setCategoria(e.target.value)}
+            className="h-10 rounded-md border border-slate-200 bg-white px-2 text-sm"
+          >
+            <option value="">Todas las categorías</option>
+            {sugerencias.categorias.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-1 text-xs">
+            {FILTROS_TIPO.map(([v, l]) => (
+              <button
+                key={v}
+                onClick={() => setTipo(v)}
+                className={cn(
+                  'rounded-md px-2.5 py-1.5 font-medium transition',
+                  tipo === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+                )}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
+          <span className="ml-auto text-xs text-slate-400">
+            {insumos.length} de {data?.insumos.length ?? 0}
+          </span>
+          {selected && (
+            <Button variant="outline" size="sm" onClick={() => setListaAbierta((v) => !v)}>
+              {listaAbierta ? 'Ocultar lista' : 'Cambiar de insumo'}
+            </Button>
+          )}
+        </div>
+
+        {(!selected || listaAbierta) && (
+          <div className="mt-3 max-h-[26rem] overflow-y-auto border-t border-slate-100 pt-3">
+            {loadingInsumos ? (
+              <p className="py-8 text-center text-sm text-slate-400">Cargando...</p>
+            ) : insumos.length === 0 ? (
+              <div className="py-10 text-center">
+                <Carrot className="mx-auto mb-2 h-9 w-9 text-slate-300" />
+                <p className="text-sm text-slate-500">
+                  {search || categoria || tipo !== 'todos' ? 'Sin resultados con esos filtros' : 'No hay insumos todavía'}
+                </p>
+              </div>
+            ) : (
+              <ul className="grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
+                {insumos.map((i) => (
+                  <li key={i.id}>
+                    <button
+                      onClick={() => {
+                        setSelectedId(i.id)
+                        setListaAbierta(false)
+                      }}
+                      className={cn(
+                        'w-full rounded-md px-3 py-2 text-left transition hover:bg-slate-50',
+                        selectedId === i.id && 'bg-indigo-50'
+                      )}
+                    >
+                      <span className="block truncate text-sm text-slate-800">
                         {i.nombre} {!i.activo && <span className="text-xs text-slate-400">(inactivo)</span>}
                       </span>
                       <span className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-slate-400">
@@ -178,21 +254,20 @@ export default function InsumosPage() {
                         ) : (
                           <span>· {i.recetasCount} en recetas</span>
                         )}
+                        {(i.categoria || i.categoriaHeredada) && (
+                          <span className="truncate">· {i.categoria || i.categoriaHeredada}</span>
+                        )}
                       </span>
-                      {(i.subcategoria || i.categoria || i.categoriaHeredada) && (
-                        <span className="text-[11px] text-slate-400 block truncate">
-                          {i.categoria || i.categoriaHeredada}
-                          {i.subcategoria && <span className="text-slate-500"> › {i.subcategoria}</span>}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
 
+      <div className="grid grid-cols-1 gap-5 items-start">
         {/* Detalle del insumo */}
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           {selected ? (

@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Loader2, Link2, Sparkles, X } from 'lucide-react'
+import { Loader2, Link2, Plus, Sparkles, X } from 'lucide-react'
+import { CrearInsumoDialog } from './crear-insumo-dialog'
 import { cn } from '@/lib/utils'
 
 interface Insumo {
@@ -50,6 +51,8 @@ export function VincularInsumos({
   onMermas: (v: Record<string, string>) => void
 }) {
   const [sugeridos, setSugeridos] = useState<Map<string, Sugerencia>>(new Map())
+  // Ingrediente para el que se está creando un insumo nuevo.
+  const [creando, setCreando] = useState<string | null>(null)
 
   const { data } = useQuery({
     queryKey: ['recetas-insumos'],
@@ -183,13 +186,23 @@ export function VincularInsumos({
                     %
                   </label>
                 )}
-                {actual && (
+                {actual ? (
                   <button
                     onClick={() => aplicar(nombre, '')}
                     aria-label="Quitar vínculo"
                     className="grid h-7 w-7 shrink-0 place-items-center rounded text-slate-400 hover:bg-slate-100"
                   >
                     <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  /* Si el insumo no existe todavía, crearlo acá y no en otra
+                     pantalla: el que está costeando no pierde el hilo. */
+                  <button
+                    onClick={() => setCreando(nombre)}
+                    title="Crear este insumo"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <Plus className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -206,6 +219,15 @@ export function VincularInsumos({
           )
         })}
       </ul>
+
+      {creando !== null && (
+        <CrearInsumoDialog
+          nombreInicial={creando}
+          abierto
+          onCerrar={() => setCreando(null)}
+          onCreado={(insumo) => aplicar(creando, insumo.id)}
+        />
+      )}
     </div>
   )
 }
