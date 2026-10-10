@@ -33,6 +33,44 @@ describe('cantidad leída con el separador de miles', () => {
   })
 })
 
+describe('peso variable: se cobra por kilo y se factura por bulto', () => {
+  // BIFE A4: 20 cajas a $25.100 el kilo = $12.804.263, o sea 510,13 kg.
+  // El precio está bien; la cantidad son las cajas, no los kilos.
+  test('corrige la cantidad y no el precio', () => {
+    const d = diagnosticar({ cantidad: 20, precioUnitario: 25100, subtotal: 12804263 }, 24650)
+    expect(d.diagnostico).toBe('peso_variable')
+    expect(d.cantidad).toBeCloseTo(510.13, 2)
+    expect(d.precioUnitario).toBeNull()
+    // Media y no alta: el mismo patrón en un vino por cajón de 6 da 6,28
+    // botellas, que no existe. Desde afuera no se distinguen.
+    expect(d.confianza).toBe('media')
+  })
+
+  test('otra factura del mismo item', () => {
+    const d = diagnosticar({ cantidad: 17, precioUnitario: 25000, subtotal: 10815250 }, 24650)
+    expect(d.diagnostico).toBe('peso_variable')
+    expect(d.cantidad).toBeCloseTo(432.61, 2)
+  })
+
+  test('cuando la cantidad ya son los kilos, la línea cierra y no se toca', () => {
+    expect(diagnosticar({ cantidad: 72.21, precioUnitario: 24650, subtotal: 1779976.5 }, 24650).diagnostico).toBe('ok')
+  })
+
+  test('sin precio de referencia no se arriesga', () => {
+    // Sin con qué comparar no se puede saber si el que está mal es el precio
+    // o la cantidad: queda para mirar el comprobante.
+    const d = diagnosticar({ cantidad: 20, precioUnitario: 25100, subtotal: 12804263 }, null)
+    expect(d.diagnostico).not.toBe('peso_variable')
+  })
+
+  test('si el precio NO es el habitual, el que está mal es el precio', () => {
+    // Acá el precio guardado está a 1/1000 del que sale del subtotal.
+    const d = diagnosticar({ cantidad: 15.82, precioUnitario: 11.1, subtotal: 173322.9 }, 10955.94)
+    expect(d.diagnostico).toBe('no_cierra')
+    expect(d.precioUnitario).toBe(10955.94)
+  })
+})
+
 describe('líneas que no cierran', () => {
   test('un descuento del 10% no se corrige y se separa del resto', () => {
     const d = diagnosticar({ cantidad: 2, precioUnitario: 19522.94, subtotal: 35141.64 }, 19522.94)

@@ -12,7 +12,7 @@
  * Acá vive sólo la lógica, sin base ni red, para poder probarla sola.
  */
 
-export type Diagnostico = 'cantidad_x1000' | 'no_cierra' | 'descuento_probable' | 'ok'
+export type Diagnostico = 'cantidad_x1000' | 'peso_variable' | 'no_cierra' | 'descuento_probable' | 'ok'
 export type Confianza = 'alta' | 'media' | 'baja'
 
 export interface LineaCruda {
@@ -81,11 +81,53 @@ export function diagnosticar(l: LineaCruda, referencia?: number | null): Propues
     return { diagnostico: 'cantidad_x1000', confianza, motivo, cantidad: cantidadNueva, precioUnitario: precioNuevo }
   }
 
-  // 2. La línea no cierra. Puede ser un descuento legítimo o un número mal
-  //    leído; sin mirar el PDF no se puede decidir, así que no se propone
-  //    nada salvo que el precio recalculado caiga sobre la referencia.
+  // 2. La línea no cierra. Hay tres motivos posibles y conviene distinguirlos,
+  //    porque la corrección es distinta en cada uno.
   if (!cierra(l)) {
     const precioCalculado = redondear(subtotal / cantidad)
+
+    /*
+     * Peso variable: la carne se vende por caja pero se cobra por kilo, y en
+     * la factura la cantidad son las cajas (20) mientras el precio es por kilo
+     * ($25.100). Los kilos reales están en el importe: 12.804.263 / 25.100 =
+     * 510,13 kg, unos 25,5 por caja.
+     *
+     * Acá el precio está bien y lo que hay que corregir es la cantidad, al
+     * revés que en los otros casos. Se reconoce porque el precio guardado
+     * coincide con el habitual del item: si el proveedor siempre cobró el kilo
+     * a 24.650 y esta línea dice 25.100, ese número no está mal leído.
+     */
+    if (referencia && referencia > 0 && precioUnitario && precioUnitario > 0) {
+      const precioEsCorrecto = Math.abs(precioUnitario - referencia) <= referencia * 0.35
+      const cantidadCalculada = redondear(subtotal / precioUnitario, 3)
+      // Un bulto trae varias unidades base; si la diferencia es de un 5% no es
+      // peso variable sino un descuento o un recargo de la línea.
+      const porBulto = cantidadCalculada / cantidad
+      if (precioEsCorrecto && porBulto >= 1.5) {
+        /*
+         * Confianza media y no alta a propósito. Para la carne el resultado es
+         * natural: 20 cajas dan 510,13 kg, 25,5 por caja, y una caja de carne
+         * no tiene peso fijo. Pero el mismo patrón aparece en un vino por
+         * cajón de 6 y da 6,28 botellas por cajón, que no existe: ahí el
+         * importe trae algo más y hay que mirar el comprobante.
+         *
+         * Desde afuera no se distinguen, así que se deja el número por bulto
+         * a la vista y decide quien conoce el producto.
+         */
+        return {
+          diagnostico: 'peso_variable',
+          confianza: 'media',
+          motivo: `El precio coincide con el habitual del item, así que el que no cierra es la cantidad: ${cantidad.toLocaleString(
+            'es-AR'
+          )} serían los bultos y del importe salen ${cantidadCalculada.toLocaleString('es-AR')}, o sea ${redondear(
+            porBulto,
+            2
+          ).toLocaleString('es-AR')} por bulto. Si el producto se cobra por peso, es eso; si viene en packs cerrados, ese número tendría que ser redondo.`,
+          cantidad: cantidadCalculada,
+          precioUnitario: null,
+        }
+      }
+    }
     const motivo = `No cierra: ${cantidad.toLocaleString('es-AR')} × ${(precioUnitario ?? 0).toLocaleString('es-AR')} da ${redondear(
       cantidad * (precioUnitario ?? 0)
     ).toLocaleString('es-AR')} y el subtotal dice ${subtotal.toLocaleString('es-AR')}.`

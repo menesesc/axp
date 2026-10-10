@@ -23,7 +23,7 @@ interface Linea {
   precioUnitario: number | null
   subtotal: number | null
   referencia: number | null
-  diagnostico: 'cantidad_x1000' | 'no_cierra' | 'descuento_probable'
+  diagnostico: 'cantidad_x1000' | 'peso_variable' | 'no_cierra' | 'descuento_probable'
   confianza: 'alta' | 'media' | 'baja'
   motivo: string
   propuestaCantidad: number | null
@@ -207,9 +207,10 @@ export default function RevisionLineasPage() {
         <div>
           <h1 className="text-2xl font-bold">Revisión de líneas</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
-            Líneas donde los números del comprobante no cierran. La causa más común es la cantidad: en el PDF dice
-            &ldquo;120,000&rdquo; (ciento veinte, con tres decimales) y se guardó como ciento veinte mil, con lo cual el
-            precio unitario quedó dividido por mil. Eso desvía el stock, el costo por insumo y el análisis de precios.
+            Líneas donde los números del comprobante no cierran, y eso desvía el stock, el costo por insumo y el
+            análisis de precios. Hay dos causas frecuentes: la cantidad leída con el separador de miles
+            (&ldquo;120,000&rdquo; son ciento veinte, no ciento veinte mil) y el peso variable, donde la carne se
+            factura por caja pero se cobra por kilo y la cantidad quedó en cajas.
           </p>
         </div>
 
