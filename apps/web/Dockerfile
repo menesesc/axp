@@ -34,9 +34,15 @@ COPY packages ./packages
 COPY apps/web ./apps/web
 COPY package.json tsconfig.json .eslintrc.json ./
 
-# Generar Prisma Client
+# Generar Prisma Client.
+#
+# Había un segundo generate contra apps/web/prisma/schema.prisma, una copia que
+# había quedado congelada en septiembre. Como los dos generators escriben en
+# node_modules/.prisma/client, el segundo pisaba al primero y la app corría en
+# producción con un cliente que no conocía las columnas y tablas nuevas:
+# insumos.productMaster, insumos.subcategoria, el recetario entero, pago_lotes.
+# De ahí que la pantalla de Insumos viniera devolviendo 500 y se viera vacía.
 RUN pnpm dlx prisma@5.22.0 generate --schema=packages/database/prisma/schema.prisma
-RUN pnpm dlx prisma@5.22.0 generate --schema=apps/web/prisma/schema.prisma
 
 # Build de Next.js
 ENV NEXT_TELEMETRY_DISABLED=1

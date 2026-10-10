@@ -364,6 +364,7 @@ enum RolUsuario {
 
 enum SourceDocumento {
   SFTP
+  DRIVE
   EMAIL
   WHATSAPP
   MANUAL
@@ -392,6 +393,7 @@ enum TipoPagoMetodo {
   EFECTIVO
   TRANSFERENCIA
   CHEQUE
+  ECHEQ
 }
 
 model ventas {
