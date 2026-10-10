@@ -103,6 +103,15 @@ export function RecetaEditor({
       receta.ingredientes.filter((i) => i.insumoId).map((i) => [clave(i.nombre), i.insumoId!])
     )
   )
+  // Merma propia de cada línea, como texto: '' quiere decir "usar la del
+  // insumo" y es distinto de '0'.
+  const [mermas, setMermas] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      receta.ingredientes
+        .filter((i) => i.mermaPropia != null)
+        .map((i) => [clave(i.nombre), String(i.mermaPropia)])
+    )
+  )
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((prev) => ({ ...prev, [k]: v }))
 
   const { data: cats } = useQuery({
@@ -134,7 +143,13 @@ export function RecetaEditor({
     mutationFn: async () => {
       const ingredientes = parsear(f.ingTexto).map((l) => {
         const ing = parsearIngrediente(l.texto)
-        return { seccion: l.seccion, ...ing, insumoId: vinculos[clave(ing.nombre)] ?? null }
+        const m = mermas[clave(ing.nombre)]
+        return {
+          seccion: l.seccion,
+          ...ing,
+          insumoId: vinculos[clave(ing.nombre)] ?? null,
+          mermaPct: m === undefined || m.trim() === '' ? null : Number(m),
+        }
       })
       const pasos = parsear(f.pasoTexto).map((l) => ({ seccion: l.seccion, texto: l.texto }))
       const sugerencias = f.sugTexto.split('\n').map((s) => s.trim()).filter(Boolean)
@@ -343,6 +358,8 @@ export function RecetaEditor({
         </div>
 
         <VincularInsumos
+          mermas={mermas}
+          onMermas={setMermas}
           nombres={[...new Set(parsear(f.ingTexto).map((l) => parsearIngrediente(l.texto).nombre))]}
           vinculos={vinculos}
           onChange={setVinculos}

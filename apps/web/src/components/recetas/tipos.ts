@@ -47,6 +47,14 @@ export interface IngredienteReceta {
   nota: string | null
   insumoId: string | null
   insumo?: { id: string; nombre: string; unidadBase: string } | null
+  /** % de merma efectivo (el de la línea o, si no tiene, el del insumo). */
+  mermaPct?: number | null
+  /** El de la línea, para distinguirlo del heredado del insumo. */
+  mermaPropia?: number | null
+  /** Lo que sale del depósito: cantidad / (1 - merma). */
+  cantidadBruta?: number | null
+  precioBase?: number | null
+  costo?: number | null
 }
 
 export interface PasoReceta {

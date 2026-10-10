@@ -37,12 +37,17 @@ export function VincularInsumos({
   nombres,
   vinculos,
   onChange,
+  mermas,
+  onMermas,
 }: {
   /** Nombres de los ingredientes, parseados del textarea. */
   nombres: string[]
   /** nombre normalizado → insumoId */
   vinculos: Record<string, string>
   onChange: (v: Record<string, string>) => void
+  /** nombre normalizado → % de merma propio de la línea ('' = la del insumo) */
+  mermas: Record<string, string>
+  onMermas: (v: Record<string, string>) => void
 }) {
   const [sugeridos, setSugeridos] = useState<Map<string, Sugerencia>>(new Map())
 
@@ -52,6 +57,7 @@ export function VincularInsumos({
     staleTime: 5 * 60 * 1000,
   })
   const insumos = data?.insumos ?? []
+  const porId = useMemo(() => new Map(insumos.map((i) => [i.id, i])), [insumos])
 
   // Agrupados por categoría, con los sin categoría al final.
   const porCategoria = useMemo(() => {
@@ -160,6 +166,23 @@ export function VincularInsumos({
                     </optgroup>
                   ))}
                 </select>
+                {/* Merma de esta línea. Vacío = la del insumo, que se muestra
+                    como placeholder; 0 es distinto y quiere decir "en este
+                    plato no hay merma aunque el insumo suela tener". */}
+                {actual && (
+                  <label className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
+                    <input
+                      value={mermas[clave(nombre)] ?? ''}
+                      onChange={(e) =>
+                        onMermas({ ...mermas, [clave(nombre)]: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.') })
+                      }
+                      placeholder={String(porId.get(actual)?.mermaPct ?? 0)}
+                      title="Merma de esta línea, en % sobre lo que sale del depósito. Vacío usa la del insumo."
+                      className="w-12 rounded-md border border-slate-200 px-1.5 py-1 text-right text-sm text-slate-700"
+                    />
+                    %
+                  </label>
+                )}
                 {actual && (
                   <button
                     onClick={() => aplicar(nombre, '')}

@@ -52,6 +52,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           unidad: i.unidad,
           insumoId: i.insumoId,
           insumo: i.insumoUnidad ? { unidadBase: i.insumoUnidad } : null,
+          mermaPct: i.mermaPct,
         })),
         await costoPorInsumo(clienteId!)
       )
@@ -86,6 +87,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         nota: i.nota,
         insumoId: i.insumoId,
         insumo: i.insumoId ? { id: i.insumoId, nombre: i.insumoNombre!, unidadBase: i.insumoUnidad! } : null,
+        mermaPct: i.mermaPct,
+        mermaPropia: i.mermaPropia,
+        cantidadBruta: i.cantidadBruta,
+        precioBase: i.precioBase,
+        costo: costo?.porIngrediente[i.nombre] ?? null,
       })),
       pasos: pasos.map((p) => ({ id: p.id, seccion: p.seccion, texto: p.texto })),
       sugerencias,
@@ -137,6 +143,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           unidad: typeof i.unidad === 'string' && i.unidad ? i.unidad.trim().slice(0, 20) : null,
           nota: typeof i.nota === 'string' && i.nota.trim() ? i.nota.trim().slice(0, 200) : null,
           insumoId: typeof i.insumoId === 'string' && i.insumoId ? i.insumoId : null,
+          // NULL = usar la merma del insumo. 0 es un valor válido y distinto:
+          // "este plato no tiene merma aunque el insumo sí".
+          mermaPct:
+            i.mermaPct == null || i.mermaPct === '' || Number.isNaN(Number(i.mermaPct))
+              ? null
+              : Math.min(99.99, Math.max(0, Number(i.mermaPct))),
         }))
     : null
 

@@ -325,14 +325,27 @@ export default function RecetaPage() {
                       {g.items.map((ing, k) => (
                         <li key={ing.id ?? k} className="flex gap-2.5 text-[15px]">
                           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
-                          <span>
+                          <span className="min-w-0 flex-1">
                             {ing.cantidad != null && (
                               <b className="tabular-nums">{cant(ing.cantidad)} {ing.unidad} </b>
                             )}
                             {ing.cantidad != null ? 'de ' : ''}
                             {ing.nombre}
                             {ing.nota && <span className="block text-[13px] text-slate-400">{ing.nota}</span>}
+                            {/* La merma explica por qué del depósito sale más
+                                de lo que dice la receta, y por qué el costo no
+                                es cantidad x precio a secas. */}
+                            {!!ing.mermaPct && ing.cantidadBruta != null && (
+                              <span className="block text-[13px] text-amber-700">
+                                {cant(ing.cantidadBruta)} {ing.unidad} del depósito · {cant(ing.mermaPct)}% de merma
+                              </span>
+                            )}
                           </span>
+                          {ing.costo != null && (
+                            <span className="shrink-0 whitespace-nowrap text-[13px] tabular-nums text-slate-400">
+                              {fmtPesos(ing.costo)}
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>

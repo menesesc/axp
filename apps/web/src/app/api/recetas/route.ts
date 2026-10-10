@@ -63,6 +63,7 @@ export async function GET(_request: NextRequest) {
               unidad: i.unidad,
               insumoId: i.insumoId,
               insumo: i.insumoUnidad ? { unidadBase: i.insumoUnidad } : null,
+              mermaPct: i.mermaPct,
             })),
             precios
           )
