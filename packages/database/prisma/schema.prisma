@@ -717,6 +717,9 @@ model insumos {
   /// proveedor en bebidas. Sin subcategoría el insumo cuelga directo de su
   /// categoría, no se arma un grupo vacío.
   subcategoria String? @db.VarChar(100)
+  /// Merma habitual de este insumo, en % sobre la cantidad bruta. De 2 kg de
+  /// bife con 20% salen 1,6 kg al plato. Cada línea de receta puede pisarla.
+  mermaPct   Decimal  @default(0) @db.Decimal(5, 2)
   activo     Boolean  @default(true)
   notas      String?  @db.Text
   createdAt  DateTime @default(now()) @db.Timestamptz(3)
@@ -1133,6 +1136,8 @@ model receta_ingredientes {
   nota     String?  @db.VarChar(200)
   /// Opcional: con insumo se calcula el costo, sin él la receta igual sirve.
   insumoId String?  @db.Uuid
+  /// Merma de esta línea, en % sobre la cantidad bruta. NULL = la del insumo.
+  mermaPct Decimal? @db.Decimal(5, 2)
 
   receta recetas  @relation(fields: [recetaId], references: [id], onDelete: Cascade)
   insumo insumos? @relation(fields: [insumoId], references: [id], onDelete: SetNull)

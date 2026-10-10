@@ -11,6 +11,8 @@ interface Insumo {
   id: string
   nombre: string
   unidadBase: string
+  categoria?: string | null
+  mermaPct?: number
 }
 interface Sugerencia {
   nombre: string
@@ -50,6 +52,20 @@ export function VincularInsumos({
     staleTime: 5 * 60 * 1000,
   })
   const insumos = data?.insumos ?? []
+
+  // Agrupados por categoría, con los sin categoría al final.
+  const porCategoria = useMemo(() => {
+    const m = new Map<string, Insumo[]>()
+    for (const i of insumos) {
+      const c = i.categoria?.trim() || 'Sin categoría'
+      const xs = m.get(c) ?? []
+      xs.push(i)
+      m.set(c, xs)
+    }
+    return [...m.entries()].sort(([a2], [b2]) =>
+      a2 === 'Sin categoría' ? 1 : b2 === 'Sin categoría' ? -1 : a2.localeCompare(b2)
+    )
+  }, [insumos])
 
   const sugerir = useMutation({
     mutationFn: async (conIA: boolean) => {
@@ -132,10 +148,16 @@ export function VincularInsumos({
                   )}
                 >
                   <option value="">Sin vincular</option>
-                  {insumos.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.nombre} ({i.unidadBase})
-                    </option>
+                  {/* Agrupados por categoría: con cien insumos, una lista
+                      plana obliga a recorrerla entera. */}
+                  {porCategoria.map(([cat, items]) => (
+                    <optgroup key={cat} label={cat}>
+                      {items.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.nombre} ({i.unidadBase})
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {actual && (

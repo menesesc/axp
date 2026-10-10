@@ -31,7 +31,7 @@ interface ConciliacionResponse {
 
 export default function ConciliacionPage() {
   const { isLoading, canEdit } = useUser()
-  const tabs = useTabsPermitidas(MODULO.CONCILIACION)
+  const tabs = useTabsPermitidas(MODULO.STOCK)
   const [{ from, to }, setRange] = useState(defaultRange())
   const [sucursal, setSucursal] = useState('')
   const [umbral, setUmbral] = useState('15')

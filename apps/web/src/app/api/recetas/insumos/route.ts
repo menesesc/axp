@@ -11,11 +11,22 @@ export async function GET() {
   const { clienteId, error } = await requireSeccion(SECCION.RECETAS_LIBRO, 'edit')
   if (error) return error
 
-  const insumos = await prisma.insumos.findMany({
-    where: { clienteId: clienteId!, activo: true },
-    select: { id: true, nombre: true, unidadBase: true },
-    orderBy: { nombre: 'asc' },
-  })
+  /*
+   * Los de venta directa quedan afuera: son productos de la carta que se
+   * venden tal cual (un vino, un agua), nunca un ingrediente de una receta.
+   * Con 133 de 143 en esa condición, el desplegable era inusable.
+   *
+   * La categoría viaja para poder agrupar y filtrar en el selector.
+   */
+  const insumos = await prisma.$queryRaw<Array<{
+    id: string; nombre: string; unidadBase: string; categoria: string | null; mermaPct: number
+  }>>`
+    SELECT id, nombre, "unidadBase", COALESCE(categoria, subcategoria) AS categoria,
+           "mermaPct"::float8 AS "mermaPct"
+      FROM insumos
+     WHERE "clienteId" = ${clienteId}::uuid AND activo = true AND "productMasterId" IS NULL
+     ORDER BY COALESCE(categoria, 'zzz'), nombre
+  `
   return NextResponse.json({ insumos })
 }
 

@@ -55,14 +55,23 @@ export function nivelRequerido(metodo: string): Exclude<Nivel, 'none'> {
 // Módulos (agrupación)
 // ---------------------------------------------------------------------------
 
+/*
+ * Los módulos son la agrupación con la que se arma la matriz de permisos, y
+ * están puestos para que coincidan uno a uno con el menú. Antes agrupaban por
+ * el modelo viejo ("Documentos", "Conciliación", "Finanzas"): el menú decía
+ * Stock y la matriz Conciliación, con lo cual dar acceso a Stock era adivinar
+ * dónde buscarlo.
+ */
 export const MODULO = {
   DASHBOARD: 'dashboard',
-  DOCUMENTOS: 'documentos',
+  COMPROBANTES: 'comprobantes',
+  PAGOS: 'pagos',
   VENTAS: 'ventas',
-  CONCILIACION: 'conciliacion',
-  FINANZAS: 'finanzas',
-  INFORMES: 'informes',
+  STOCK: 'stock',
   RECETAS: 'recetas',
+  PROVEEDORES: 'proveedores',
+  ITEMS: 'items',
+  INFORMES: 'informes',
   SISTEMA: 'sistema',
   CONFIGURACION: 'configuracion',
 } as const
@@ -78,13 +87,15 @@ export interface ModuloDef {
 }
 
 export const MODULOS: ModuloDef[] = [
-  { value: MODULO.DASHBOARD, label: 'Dashboard', hint: 'Resumen general de la operación' },
-  { value: MODULO.DOCUMENTOS, label: 'Documentos', hint: 'Comprobantes, items, proveedores y anotaciones' },
+  { value: MODULO.DASHBOARD, label: 'Inicio', hint: 'Resumen general de la operación' },
+  { value: MODULO.COMPROBANTES, label: 'Comprobantes', hint: 'Facturas, remitos y anotaciones' },
+  { value: MODULO.PAGOS, label: 'Pagos', hint: 'Órdenes de pago y calendario de vencimientos' },
   { value: MODULO.VENTAS, label: 'Ventas', hint: 'Cierres de caja, ranking, mozos y turnos' },
-  { value: MODULO.CONCILIACION, label: 'Conciliación', hint: 'Insumos, recetas y control de stock' },
-  { value: MODULO.FINANZAS, label: 'Finanzas', hint: 'Pagos, calendario de vencimientos y estadísticas' },
-  { value: MODULO.INFORMES, label: 'Informes', hint: 'Compras, cuenta corriente, precios y proyecciones' },
+  { value: MODULO.STOCK, label: 'Stock', hint: 'Insumos, recetas de costeo, conteo, pedidos y conciliación' },
   { value: MODULO.RECETAS, label: 'Recetario', hint: 'Libro de recetas de la cocina' },
+  { value: MODULO.PROVEEDORES, label: 'Proveedores', hint: 'Ficha, contactos y cuenta de cada proveedor' },
+  { value: MODULO.ITEMS, label: 'Items', hint: 'Líneas de las facturas y su categoría' },
+  { value: MODULO.INFORMES, label: 'Informes', hint: 'Compras, cuenta corriente, precios y proyecciones' },
   { value: MODULO.SISTEMA, label: 'Sistema', hint: 'Procesamiento de documentos y logs' },
   {
     value: MODULO.CONFIGURACION,
@@ -93,6 +104,21 @@ export const MODULOS: ModuloDef[] = [
     soloAdmin: true,
   },
 ]
+
+/*
+ * Módulos del modelo viejo, para los permisos ya guardados con esa forma
+ * ("conciliacion:view"). Se mantienen sólo al leer: no se ofrecen en la matriz
+ * ni se vuelven a guardar así.
+ */
+const MODULOS_LEGACY: Record<string, string[]> = {
+  documentos: ['documentos.comprobantes', 'documentos.items', 'documentos.proveedores', 'documentos.anotaciones'],
+  conciliacion: [
+    'conciliacion.insumos', 'conciliacion.recetas', 'conciliacion.control', 'conciliacion.cobertura',
+    'conciliacion.stock', 'conciliacion.pedidos', 'conciliacion.despacho', 'conciliacion.compras',
+    'conciliacion.margen',
+  ],
+  finanzas: ['finanzas.pagos', 'finanzas.calendario', 'finanzas.estadisticas'],
+}
 
 const MODULO_POR_VALUE = new Map<string, ModuloDef>(MODULOS.map((m) => [m.value, m]))
 
@@ -145,7 +171,7 @@ export const SECCIONES: SeccionDef[] = [
   // --- Documentos ----------------------------------------------------------
   {
     value: 'documentos.comprobantes',
-    modulo: MODULO.DOCUMENTOS,
+    modulo: MODULO.COMPROBANTES,
     label: 'Comprobantes',
     paginas: ['/documentos', '/documento'],
     apis: ['/api/documentos'],
@@ -153,7 +179,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'documentos.items',
-    modulo: MODULO.DOCUMENTOS,
+    modulo: MODULO.ITEMS,
     label: 'Items',
     // La revisión de líneas edita items, así que va con el mismo permiso.
     paginas: ['/items', '/compras/revision'],
@@ -162,7 +188,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'documentos.proveedores',
-    modulo: MODULO.DOCUMENTOS,
+    modulo: MODULO.PROVEEDORES,
     label: 'Proveedores',
     paginas: ['/proveedores'],
     apis: ['/api/proveedores'],
@@ -170,7 +196,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'documentos.anotaciones',
-    modulo: MODULO.DOCUMENTOS,
+    modulo: MODULO.COMPROBANTES,
     label: 'Anotaciones',
     paginas: ['/anotaciones'],
     apis: ['/api/anotaciones'],
@@ -255,7 +281,7 @@ export const SECCIONES: SeccionDef[] = [
   // --- Conciliación --------------------------------------------------------
   {
     value: 'conciliacion.insumos',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Insumos',
     tab: 'insumos',
     paginas: ['/conciliacion/insumos'],
@@ -266,7 +292,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'conciliacion.recetas',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Recetas',
     paginas: ['/conciliacion/recetas'],
     apis: ['/api/conciliacion/recetas'],
@@ -274,7 +300,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'conciliacion.control',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Conciliación de stock',
     tab: 'insumos',
     paginas: ['/conciliacion'],
@@ -283,7 +309,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'conciliacion.cobertura',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Cobertura de recetas',
     tab: 'cobertura',
     paginas: ['/conciliacion'],
@@ -293,28 +319,28 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'conciliacion.stock',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Conteo de stock',
     paginas: ['/conciliacion/stock'],
     apis: ['/api/conciliacion/stock'],
   },
   {
     value: 'conciliacion.pedidos',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Pedidos internos',
     paginas: ['/pedidos'],
     apis: ['/api/pedidos'],
   },
   {
     value: 'conciliacion.despacho',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Despacho de pedidos (central)',
     paginas: ['/pedidos'],
     apis: ['/api/pedidos/despacho'],
   },
   {
     value: 'conciliacion.compras',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Compras sugeridas',
     paginas: ['/compras'],
     apis: ['/api/compras'],
@@ -322,7 +348,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'conciliacion.margen',
-    modulo: MODULO.CONCILIACION,
+    modulo: MODULO.STOCK,
     label: 'Margen por producto',
     tab: 'margen',
     paginas: ['/conciliacion'],
@@ -334,7 +360,7 @@ export const SECCIONES: SeccionDef[] = [
   // --- Finanzas ------------------------------------------------------------
   {
     value: 'finanzas.pagos',
-    modulo: MODULO.FINANZAS,
+    modulo: MODULO.PAGOS,
     label: 'Pagos',
     paginas: ['/pagos'],
     apis: ['/api/pagos'],
@@ -342,7 +368,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'finanzas.calendario',
-    modulo: MODULO.FINANZAS,
+    modulo: MODULO.PAGOS,
     label: 'Calendario',
     // Las obligaciones periódicas son lo que alimenta el calendario con los
     // vencimientos estimados, así que van con el mismo permiso.
@@ -352,7 +378,7 @@ export const SECCIONES: SeccionDef[] = [
   },
   {
     value: 'finanzas.estadisticas',
-    modulo: MODULO.FINANZAS,
+    modulo: MODULO.INFORMES,
     label: 'Estadísticas',
     paginas: ['/estadisticas'],
     apis: [],
@@ -652,6 +678,13 @@ export function parsePermisos(permisos: string[] | null | undefined): Matriz {
       for (const def of seccionesDeModulo(modulo.value)) {
         if (!def.soloAdmin) subirNivel(m, def, sufijo)
       }
+      continue
+    }
+
+    // Módulo de la agrupación anterior, que ya no existe como tal.
+    for (const valor of MODULOS_LEGACY[clave] ?? []) {
+      const def = SECCION_POR_VALUE.get(valor)
+      if (def && !def.soloAdmin) subirNivel(m, def, sufijo)
     }
   }
   return m

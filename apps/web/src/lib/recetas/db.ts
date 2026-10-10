@@ -42,6 +42,16 @@ export interface IngredienteRow {
   insumoId: string | null
   insumoNombre: string | null
   insumoUnidad: string | null
+  /// % de merma efectivo: el de la línea si lo tiene, si no el del insumo.
+  mermaPct: number
+  /// Si la línea define su propia merma (para distinguirla de la heredada).
+  mermaPropia: number | null
+  /// Lo que hay que sacar del depósito: cantidad / (1 - merma).
+  cantidadBruta: number | null
+  /// Último precio de compra por unidad base, y cuándo fue.
+  precioBase: number | null
+  precioFecha: string | null
+  costo: number | null
 }
 
 const SELECT_RECETA = Prisma.sql`
@@ -77,9 +87,18 @@ export async function ingredientesDe(recetaIds: string[]): Promise<IngredienteRo
   return prisma.$queryRaw<IngredienteRow[]>`
     SELECT ri.id, ri."recetaId", ri.seccion, ri.orden, ri.nombre,
            ri.cantidad::float8 AS cantidad, ri.unidad, ri.nota, ri."insumoId",
-           i.nombre AS "insumoNombre", i."unidadBase" AS "insumoUnidad"
+           i.nombre AS "insumoNombre", i."unidadBase" AS "insumoUnidad",
+           ri."mermaPct"::float8 AS "mermaPropia",
+           -- La merma y el costo salen de la vista, para que el cálculo esté
+           -- escrito una sola vez y no se desincronice con el de stock.
+           c.merma_pct::float8 AS "mermaPct",
+           c.cantidad_bruta::float8 AS "cantidadBruta",
+           c.precio_base::float8 AS "precioBase",
+           to_char(c.precio_fecha, 'YYYY-MM-DD') AS "precioFecha",
+           c.costo::float8 AS costo
       FROM receta_ingredientes ri
       LEFT JOIN insumos i ON i.id = ri."insumoId"
+      LEFT JOIN receta_ingrediente_costo c ON c.ingrediente_id = ri.id
      WHERE ri."recetaId" = ANY(${recetaIds}::uuid[])
      ORDER BY ri."recetaId", ri.orden
   `
@@ -209,6 +228,8 @@ export interface IngredienteEntrada {
   unidad: string | null
   nota: string | null
   insumoId: string | null
+  /** % de merma propio de esta línea. NULL = usar el del insumo. */
+  mermaPct?: number | null
 }
 
 /**
@@ -266,9 +287,9 @@ export async function actualizarReceta(
     ops.push(prisma.$executeRaw`DELETE FROM receta_ingredientes WHERE "recetaId" = ${id}::uuid`)
     ingredientes.forEach((ing, orden) => {
       ops.push(prisma.$executeRaw`
-        INSERT INTO receta_ingredientes ("recetaId",seccion,orden,nombre,cantidad,unidad,nota,"insumoId")
+        INSERT INTO receta_ingredientes ("recetaId",seccion,orden,nombre,cantidad,unidad,nota,"insumoId","mermaPct")
         VALUES (${id}::uuid, ${ing.seccion}, ${orden}, ${ing.nombre}, ${ing.cantidad},
-                ${ing.unidad}, ${ing.nota}, ${ing.insumoId}::uuid)
+                ${ing.unidad}, ${ing.nota}, ${ing.insumoId}::uuid, ${ing.mermaPct ?? null})
       `)
     })
   }
