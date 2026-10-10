@@ -8,6 +8,7 @@ import { useUser } from '@/hooks/use-user'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { InsumoDetalle } from '@/components/conciliacion/insumo-detalle'
+import { InsumoConsumo } from '@/components/conciliacion/insumo-consumo'
 import { InsumoClasificacion } from '@/components/conciliacion/insumo-clasificacion'
 import { DateRange } from '@/components/sales/date-range'
 import { defaultRange } from '@/components/sales/shared'
@@ -22,6 +23,8 @@ interface Insumo {
   categoria: string | null
   subcategoria: string | null
   categoriaHeredada: string | null
+  productMasterId: string | null
+  productoVenta: string | null
   activo: boolean
   notas: string | null
   aliasCount: number
@@ -161,8 +164,20 @@ export default function InsumosPage() {
                       <span className="text-sm text-slate-800 block truncate">
                         {i.nombre} {!i.activo && <span className="text-xs text-slate-400">(inactivo)</span>}
                       </span>
-                      <span className="text-[11px] text-slate-400">
-                        {i.unidadBase} · {i.aliasCount} alias · {i.recetasCount} en recetas
+                      <span className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-slate-400">
+                        {i.unidadBase}
+                        {/* Un insumo sin alias de compra nunca recibe stock,
+                            pase lo que pase del lado de la venta. */}
+                        <span className={i.aliasCount === 0 ? 'font-medium text-amber-600' : ''}>
+                          · {i.aliasCount} alias
+                        </span>
+                        {i.productMasterId ? (
+                          <span className="rounded bg-violet-50 px-1 py-px text-[10px] font-semibold text-violet-700">
+                            venta directa
+                          </span>
+                        ) : (
+                          <span>· {i.recetasCount} en recetas</span>
+                        )}
                       </span>
                       {(i.subcategoria || i.categoria || i.categoriaHeredada) && (
                         <span className="text-[11px] text-slate-400 block truncate">
@@ -191,7 +206,10 @@ export default function InsumosPage() {
                 />
                 <DateRange from={from} to={to} onChange={setRange} />
               </div>
-              <InsumoDetalle insumo={selected} canEdit={isAdmin} from={from} to={to} />
+              <InsumoConsumo insumo={selected} canEdit={isAdmin} />
+              <div className="mt-4">
+                <InsumoDetalle insumo={selected} canEdit={isAdmin} from={from} to={to} />
+              </div>
             </>
           ) : (
             <div className="h-full flex items-center justify-center text-center text-slate-400 text-sm py-16">

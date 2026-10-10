@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     include: {
       _count: { select: { alias: true, recipeItems: true } },
       // Para mostrar de qué rubro hereda la categoría un insumo de venta directa.
-      productMaster: { select: { rubroNombre: true } },
+      productMaster: { select: { nombre: true, rubroNombre: true } },
     },
   })
 
@@ -41,6 +41,11 @@ export async function GET(request: NextRequest) {
       notas: i.notas,
       aliasCount: i._count.alias,
       recetasCount: i._count.recipeItems,
+      // Venta directa: el insumo ES un producto de la carta, el consumo son
+      // las unidades vendidas y no hace falta receta. Las compras siguen
+      // entrando por alias, que es lo que más se presta a confusión.
+      productMasterId: i.productMasterId,
+      productoVenta: i.productMaster?.nombre ?? null,
     })),
   })
 }
