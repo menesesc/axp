@@ -14,7 +14,23 @@ export function getAnthropicClient(): Anthropic {
 }
 
 // Claude Sonnet 4 (claude-sonnet-4-20250514) fue dado de baja: la API devuelve 404.
+
+/**
+ * Por defecto: extraer, clasificar, resumir. Son tareas de leer algo que ya
+ * está escrito, con mucho volumen, y Sonnet las hace bien y barato.
+ */
 export const AI_MODEL = 'claude-sonnet-5-5'
+
+/**
+ * Para las que son de criterio y no de lectura: redactar una receta, decidir
+ * si "ojo de bife" es el mismo producto que "BIFE ANGOSTO C/C". Son pocas por
+ * día y el error no se nota —una receta mal escrita se corrige al leerla, un
+ * insumo mal vinculado ensucia el costo en silencio— así que acá conviene el
+ * modelo más capaz aunque cueste más por llamada.
+ *
+ * Verificado contra la API: opus-5, sonnet-5-5, sonnet-5 y haiku-5-5 responden.
+ */
+export const AI_MODEL_CRITERIO = 'claude-opus-5'
 
 /**
  * Opciones para AI_MODEL: piensa por defecto (adaptive) y el thinking cuenta

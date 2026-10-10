@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Image as ImageIcon, Loader2, Sparkles, Trash2, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { fotoUrl, type CategoriaReceta, type DispositivoReceta, type RecetaDetalle } from './tipos'
 import { VincularInsumos, clave } from './vincular-insumos'
@@ -121,6 +121,67 @@ export function RecetaEditor({
   const { data: disp } = useQuery({
     queryKey: ['receta-dispositivos'],
     queryFn: async () => (await fetch('/api/recetas/dispositivos')).json() as Promise<{ dispositivos: DispositivoReceta[] }>,
+  })
+
+  /**
+   * Borrador con IA a partir del título y las porciones. Pisa descripción,
+   * tiempos, dificultad, ingredientes, pasos y sugerencias, y suma los
+   * dispositivos propuestos a los ya elegidos. Lo vinculado con insumos no se
+   * toca: eso cuesta más de rehacer que de reescribir.
+   */
+  const sugerir = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/recetas/sugerir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: f.titulo,
+          porciones: f.porciones,
+          dispositivoIds: f.dispositivoIds,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'No se pudo sugerir')
+      return json.sugerencia as {
+        descripcion: string
+        prepMin: number | null
+        totalMin: number | null
+        dificultad: string | null
+        dispositivoIds: string[]
+        ingredientes: Array<{ nombre: string; cantidad: number | null; unidad: string | null; nota: string | null; seccion: string | null }>
+        pasos: Array<{ texto: string; seccion: string | null }>
+        sugerencias: string[]
+      }
+    },
+    onSuccess: (sug) => {
+      setF((prev) => ({
+        ...prev,
+        descripcion: sug.descripcion || prev.descripcion,
+        prepMin: sug.prepMin ?? prev.prepMin,
+        totalMin: sug.totalMin ?? prev.totalMin,
+        dificultad: sug.dificultad
+          ? sug.dificultad.charAt(0).toUpperCase() + sug.dificultad.slice(1)
+          : prev.dificultad,
+        dispositivoIds: [...new Set([...prev.dispositivoIds, ...sug.dispositivoIds])],
+        ingTexto: aTexto(
+          sug.ingredientes.map((i) => ({
+            seccion: i.seccion,
+            texto: [
+              i.cantidad != null ? String(i.cantidad).replace('.', ',') : null,
+              i.unidad,
+              i.nombre,
+              i.nota ? `(${i.nota})` : null,
+            ]
+              .filter(Boolean)
+              .join(' '),
+          }))
+        ),
+        pasoTexto: aTexto(sug.pasos.map((p) => ({ seccion: p.seccion, texto: p.texto }))),
+        sugTexto: sug.sugerencias.join('\n'),
+      }))
+      toast.success('Borrador listo. Revisalo antes de guardar.')
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const subirFoto = useMutation({
@@ -247,6 +308,27 @@ export function RecetaEditor({
             <span className="mb-1 block text-sm font-medium">Título</span>
             <Input value={f.titulo} onChange={(e) => set('titulo', e.target.value)} />
           </label>
+          {/* Arrancar de una hoja en blanco es lo que frena la carga: con el
+              título y las porciones ya se puede proponer un borrador. */}
+          <div className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-2">
+            <Sparkles className="h-4 w-4 text-violet-500" />
+            <span className="text-sm text-slate-600">
+              ¿Arranco un borrador con los dispositivos de la cocina?
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={!f.titulo.trim() || sugerir.isPending}
+              onClick={() => sugerir.mutate()}
+              title={!f.titulo.trim() ? 'Poné primero el título' : ''}
+            >
+              {sugerir.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
+              {sugerir.isPending ? 'Pensando…' : 'Sugerir receta'}
+            </Button>
+          </div>
+
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-sm font-medium">Descripción</span>
             <textarea

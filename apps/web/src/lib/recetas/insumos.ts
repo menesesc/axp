@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { getAnthropicClient, parseAIResponse } from '@/lib/ai/anthropic-client'
+import { AI_MODEL_CRITERIO, getAnthropicClient, parseAIResponse } from '@/lib/ai/anthropic-client'
 import { sugerirLocal, type InsumoLite, type SugerenciaInsumo } from './matching'
 
 /**
@@ -20,7 +20,7 @@ import { sugerirLocal, type InsumoLite, type SugerenciaInsumo } from './matching
 export { normalizar, parecido, sugerirLocal } from './matching'
 export type { SugerenciaInsumo, InsumoLite } from './matching'
 
-const MODELO = 'claude-sonnet-5'
+
 
 const SYSTEM = `Vinculás ingredientes de recetas de un restaurante argentino con el insumo del catálogo de compras que les corresponde.
 
@@ -48,7 +48,7 @@ export async function sugerirConIA(
     const pide = pendientes.map((p, idx) => `${idx}. ${p}`).join('\n')
 
     const res = await getAnthropicClient().messages.create({
-      model: MODELO,
+      model: AI_MODEL_CRITERIO,
       max_tokens: 2000,
       system: SYSTEM,
       messages: [
