@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { InsumoDetalle } from '@/components/conciliacion/insumo-detalle'
 import { InsumoConsumo } from '@/components/conciliacion/insumo-consumo'
+import { InsumoNombre } from '@/components/conciliacion/insumo-nombre'
 import { cn } from '@/lib/utils'
 import { InsumoClasificacion } from '@/components/conciliacion/insumo-clasificacion'
 import { DateRange } from '@/components/sales/date-range'
@@ -272,6 +273,9 @@ export default function InsumosPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           {selected ? (
             <>
+              <div className="mb-3">
+                <InsumoNombre insumo={selected} canEdit={isAdmin} />
+              </div>
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <InsumoClasificacion
                   insumo={selected}
