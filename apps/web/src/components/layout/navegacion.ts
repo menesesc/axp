@@ -131,6 +131,7 @@ export const CONFIGURACION: Modulo = {
     { nombre: 'Canales', href: '/configuracion/canales' },
     { nombre: 'Informes por mail', href: '/configuracion/informes' },
     { nombre: 'Depósitos', href: '/configuracion/depositos' },
+    { nombre: 'Punto de venta', href: '/configuracion/pos' },
     { nombre: 'Procesamiento', href: '/procesamiento' },
     { nombre: 'Mi plan', href: '/configuracion/plan' },
   ],
