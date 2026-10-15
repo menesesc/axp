@@ -467,7 +467,8 @@ export const SECCIONES: SeccionDef[] = [
     modulo: MODULO.CONFIGURACION,
     label: 'Configuración',
     paginas: ['/configuracion'],
-    apis: ['/api/configuracion', '/api/suscripciones'],
+    // El catálogo del punto de venta es configuración: precios y carta.
+    apis: ['/api/configuracion', '/api/suscripciones', '/api/pos/catalogo'],
     soloAdmin: true,
   },
 ]
