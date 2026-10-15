@@ -34,6 +34,7 @@ export interface Producto {
   pantallas: string[]
   orden: number
   color: string | null
+  icono: string | null
   fotoKey: string | null
   activo: boolean
   /** De qué producto de Maxirest viene, para ver qué descuenta de stock. */
@@ -57,7 +58,7 @@ export async function productosDe(clienteId: string): Promise<Producto[]> {
     SELECT p.id, p."categoriaId", c.nombre AS "categoriaNombre", p."productMasterId",
            p.nombre, p."nombreTicket", p.codigo,
            p.precio::float8 AS precio, p."alicuotaIva"::float8 AS "alicuotaIva",
-           p.pantallas, p.orden, p.color, p."fotoKey", p.activo,
+           p.pantallas, p.orden, p.color, p.icono, p."fotoKey", p.activo,
            pm.nombre AS "productoVenta",
            -- Lo que importa saber de un vistazo: si al venderlo se descuenta
            -- algo del depósito o se vende contra nada.
@@ -140,4 +141,54 @@ export async function configuracionDe(clienteId: string) {
     RETURNING pantallas, monedas, "usaCuentaCorriente", "usaPropina"
   `
   return cfg!
+}
+
+export interface GrupoOpciones {
+  id: string
+  nombre: string
+  minimo: number
+  maximo: number
+  opciones: Array<{ id: string; nombre: string; precioExtra: number }>
+  /** Productos que piden este grupo. */
+  productos: string[]
+}
+
+/**
+ * Los grupos de opciones con sus opciones y a qué productos aplican.
+ *
+ * Dos cosas que parecen distintas y son la misma: el fetuccini que exige
+ * elegir una salsa (mínimo 1, máximo 1) y el helado que admite hasta dos
+ * sabores (mínimo 0, máximo 2).
+ */
+export async function gruposDe(clienteId: string): Promise<GrupoOpciones[]> {
+  const grupos = await prisma.$queryRaw<Array<Omit<GrupoOpciones, 'opciones' | 'productos'>>>`
+    SELECT g.id, g.nombre, g.minimo, g.maximo
+      FROM pos_opcion_grupos g
+     WHERE g."clienteId" = ${clienteId}::uuid AND g.activo
+     ORDER BY g.orden, g.nombre
+  `
+  if (grupos.length === 0) return []
+
+  const [opciones, vinculos] = await Promise.all([
+    prisma.$queryRaw<Array<{ grupoId: string; id: string; nombre: string; precioExtra: number }>>`
+      SELECT o."grupoId", o.id, o.nombre, o."precioExtra"::float8 AS "precioExtra"
+        FROM pos_opciones o
+        JOIN pos_opcion_grupos g ON g.id = o."grupoId"
+       WHERE g."clienteId" = ${clienteId}::uuid AND o.activa
+       ORDER BY o.orden, o.nombre
+    `,
+    prisma.$queryRaw<Array<{ grupoId: string; productoId: string }>>`
+      SELECT pg."grupoId", pg."productoId"
+        FROM pos_producto_grupos pg
+        JOIN pos_opcion_grupos g ON g.id = pg."grupoId"
+       WHERE g."clienteId" = ${clienteId}::uuid
+       ORDER BY pg.orden
+    `,
+  ])
+
+  return grupos.map((g) => ({
+    ...g,
+    opciones: opciones.filter((o) => o.grupoId === g.id).map(({ grupoId: _g, ...o }) => o),
+    productos: vinculos.filter((v) => v.grupoId === g.id).map((v) => v.productoId),
+  }))
 }

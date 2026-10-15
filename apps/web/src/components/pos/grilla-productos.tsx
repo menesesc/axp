@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { LayoutGrid, List, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -23,6 +23,8 @@ export interface ProductoPos {
   alicuotaIva: number
   categoriaId: string | null
   color: string | null
+  icono?: string | null
+  fotoKey?: string | null
 }
 
 export interface CategoriaPos {
@@ -33,6 +35,8 @@ export interface CategoriaPos {
 }
 
 const pesos = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+const sinTildes = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
 export function GrillaProductos({
   categorias,
@@ -45,10 +49,21 @@ export function GrillaProductos({
 }) {
   const [categoria, setCategoria] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [vista, setVista] = useState<'grilla' | 'lista'>('grilla')
 
   const visibles = useMemo(() => {
-    const t = q.trim().toLowerCase()
-    if (t) return productos.filter((p) => p.nombre.toLowerCase().includes(t)).slice(0, 60)
+    // Por palabras sueltas y en cualquier orden, sin acentos: "mal alamos"
+    // encuentra "ALAMOS MALBEC". Escribir el nombre exacto en una pantalla
+    // táctil no pasa nunca.
+    const palabras = sinTildes(q).split(/\s+/).filter(Boolean)
+    if (palabras.length > 0) {
+      return productos
+        .filter((p) => {
+          const n = sinTildes(p.nombre)
+          return palabras.every((w) => n.includes(w))
+        })
+        .slice(0, 80)
+    }
     if (!categoria) return []
     return productos.filter((p) => p.categoriaId === categoria)
   }, [productos, categoria, q])
@@ -73,11 +88,20 @@ export function GrillaProductos({
           <button
             onClick={() => setQ('')}
             aria-label="Limpiar"
-            className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-lg text-slate-400"
+            className="absolute right-16 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-lg text-slate-400"
           >
             <X className="h-5 w-5" />
           </button>
         )}
+        {/* Lista para quien prefiere leer, grilla para quien busca con la
+            vista. Es preferencia de cada persona, no del negocio. */}
+        <button
+          onClick={() => setVista((v) => (v === 'grilla' ? 'lista' : 'grilla'))}
+          aria-label={vista === 'grilla' ? 'Ver como lista' : 'Ver como grilla'}
+          className="absolute right-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-lg bg-slate-100 text-slate-600"
+        >
+          {vista === 'grilla' ? <List className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
+        </button>
       </div>
 
       {!q && (
@@ -115,22 +139,57 @@ export function GrillaProductos({
             {q ? 'Ningún producto coincide' : 'Elegí una categoría'}
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-            {visibles.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onElegir(p)}
-                style={p.color ? { backgroundColor: p.color } : undefined}
-                className={cn(
-                  'flex h-24 flex-col justify-between rounded-xl border border-slate-200 p-3 text-left active:scale-[0.98]',
-                  p.color ? 'text-white' : 'bg-white'
-                )}
-              >
-                <span className="line-clamp-2 text-sm font-medium leading-tight">{p.nombre}</span>
-                <span className="text-base font-bold tabular-nums">{pesos(p.precio)}</span>
-              </button>
-            ))}
-          </div>
+          vista === 'grilla' ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+              {visibles.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onElegir(p)}
+                  style={p.color ? { backgroundColor: p.color } : undefined}
+                  className={cn(
+                    'relative flex h-24 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 p-3 text-left active:scale-[0.98]',
+                    p.color ? 'text-white' : 'bg-white'
+                  )}
+                >
+                  {p.fotoKey && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/recetas/foto?key=${encodeURIComponent(p.fotoKey)}`}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover opacity-25"
+                    />
+                  )}
+                  <span className="relative flex items-start gap-1.5">
+                    {p.icono && <span className="text-xl leading-none">{p.icono}</span>}
+                    <span className="line-clamp-2 text-sm font-medium leading-tight">{p.nombre}</span>
+                  </span>
+                  <span className="relative text-base font-bold tabular-nums">{pesos(p.precio)}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+              {visibles.map((p) => (
+                <li key={p.id}>
+                  <button
+                    onClick={() => onElegir(p)}
+                    className="flex min-h-[4rem] w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50"
+                  >
+                    {p.icono ? (
+                      <span className="w-7 text-center text-xl leading-none">{p.icono}</span>
+                    ) : (
+                      <span
+                        className="h-7 w-7 shrink-0 rounded"
+                        style={{ backgroundColor: p.color ?? '#e2e8f0' }}
+                      />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-base">{p.nombre}</span>
+                    <span className="text-base font-bold tabular-nums">{pesos(p.precio)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
         )}
       </div>
     </div>

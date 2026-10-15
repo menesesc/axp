@@ -26,6 +26,8 @@ interface ItemEntrada {
   precioUnitario: number
   alicuotaIva?: number
   nota?: string | null
+  /** Lo elegido en los grupos de opciones, congelado en la línea. */
+  opciones?: Array<{ opcionId?: string | null; grupo?: string | null; nombre: string; precioExtra?: number }>
 }
 
 /** Pedidos abiertos de una sucursal, con lo justo para pintar el salón. */
@@ -50,10 +52,17 @@ export async function GET(request: NextRequest) {
     `
     if (!pedido) return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
     const items = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-      SELECT id, "productoId", nombre, cantidad::float8 AS cantidad,
-             "precioUnitario"::float8 AS "precioUnitario", "alicuotaIva"::float8 AS "alicuotaIva",
-             nota, "estadoKds", "enviadoAt" IS NOT NULL AS enviado, "anuladoAt" IS NOT NULL AS anulado
-        FROM pos_pedido_items WHERE "pedidoId" = ${pedidoId}::uuid ORDER BY "createdAt"
+      SELECT i.id, i."productoId", i.nombre, i.cantidad::float8 AS cantidad,
+             i."precioUnitario"::float8 AS "precioUnitario", i."alicuotaIva"::float8 AS "alicuotaIva",
+             i.nota, i."estadoKds", i."enviadoAt" IS NOT NULL AS enviado, i."anuladoAt" IS NOT NULL AS anulado,
+             COALESCE((
+               SELECT json_agg(json_build_object(
+                        'opcionId', o."opcionId", 'grupo', o.grupo,
+                        'nombre', o.nombre, 'precioExtra', o."precioExtra"::float8)
+                        ORDER BY o.grupo, o.nombre)
+                 FROM pos_pedido_item_opciones o WHERE o."pedidoItemId" = i.id
+             ), '[]'::json) AS opciones
+        FROM pos_pedido_items i WHERE i."pedidoId" = ${pedidoId}::uuid ORDER BY i."createdAt"
     `
     return NextResponse.json({ pedido, items })
   }
@@ -135,6 +144,23 @@ export async function POST(request: NextRequest) {
         -- Un ítem ya enviado a cocina no se toca por acá: se anula con permiso.
         WHERE pos_pedido_items."enviadoAt" IS NULL
       `
+
+      // Las opciones se reescriben enteras mientras el ítem no salió: son
+      // pocas y así no hay que averiguar cuál cambió.
+      if (i.opciones) {
+        await tx.$executeRaw`
+          DELETE FROM pos_pedido_item_opciones o
+           WHERE o."pedidoItemId" = ${i.id}::uuid
+             AND EXISTS (SELECT 1 FROM pos_pedido_items x WHERE x.id = o."pedidoItemId" AND x."enviadoAt" IS NULL)
+        `
+        for (const op of i.opciones) {
+          await tx.$executeRaw`
+            INSERT INTO pos_pedido_item_opciones ("pedidoItemId", "opcionId", grupo, nombre, "precioExtra")
+            SELECT ${i.id}::uuid, ${op.opcionId || null}::uuid, ${op.grupo || null}, ${op.nombre}, ${op.precioExtra ?? 0}
+             WHERE EXISTS (SELECT 1 FROM pos_pedido_items x WHERE x.id = ${i.id}::uuid AND x."enviadoAt" IS NULL)
+          `
+        }
+      }
     }
 
     // Los que la pantalla ya no manda y nunca salieron a cocina, se van.

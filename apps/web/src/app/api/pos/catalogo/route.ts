@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
-import { categoriasDe, configuracionDe, productosDe } from '@/lib/pos/db'
+import { categoriasDe, configuracionDe, gruposDe, productosDe } from '@/lib/pos/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,12 +11,13 @@ export async function GET() {
   const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
-  const [categorias, productos, configuracion] = await Promise.all([
+  const [categorias, productos, configuracion, grupos] = await Promise.all([
     categoriasDe(clienteId!),
     productosDe(clienteId!),
     configuracionDe(clienteId!),
+    gruposDe(clienteId!),
   ])
-  return NextResponse.json({ categorias, productos, configuracion })
+  return NextResponse.json({ categorias, productos, configuracion, grupos })
 }
 
 const PANTALLAS = ['rapida', 'salon', 'comercio']
@@ -33,6 +34,7 @@ interface CuerpoProducto {
   pantallas?: string[]
   orden?: number
   color?: string | null
+  icono?: string | null
   activo?: boolean
   motivoPrecio?: string | null
 }
@@ -60,11 +62,11 @@ export async function POST(request: NextRequest) {
   try {
     const [p] = await prisma.$queryRaw<Array<{ id: string }>>`
       INSERT INTO pos_productos
-        ("clienteId", "categoriaId", nombre, "nombreTicket", codigo, precio, "alicuotaIva", pantallas, color)
+        ("clienteId", "categoriaId", nombre, "nombreTicket", codigo, precio, "alicuotaIva", pantallas, color, icono)
       VALUES (${clienteId}::uuid, ${b.categoriaId || null}::uuid, ${b.nombre!.trim()},
               ${b.nombreTicket?.trim()?.slice(0, 40) || b.nombre!.trim().slice(0, 40)},
               ${b.codigo?.trim() || null}, ${b.precio ?? 0}, ${b.alicuotaIva ?? 21},
-              ${b.pantallas ?? []}::text[], ${b.color || null})
+              ${b.pantallas ?? []}::text[], ${b.color || null}, ${b.icono || null})
       RETURNING id
     `
     await prisma.$executeRaw`
@@ -104,6 +106,7 @@ export async function PATCH(request: NextRequest) {
         pantallas      = COALESCE(${b.pantallas ?? null}::text[], pantallas),
         orden          = COALESCE(${b.orden ?? null}, orden),
         color          = COALESCE(${b.color ?? null}, color),
+        icono          = COALESCE(${b.icono ?? null}, icono),
         activo         = COALESCE(${b.activo ?? null}, activo),
         "updatedAt"    = now()
       WHERE id = ${b.id}::uuid AND "clienteId" = ${clienteId}::uuid
