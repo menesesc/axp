@@ -195,6 +195,12 @@ export default function RecetaPage() {
                     {d.emoji} {d.nombre}
                   </span>
                 ))}
+                {/* En qué se sirve: es parte del plato, igual que la cocción. */}
+                {r.vajilla && (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                    {r.vajilla.emoji} {r.vajilla.nombre}
+                  </span>
+                )}
               </div>
               <div className="flex shrink-0 gap-1.5">
                 {data?.puedeEditar && (

@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, Image as ImageIcon, Loader2, Sparkles, Trash2, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { fotoUrl, type CategoriaReceta, type DispositivoReceta, type RecetaDetalle } from './tipos'
+import { fotoUrl, type CategoriaReceta, type DispositivoReceta, type RecetaDetalle, type VajillaReceta } from './tipos'
+import { FotoIaDialog, type PedidoFoto } from './foto-ia-dialog'
 import { VincularInsumos, clave } from './vincular-insumos'
 import { SugerirDialog, type Sugerencia } from './sugerir-dialog'
 
@@ -90,6 +91,7 @@ export function RecetaEditor({
     youtubeUrl: receta.youtubeUrl ?? '',
     estado: receta.estado,
     fotoKey: receta.fotoKey,
+    vajillaId: receta.vajillaId ?? '',
     dispositivoIds: receta.dispositivos.map((d) => d.id),
     ingTexto: aTexto(
       receta.ingredientes.map((i) => ({
@@ -119,6 +121,7 @@ export function RecetaEditor({
     )
   )
   const [sugiriendo, setSugiriendo] = useState(false)
+  const [pidiendoFoto, setPidiendoFoto] = useState(false)
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((prev) => ({ ...prev, [k]: v }))
 
   const { data: cats } = useQuery({
@@ -128,6 +131,10 @@ export function RecetaEditor({
   const { data: disp } = useQuery({
     queryKey: ['receta-dispositivos'],
     queryFn: async () => (await fetch('/api/recetas/dispositivos')).json() as Promise<{ dispositivos: DispositivoReceta[] }>,
+  })
+  const { data: vaj } = useQuery({
+    queryKey: ['receta-vajillas'],
+    queryFn: async () => (await fetch('/api/recetas/vajillas')).json() as Promise<{ vajillas: VajillaReceta[] }>,
   })
 
   /**
@@ -169,6 +176,9 @@ export function RecetaEditor({
         titulo: titulo?.trim() || f.titulo.trim(),
         descripcion: sug.descripcion || '',
         ingredientes: sug.ingredientes.slice(0, 12).map((i) => i.nombre),
+        vajillaId: f.vajillaId || null,
+        indicaciones: '',
+        retocar: false,
       })
     }
   }
@@ -189,19 +199,29 @@ export function RecetaEditor({
     onError: (e: Error) => toast.error(e.message),
   })
 
+  /**
+   * La foto del plato.
+   *
+   * Recibe los datos armados cuando se la llama justo después de aplicar un
+   * borrador: en ese momento el estado del formulario todavía es el viejo.
+   */
   const fotoIa = useMutation({
-    // Recibe los datos cuando se la llama justo después de aplicar un
-    // borrador: en ese momento el estado del formulario todavía es el viejo.
-    mutationFn: async (datos?: { titulo: string; descripcion: string; ingredientes: string[] }) => {
-      const cuerpo = datos ?? {
-        titulo: f.titulo,
-        descripcion: f.descripcion,
-        ingredientes: parsear(f.ingTexto).slice(0, 12).map((l) => parsearIngrediente(l.texto).nombre),
-      }
+    mutationFn: async (
+      p: Partial<PedidoFoto> & { titulo?: string; descripcion?: string; ingredientes?: string[] }
+    ) => {
       const res = await fetch('/api/recetas/foto/ia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cuerpo),
+        body: JSON.stringify({
+          titulo: p.titulo ?? f.titulo,
+          descripcion: p.descripcion ?? f.descripcion,
+          ingredientes:
+            p.ingredientes ?? parsear(f.ingTexto).slice(0, 12).map((l) => parsearIngrediente(l.texto).nombre),
+          pasos: parsear(f.pasoTexto).slice(0, 8).map((l) => l.texto),
+          vajillaId: p.vajillaId !== undefined ? p.vajillaId : f.vajillaId || null,
+          indicaciones: p.indicaciones ?? '',
+          base: p.retocar ? f.fotoKey : null,
+        }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'No se pudo generar la foto')
@@ -209,7 +229,8 @@ export function RecetaEditor({
     },
     onSuccess: (r) => {
       set('fotoKey', r.fotoKey)
-      toast.success('Foto generada. Si no te gusta, pedí otra o subí la tuya.')
+      setPidiendoFoto(false)
+      toast.success('Foto lista. Si no te convence, pedí otra o retocá esta.')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -249,6 +270,7 @@ export function RecetaEditor({
         body: JSON.stringify({
           ...f,
           categoriaId: f.categoriaId || null,
+          vajillaId: f.vajillaId || null,
           ingredientes,
           pasos,
           sugerencias,
@@ -326,12 +348,12 @@ export function RecetaEditor({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => fotoIa.mutate(undefined)}
+                  onClick={() => setPidiendoFoto(true)}
                   disabled={fotoIa.isPending || !f.titulo.trim()}
                   className="gap-1.5"
                 >
                   {fotoIa.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-violet-500" />}
-                  {fotoIa.isPending ? 'Generando…' : 'Sugerir con IA'}
+                  {fotoIa.isPending ? 'Generando…' : f.fotoKey ? 'Mejorar con IA' : 'Sugerir con IA'}
                 </Button>
                 {f.fotoKey && (
                   <Button variant="ghost" size="sm" onClick={() => set('fotoKey', null)} className="gap-1.5 text-slate-500">
@@ -390,6 +412,23 @@ export function RecetaEditor({
               <option value="">Sin categoría</option>
               {(cats?.categorias ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            {/* Parte de la receta, no de la foto: "va en cazuela" es tan
+                parte del plato como la cocción. */}
+            <span className="mb-1 block text-sm font-medium">Vajilla</span>
+            <select
+              value={f.vajillaId}
+              onChange={(e) => set('vajillaId', e.target.value)}
+              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">Sin definir</option>
+              {(vaj?.vajillas ?? []).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.emoji ? `${v.emoji} ` : ''}{v.nombre}
+                </option>
               ))}
             </select>
           </label>
@@ -539,6 +578,21 @@ export function RecetaEditor({
       {/* El diálogo pregunta todo junto. Antes el botón tomaba lo que hubiera
           en el formulario, así que si no habías bajado a elegir dispositivos
           y porciones, la receta salía con los valores por defecto. */}
+      <FotoIaDialog
+        abierto={pidiendoFoto}
+        onCerrar={() => setPidiendoFoto(false)}
+        vajillas={vaj?.vajillas ?? []}
+        vajillaInicial={f.vajillaId || null}
+        hayFoto={!!f.fotoKey}
+        generando={fotoIa.isPending}
+        onGenerar={(p) => {
+          // La vajilla que se eligió para la foto queda en la receta: es la
+          // misma decisión, no una del momento.
+          if (p.vajillaId !== (f.vajillaId || null)) set('vajillaId', p.vajillaId ?? '')
+          fotoIa.mutate(p)
+        }}
+      />
+
       <SugerirDialog
         abierto={sugiriendo}
         onCerrar={() => setSugiriendo(false)}

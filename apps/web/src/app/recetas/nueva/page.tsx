@@ -18,6 +18,8 @@ const VACIA: RecetaDetalle = {
   descripcion: null,
   categoriaId: null,
   categoria: null,
+  vajillaId: null,
+  vajilla: null,
   estado: 'borrador',
   prepMin: null,
   totalMin: null,

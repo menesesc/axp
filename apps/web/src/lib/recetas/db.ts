@@ -28,6 +28,10 @@ export interface RecetaRow {
   categoriaNombre: string | null
   categoriaEmoji: string | null
   categoriaColor: string | null
+  vajillaId: string | null
+  vajillaNombre: string | null
+  vajillaEmoji: string | null
+  vajillaDescripcion: string | null
 }
 
 export interface IngredienteRow {
@@ -57,10 +61,12 @@ export interface IngredienteRow {
 const SELECT_RECETA = Prisma.sql`
   SELECT r.id, r.titulo, r.descripcion, r.estado, r."prepMin", r."totalMin",
          r.porciones, r.dificultad, r.autor, r."fotoKey", r."youtubeUrl",
-         r.destacada, r."categoriaId",
-         c.nombre AS "categoriaNombre", c.emoji AS "categoriaEmoji", c.color AS "categoriaColor"
+         r.destacada, r."categoriaId", r."vajillaId",
+         c.nombre AS "categoriaNombre", c.emoji AS "categoriaEmoji", c.color AS "categoriaColor",
+         v.nombre AS "vajillaNombre", v.emoji AS "vajillaEmoji", v.descripcion AS "vajillaDescripcion"
     FROM recetas r
     LEFT JOIN receta_categorias c ON c.id = r."categoriaId"
+    LEFT JOIN vajillas v ON v.id = r."vajillaId"
 `
 
 export async function listarRecetas(clienteId: string, incluirBorradores: boolean): Promise<RecetaRow[]> {
@@ -219,6 +225,7 @@ export interface DatosReceta {
   fotoKey?: string | null
   youtubeUrl?: string | null
   destacada?: boolean
+  vajillaId?: string | null
 }
 
 export interface IngredienteEntrada {
@@ -261,6 +268,9 @@ export async function actualizarReceta(
   if (datos.destacada !== undefined) campo('destacada', datos.destacada)
   if (datos.categoriaId !== undefined) {
     sets.push(Prisma.sql`"categoriaId" = ${datos.categoriaId}::uuid`)
+  }
+  if (datos.vajillaId !== undefined) {
+    sets.push(Prisma.sql`"vajillaId" = ${datos.vajillaId}::uuid`)
   }
   sets.push(Prisma.sql`"updatedAt" = NOW()`)
 
@@ -351,6 +361,77 @@ export async function listarDispositivos(clienteId: string): Promise<CatalogoRow
      GROUP BY d.id ORDER BY d.orden, d.nombre
   `
   return filas.map((f) => ({ ...f, recetas: Number(f.recetas) }))
+}
+
+export interface VajillaRow {
+  id: string
+  nombre: string
+  descripcion: string | null
+  emoji: string | null
+  orden: number
+  recetas: number
+}
+
+/**
+ * La vajilla de la casa, con cuántas recetas se presentan en cada pieza.
+ *
+ * Tiene descripción y las otras dos del catálogo no: el nombre corto es el
+ * que se lee en la ficha y la descripción es lo que hay que decirle al
+ * modelo de imagen para que dibuje esa pieza y no otra.
+ */
+export async function listarVajillas(clienteId: string): Promise<VajillaRow[]> {
+  const filas = await prisma.$queryRaw<Array<VajillaRow & { recetas: bigint }>>`
+    SELECT v.id, v.nombre, v.descripcion, v.emoji, v.orden,
+           COUNT(r.id)::bigint AS recetas
+      FROM vajillas v
+      LEFT JOIN recetas r ON r."vajillaId" = v.id
+     WHERE v."clienteId" = ${clienteId}::uuid AND v.activo = true
+     GROUP BY v.id ORDER BY v.orden, v.nombre
+  `
+  return filas.map((f) => ({ ...f, recetas: Number(f.recetas) }))
+}
+
+export async function crearVajilla(
+  clienteId: string,
+  nombre: string,
+  descripcion: string | null,
+  emoji: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  const dup = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM vajillas WHERE "clienteId" = ${clienteId}::uuid AND nombre = ${nombre} LIMIT 1
+  `
+  if (dup.length > 0) return { ok: false, error: 'Ya existe una con ese nombre' }
+
+  const [ult] = await prisma.$queryRaw<Array<{ orden: number | null }>>`
+    SELECT MAX(orden) AS orden FROM vajillas WHERE "clienteId" = ${clienteId}::uuid
+  `
+  await prisma.$executeRaw`
+    INSERT INTO vajillas ("clienteId", nombre, descripcion, emoji, orden)
+    VALUES (${clienteId}::uuid, ${nombre}, ${descripcion}, ${emoji}, ${(ult?.orden ?? 0) + 10})
+  `
+  return { ok: true }
+}
+
+/** Editar o dar de baja. Dar de baja no se la saca a las recetas que la usan. */
+export async function actualizarVajilla(
+  clienteId: string,
+  id: string,
+  cambios: { nombre?: string; descripcion?: string | null; emoji?: string | null; orden?: number; activo?: boolean }
+): Promise<boolean> {
+  const sets: Prisma.Sql[] = []
+  if (cambios.nombre !== undefined) sets.push(Prisma.sql`nombre = ${cambios.nombre}`)
+  if (cambios.descripcion !== undefined) sets.push(Prisma.sql`descripcion = ${cambios.descripcion}`)
+  if (cambios.emoji !== undefined) sets.push(Prisma.sql`emoji = ${cambios.emoji}`)
+  if (cambios.orden !== undefined) sets.push(Prisma.sql`orden = ${cambios.orden}`)
+  if (cambios.activo !== undefined) sets.push(Prisma.sql`activo = ${cambios.activo}`)
+  if (sets.length === 0) return true
+  sets.push(Prisma.sql`"updatedAt" = NOW()`)
+
+  const n = await prisma.$executeRaw`
+    UPDATE vajillas SET ${Prisma.join(sets, ', ')}
+     WHERE id = ${id}::uuid AND "clienteId" = ${clienteId}::uuid
+  `
+  return n > 0
 }
 
 export async function crearEnCatalogo(

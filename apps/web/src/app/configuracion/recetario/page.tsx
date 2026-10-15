@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
-import type { CategoriaReceta, DispositivoReceta } from '@/components/recetas/tipos'
+import type { CategoriaReceta, DispositivoReceta, VajillaReceta } from '@/components/recetas/tipos'
 import { ArrowLeft, EyeOff, Loader2, Plus } from 'lucide-react'
 
 type Fila = { id: string; nombre: string; emoji: string | null; color?: string | null; recetas: number }
@@ -36,7 +36,7 @@ export default function RecetarioConfigPage() {
             <ArrowLeft className="h-4 w-4" />
             Recetario
           </Link>
-          <Header title="Recetario" description="Categorías y dispositivos con los que se organiza el libro" />
+          <Header title="Recetario" description="Categorías, dispositivos y vajilla con los que se organiza el libro" />
         </div>
 
         <Seccion
@@ -57,6 +57,8 @@ export default function RecetarioConfigPage() {
           campo="dispositivos"
           puedeEditar={puedeEditar}
         />
+
+        <Vajillas puedeEditar={puedeEditar} />
       </div>
     </DashboardLayout>
   )
@@ -182,6 +184,141 @@ function Seccion({
             className="min-w-[10rem] flex-1"
           />
           <Button onClick={() => crear.mutate()} disabled={!nuevo.trim() || crear.isPending} className="gap-1.5">
+            {crear.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Agregar
+          </Button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * La vajilla de la casa.
+ *
+ * Tiene descripción y las otras dos no: el nombre corto es el que se lee en
+ * la ficha ("cazuela de cerámica verde") y la descripción es lo que se le
+ * dice al modelo de imagen para que dibuje esa pieza y no otra.
+ */
+function Vajillas({ puedeEditar }: { puedeEditar: boolean }) {
+  const qc = useQueryClient()
+  const [nombre, setNombre] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [emoji, setEmoji] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['receta-vajillas'],
+    queryFn: async () => (await fetch('/api/recetas/vajillas')).json() as Promise<{ vajillas: VajillaReceta[] }>,
+  })
+
+  const crear = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/recetas/vajillas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, descripcion, emoji }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'No se pudo agregar')
+    },
+    onSuccess: () => {
+      setNombre(''); setDescripcion(''); setEmoji('')
+      qc.invalidateQueries({ queryKey: ['receta-vajillas'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const actualizar = useMutation({
+    mutationFn: async (cambios: { id: string; nombre?: string; descripcion?: string; activo?: boolean }) => {
+      const res = await fetch('/api/recetas/vajillas', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cambios),
+      })
+      if (!res.ok) throw new Error('No se pudo guardar')
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['receta-vajillas'] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const filas = data?.vajillas ?? []
+
+  return (
+    <section>
+      <h2 className="text-lg font-bold">Vajilla</h2>
+      <p className="mb-3 text-sm text-slate-500">
+        En qué se presenta cada plato. La descripción es la que usa la IA para dibujar la foto.
+      </p>
+
+      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+        {isLoading ? (
+          <div className="grid place-items-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
+          </div>
+        ) : filas.length === 0 ? (
+          <p className="p-5 text-center text-sm text-slate-400">Todavía no cargaste ninguna.</p>
+        ) : (
+          filas.map((v) => (
+            <div key={v.id} className="flex items-start gap-3 px-3 py-2.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">
+                {v.emoji}
+              </span>
+              <div className="min-w-0 flex-1">
+                <input
+                  defaultValue={v.nombre}
+                  disabled={!puedeEditar}
+                  onBlur={(e) => {
+                    const n = e.target.value.trim()
+                    if (n && n !== v.nombre) actualizar.mutate({ id: v.id, nombre: n })
+                  }}
+                  className="w-full bg-transparent text-[15px] font-medium outline-none disabled:text-slate-700"
+                />
+                <input
+                  defaultValue={v.descripcion ?? ''}
+                  disabled={!puedeEditar}
+                  placeholder="Cómo es la pieza, para la foto: material, color, forma"
+                  onBlur={(e) => {
+                    const d = e.target.value.trim()
+                    if (d !== (v.descripcion ?? '')) actualizar.mutate({ id: v.id, descripcion: d })
+                  }}
+                  className="w-full bg-transparent text-xs text-slate-500 outline-none"
+                />
+              </div>
+              <span className="shrink-0 pt-1 text-xs text-slate-400">{v.recetas ?? 0}</span>
+              {puedeEditar && (
+                <button
+                  onClick={() => {
+                    if (confirm(`¿Dar de baja "${v.nombre}"? Deja de ofrecerse, pero las recetas que la usan no se tocan.`)) {
+                      actualizar.mutate({ id: v.id, activo: false })
+                    }
+                  }}
+                  title="Dar de baja"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <EyeOff className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {puedeEditar && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🍽️" className="w-16 text-center" maxLength={4} />
+          <Input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Plato hondo de pizarra"
+            className="min-w-[10rem] flex-1"
+          />
+          <Input
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            placeholder="Cómo es, para la foto"
+            className="min-w-[14rem] flex-[2]"
+          />
+          <Button onClick={() => crear.mutate()} disabled={!nombre.trim() || crear.isPending} className="gap-1.5">
             {crear.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Agregar
           </Button>

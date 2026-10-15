@@ -63,8 +63,19 @@ export interface PasoReceta {
   texto: string
 }
 
+export interface VajillaReceta {
+  id: string
+  nombre: string
+  descripcion?: string | null
+  emoji: string | null
+  recetas?: number
+}
+
 export interface RecetaDetalle extends Omit<RecetaListada, 'dispositivoIds' | 'pasos'> {
   categoriaId: string | null
+  /** En qué se presenta el plato. Es parte de la receta, no de la foto. */
+  vajillaId: string | null
+  vajilla: VajillaReceta | null
   dispositivos: Array<{ id: string; nombre: string; emoji: string | null }>
   ingredientes: IngredienteReceta[]
   pasos: PasoReceta[]

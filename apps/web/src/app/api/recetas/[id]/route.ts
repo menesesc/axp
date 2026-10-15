@@ -74,6 +74,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       youtubeUrl: r.youtubeUrl,
       destacada: r.destacada,
       categoriaId: r.categoriaId,
+      vajillaId: r.vajillaId,
+      vajilla: r.vajillaId
+        ? { id: r.vajillaId, nombre: r.vajillaNombre, emoji: r.vajillaEmoji, descripcion: r.vajillaDescripcion }
+        : null,
       categoria: r.categoriaId
         ? { id: r.categoriaId, nombre: r.categoriaNombre, emoji: r.categoriaEmoji, color: r.categoriaColor }
         : null,
@@ -126,6 +130,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   txt('dificultad', 20)
   if (b.estado === 'borrador' || b.estado === 'publicada') datos.estado = b.estado
   if (b.categoriaId === null || typeof b.categoriaId === 'string') datos.categoriaId = b.categoriaId || null
+  if (b.vajillaId === null || typeof b.vajillaId === 'string') datos.vajillaId = b.vajillaId || null
   for (const k of ['prepMin', 'totalMin', 'porciones'] as const) {
     if (b[k] != null && !Number.isNaN(Number(b[k]))) {
       datos[k] = Math.max(k === 'porciones' ? 1 : 0, Math.round(Number(b[k])))
