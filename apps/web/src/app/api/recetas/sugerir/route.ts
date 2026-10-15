@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   const b = (await request.json().catch(() => null)) as Cuerpo | null
   const titulo = String(b?.titulo || '').trim()
   if (!titulo) return NextResponse.json({ error: 'Poné el nombre de la receta' }, { status: 400 })
-  const porciones = Math.min(500, Math.max(1, Number(b?.porciones) || 4))
+  const porciones = Math.min(500, Math.max(1, Number(b?.porciones) || 10))
 
   const dispositivos = await prisma.$queryRaw<Array<{ id: string; nombre: string }>>`
     SELECT id, nombre FROM dispositivos WHERE "clienteId" = ${clienteId}::uuid ORDER BY orden, nombre
@@ -72,11 +72,15 @@ Reglas:
 - Las cantidades son para ${porciones} porciones y son las que van al plato (netas, sin contar la merma).
 - Unidades en kg, g, l, ml o u. Nada de "una pizca" ni "a gusto" en la cantidad: eso va en la nota.
 - prepMin es la preparación activa; totalMin incluye cocción, reposos y enfriados.
-- Si no estás seguro de algo, es preferible un paso de menos que uno inventado.`
+- Si no estás seguro de algo, es preferible un paso de menos que uno inventado.
+${
+  b?.indicaciones?.trim()
+    ? `\nINDICACIONES DEL COCINERO, y mandan sobre todo lo anterior:\n${b.indicaciones.trim()}\n\nSi piden una técnica o un dispositivo, los pasos tienen que usarlos de verdad, no mencionarlos al pasar. Si piden evitar algo (un ligante, un alérgeno), no puede aparecer en los ingredientes ni en los pasos, y la receta tiene que funcionar igual.`
+    : ''
+}`
 
   const usuario = `Receta: ${titulo}
 Porciones: ${porciones}
-${b?.indicaciones?.trim() ? `Indicaciones: ${b.indicaciones.trim()}` : ''}
 
 Respondé SOLO este JSON:
 {

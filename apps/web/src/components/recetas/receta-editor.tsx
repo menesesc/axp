@@ -10,6 +10,7 @@ import { ArrowLeft, Image as ImageIcon, Loader2, Sparkles, Trash2, Upload } from
 import { cn } from '@/lib/utils'
 import { fotoUrl, type CategoriaReceta, type DispositivoReceta, type RecetaDetalle } from './tipos'
 import { VincularInsumos, clave } from './vincular-insumos'
+import { SugerirDialog, type Sugerencia } from './sugerir-dialog'
 
 /**
  * Editor de una receta.
@@ -112,6 +113,7 @@ export function RecetaEditor({
         .map((i) => [clave(i.nombre), String(i.mermaPropia)])
     )
   )
+  const [sugiriendo, setSugiriendo] = useState(false)
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((prev) => ({ ...prev, [k]: v }))
 
   const { data: cats } = useQuery({
@@ -124,65 +126,39 @@ export function RecetaEditor({
   })
 
   /**
-   * Borrador con IA a partir del título y las porciones. Pisa descripción,
-   * tiempos, dificultad, ingredientes, pasos y sugerencias, y suma los
-   * dispositivos propuestos a los ya elegidos. Lo vinculado con insumos no se
-   * toca: eso cuesta más de rehacer que de reescribir.
+   * Aplica el borrador que devolvió la IA. Pisa descripción, tiempos,
+   * dificultad, ingredientes, pasos y sugerencias, y suma los dispositivos
+   * propuestos a los ya elegidos. Lo vinculado con insumos no se toca: eso
+   * cuesta más de rehacer que de reescribir.
    */
-  const sugerir = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/recetas/sugerir', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo: f.titulo,
-          porciones: f.porciones,
-          dispositivoIds: f.dispositivoIds,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'No se pudo sugerir')
-      return json.sugerencia as {
-        descripcion: string
-        prepMin: number | null
-        totalMin: number | null
-        dificultad: string | null
-        dispositivoIds: string[]
-        ingredientes: Array<{ nombre: string; cantidad: number | null; unidad: string | null; nota: string | null; seccion: string | null }>
-        pasos: Array<{ texto: string; seccion: string | null }>
-        sugerencias: string[]
-      }
-    },
-    onSuccess: (sug) => {
-      setF((prev) => ({
-        ...prev,
-        descripcion: sug.descripcion || prev.descripcion,
-        prepMin: sug.prepMin ?? prev.prepMin,
-        totalMin: sug.totalMin ?? prev.totalMin,
-        dificultad: sug.dificultad
-          ? sug.dificultad.charAt(0).toUpperCase() + sug.dificultad.slice(1)
-          : prev.dificultad,
-        dispositivoIds: [...new Set([...prev.dispositivoIds, ...sug.dispositivoIds])],
-        ingTexto: aTexto(
-          sug.ingredientes.map((i) => ({
-            seccion: i.seccion,
-            texto: [
-              i.cantidad != null ? String(i.cantidad).replace('.', ',') : null,
-              i.unidad,
-              i.nombre,
-              i.nota ? `(${i.nota})` : null,
-            ]
-              .filter(Boolean)
-              .join(' '),
-          }))
-        ),
-        pasoTexto: aTexto(sug.pasos.map((p) => ({ seccion: p.seccion, texto: p.texto }))),
-        sugTexto: sug.sugerencias.join('\n'),
-      }))
-      toast.success('Borrador listo. Revisalo antes de guardar.')
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
+  const aplicarSugerencia = (sug: Sugerencia, porciones: number) => {
+    setF((prev) => ({
+      ...prev,
+      porciones,
+      descripcion: sug.descripcion || prev.descripcion,
+      prepMin: sug.prepMin ?? prev.prepMin,
+      totalMin: sug.totalMin ?? prev.totalMin,
+      dificultad: sug.dificultad
+        ? sug.dificultad.charAt(0).toUpperCase() + sug.dificultad.slice(1)
+        : prev.dificultad,
+      dispositivoIds: [...new Set([...prev.dispositivoIds, ...sug.dispositivoIds])],
+      ingTexto: aTexto(
+        sug.ingredientes.map((i) => ({
+          seccion: i.seccion,
+          texto: [
+            i.cantidad != null ? String(i.cantidad).replace('.', ',') : null,
+            i.unidad,
+            i.nombre,
+            i.nota ? `(${i.nota})` : null,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        }))
+      ),
+      pasoTexto: aTexto(sug.pasos.map((p) => ({ seccion: p.seccion, texto: p.texto }))),
+      sugTexto: sug.sugerencias.join('\n'),
+    }))
+  }
 
   const subirFoto = useMutation({
     mutationFn: async (file: File) => {
@@ -313,19 +289,11 @@ export function RecetaEditor({
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-2">
             <Sparkles className="h-4 w-4 text-violet-500" />
             <span className="text-sm text-slate-600">
-              ¿Arranco un borrador con los dispositivos de la cocina?
+              ¿Arranco un borrador? Elegís porciones, dispositivos y cómo la querés.
             </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              disabled={!f.titulo.trim() || sugerir.isPending}
-              onClick={() => sugerir.mutate()}
-              title={!f.titulo.trim() ? 'Poné primero el título' : ''}
-            >
-              {sugerir.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
-              {sugerir.isPending ? 'Pensando…' : 'Sugerir receta'}
+            <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => setSugiriendo(true)}>
+              <Sparkles className="mr-1.5 h-4 w-4" />
+              Sugerir receta
             </Button>
           </div>
 
@@ -491,6 +459,19 @@ export function RecetaEditor({
           </Button>
         </div>
       </div>
+
+      {/* El diálogo pregunta todo junto. Antes el botón tomaba lo que hubiera
+          en el formulario, así que si no habías bajado a elegir dispositivos
+          y porciones, la receta salía con los valores por defecto. */}
+      <SugerirDialog
+        abierto={sugiriendo}
+        onCerrar={() => setSugiriendo(false)}
+        tituloInicial={f.titulo}
+        porcionesIniciales={f.porciones}
+        dispositivosIniciales={f.dispositivoIds}
+        dispositivos={disp?.dispositivos ?? []}
+        onSugerencia={aplicarSugerencia}
+      />
     </DashboardLayout>
   )
 }

@@ -108,7 +108,9 @@ export async function POST(request: NextRequest) {
     clienteId,
     titulo.slice(0, 200),
     body?.estado === 'publicada' ? 'publicada' : 'borrador',
-    Number(body?.porciones) > 0 ? Math.round(Number(body.porciones)) : 1,
+    // 10 porciones por defecto: es el estándar con el que se escribe en la
+    // cocina, y una receta para 1 no le sirve a nadie.
+    Number(body?.porciones) > 0 ? Math.round(Number(body.porciones)) : 10,
     user?.id ?? null
   )
   return NextResponse.json({ receta: { id } })
