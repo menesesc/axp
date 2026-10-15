@@ -63,12 +63,13 @@ export function SugerirDialog({
   porcionesIniciales: number
   dispositivosIniciales: string[]
   dispositivos: DispositivoReceta[]
-  onSugerencia: (s: Sugerencia, porciones: number) => void
+  onSugerencia: (s: Sugerencia, porciones: number, conFoto: boolean, titulo: string) => void
 }) {
   const [titulo, setTitulo] = useState(tituloInicial)
   const [porciones, setPorciones] = useState(String(porcionesIniciales || 10))
   const [elegidos, setElegidos] = useState<string[]>(dispositivosIniciales)
   const [indicaciones, setIndicaciones] = useState('')
+  const [conFoto, setConFoto] = useState(true)
 
   useEffect(() => {
     if (abierto) {
@@ -95,7 +96,9 @@ export function SugerirDialog({
       return json.sugerencia as Sugerencia
     },
     onSuccess: (s) => {
-      onSugerencia(s, Number(porciones) || 10)
+      // El título va de vuelta: si lo corrigieron acá, el formulario tiene
+      // que quedar con ese y no con el que traía.
+      onSugerencia(s, Number(porciones) || 10, conFoto, titulo.trim())
       onCerrar()
       toast.success('Borrador listo. Revisalo antes de guardar.')
     },
@@ -183,6 +186,18 @@ export function SugerirDialog({
             ))}
           </div>
         </div>
+
+        {/* La foto tarda bastante más que el texto, así que se pide junto
+            con la receta y se va cargando sola mientras se revisa. */}
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={conFoto}
+            onChange={(e) => setConFoto(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Sugerir también una foto del plato
+        </label>
 
         <DialogFooter>
           <Button variant="outline" onClick={onCerrar}>Cancelar</Button>

@@ -48,23 +48,6 @@ export default function RecetasPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const crear = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/recetas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titulo: 'Receta sin título' }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'No se pudo crear')
-      return json as { receta: { id: string } }
-    },
-    onSuccess: (r) => {
-      window.location.href = `/recetas/${r.receta.id}?editar=1`
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
   const recetas = data?.recetas ?? []
   const puedeEditar = data?.puedeEditar ?? false
 
@@ -115,9 +98,13 @@ export default function RecetasPage() {
               >
                 <Settings2 className="h-4.5 w-4.5" />
               </Link>
-              <Button onClick={() => crear.mutate()} disabled={crear.isPending} className="shrink-0 gap-1.5 rounded-full">
-                <Plus className="h-4 w-4" />
-                Nueva
+              {/* Lleva al editor vacío: la receta se crea al guardar, no al
+                  entrar. Antes cancelar dejaba una "Receta sin título". */}
+              <Button asChild className="shrink-0 gap-1.5 rounded-full">
+                <Link href="/recetas/nueva">
+                  <Plus className="h-4 w-4" />
+                  Nueva
+                </Link>
               </Button>
             </>
           )}

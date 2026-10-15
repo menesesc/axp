@@ -63,12 +63,17 @@ function aTexto(items: Array<{ seccion: string | null; texto: string }>) {
 
 export function RecetaEditor({
   receta,
+  esNueva,
   onCerrar,
   onEliminada,
+  onGuardada,
 }: {
   receta: RecetaDetalle
+  /** Todavía no existe en la base: se crea recién al guardar. */
+  esNueva?: boolean
   onCerrar: () => void
   onEliminada: () => void
+  onGuardada?: (id: string) => void
 }) {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -131,10 +136,11 @@ export function RecetaEditor({
    * propuestos a los ya elegidos. Lo vinculado con insumos no se toca: eso
    * cuesta más de rehacer que de reescribir.
    */
-  const aplicarSugerencia = (sug: Sugerencia, porciones: number) => {
+  const aplicarSugerencia = (sug: Sugerencia, porciones: number, conFoto = false, titulo?: string) => {
     setF((prev) => ({
       ...prev,
       porciones,
+      titulo: titulo?.trim() || prev.titulo,
       descripcion: sug.descripcion || prev.descripcion,
       prepMin: sug.prepMin ?? prev.prepMin,
       totalMin: sug.totalMin ?? prev.totalMin,
@@ -158,6 +164,13 @@ export function RecetaEditor({
       pasoTexto: aTexto(sug.pasos.map((p) => ({ seccion: p.seccion, texto: p.texto }))),
       sugTexto: sug.sugerencias.join('\n'),
     }))
+    if (conFoto) {
+      fotoIa.mutate({
+        titulo: titulo?.trim() || f.titulo.trim(),
+        descripcion: sug.descripcion || '',
+        ingredientes: sug.ingredientes.slice(0, 12).map((i) => i.nombre),
+      })
+    }
   }
 
   const subirFoto = useMutation({
@@ -172,6 +185,31 @@ export function RecetaEditor({
     onSuccess: (r) => {
       set('fotoKey', r.fotoKey)
       toast.success('Foto subida')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const fotoIa = useMutation({
+    // Recibe los datos cuando se la llama justo después de aplicar un
+    // borrador: en ese momento el estado del formulario todavía es el viejo.
+    mutationFn: async (datos?: { titulo: string; descripcion: string; ingredientes: string[] }) => {
+      const cuerpo = datos ?? {
+        titulo: f.titulo,
+        descripcion: f.descripcion,
+        ingredientes: parsear(f.ingTexto).slice(0, 12).map((l) => parsearIngrediente(l.texto).nombre),
+      }
+      const res = await fetch('/api/recetas/foto/ia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'No se pudo generar la foto')
+      return json as { fotoKey: string }
+    },
+    onSuccess: (r) => {
+      set('fotoKey', r.fotoKey)
+      toast.success('Foto generada. Si no te gusta, pedí otra o subí la tuya.')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -191,7 +229,21 @@ export function RecetaEditor({
       const pasos = parsear(f.pasoTexto).map((l) => ({ seccion: l.seccion, texto: l.texto }))
       const sugerencias = f.sugTexto.split('\n').map((s) => s.trim()).filter(Boolean)
 
-      const res = await fetch(`/api/recetas/${receta.id}`, {
+      // Una receta nueva nace recién acá. Antes se creaba vacía al entrar al
+      // editor, y cancelar dejaba una "Receta sin título" en el libro.
+      let id = receta.id
+      if (esNueva) {
+        const alta = await fetch('/api/recetas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ titulo: f.titulo.trim(), porciones: f.porciones }),
+        })
+        const json = await alta.json()
+        if (!alta.ok) throw new Error(json.error || 'No se pudo crear')
+        id = json.receta.id as string
+      }
+
+      const res = await fetch(`/api/recetas/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -203,12 +255,14 @@ export function RecetaEditor({
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'No se pudo guardar')
+      return id
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['receta', receta.id] })
+    onSuccess: (id) => {
+      qc.invalidateQueries({ queryKey: ['receta', id] })
       qc.invalidateQueries({ queryKey: ['recetas'] })
       toast.success('Receta guardada')
-      onCerrar()
+      if (esNueva && onGuardada) onGuardada(id)
+      else onCerrar()
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -235,7 +289,7 @@ export function RecetaEditor({
           <ArrowLeft className="h-4 w-4" />
           Cancelar
         </button>
-        <h1 className="text-2xl font-bold">Editar receta</h1>
+        <h1 className="text-2xl font-bold">{esNueva ? 'Nueva receta' : 'Editar receta'}</h1>
 
         <div className="rounded-2xl border border-slate-200 p-4">
           <p className="mb-2 text-sm font-semibold">Foto y video</p>
@@ -262,10 +316,30 @@ export function RecetaEditor({
                   e.target.value = ''
                 }}
               />
-              <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={subirFoto.isPending} className="gap-1.5">
-                {subirFoto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Subir foto
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={subirFoto.isPending} className="gap-1.5">
+                  {subirFoto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  Subir foto
+                </Button>
+                {/* Una foto de referencia para que la ficha no quede gris. La
+                    del plato de la casa, cuando exista, la pisa. */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fotoIa.mutate(undefined)}
+                  disabled={fotoIa.isPending || !f.titulo.trim()}
+                  className="gap-1.5"
+                >
+                  {fotoIa.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-violet-500" />}
+                  {fotoIa.isPending ? 'Generando…' : 'Sugerir con IA'}
+                </Button>
+                {f.fotoKey && (
+                  <Button variant="ghost" size="sm" onClick={() => set('fotoKey', null)} className="gap-1.5 text-slate-500">
+                    <Trash2 className="h-4 w-4" />
+                    Quitar
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-slate-400">JPG, PNG o WEBP, hasta 8 MB.</p>
               <label className="block pt-1">
                 <span className="mb-1 block text-sm font-medium">Video de YouTube</span>
@@ -440,16 +514,18 @@ export function RecetaEditor({
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center gap-2">
-          <button
-            onClick={() => {
-              if (confirm(`¿Eliminar "${receta.titulo}"? No se puede deshacer.`)) eliminar.mutate()
-            }}
-            disabled={eliminar.isPending}
-            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Eliminar</span>
-          </button>
+          {!esNueva && (
+            <button
+              onClick={() => {
+                if (confirm(`¿Eliminar "${receta.titulo}"? No se puede deshacer.`)) eliminar.mutate()
+              }}
+              disabled={eliminar.isPending}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Eliminar</span>
+            </button>
+          )}
           <button onClick={onCerrar} className="ml-auto rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">
             Cancelar
           </button>
