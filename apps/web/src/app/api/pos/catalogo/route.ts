@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 /** Todo lo que necesita la pantalla de catálogo, en una sola llamada. */
 export async function GET() {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
   const [categorias, productos, configuracion] = await Promise.all([
@@ -49,7 +49,7 @@ function validar(b: CuerpoProducto, nuevo: boolean): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  const { clienteId, user, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, user, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
   const b = (await request.json().catch(() => null)) as CuerpoProducto | null
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { clienteId, user, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, user, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
   const b = (await request.json().catch(() => null)) as CuerpoProducto | null
@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
   const id = request.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Falta el id' }, { status: 400 })

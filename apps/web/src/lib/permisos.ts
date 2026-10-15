@@ -72,6 +72,7 @@ export const MODULO = {
   PROVEEDORES: 'proveedores',
   ITEMS: 'items',
   INFORMES: 'informes',
+  POS: 'pos',
   SISTEMA: 'sistema',
   CONFIGURACION: 'configuracion',
 } as const
@@ -96,6 +97,7 @@ export const MODULOS: ModuloDef[] = [
   { value: MODULO.PROVEEDORES, label: 'Proveedores', hint: 'Ficha, contactos y cuenta de cada proveedor' },
   { value: MODULO.ITEMS, label: 'Items', hint: 'Líneas de las facturas y su categoría' },
   { value: MODULO.INFORMES, label: 'Informes', hint: 'Compras, cuenta corriente, precios y proyecciones' },
+  { value: MODULO.POS, label: 'Punto de venta', hint: 'Catálogo, cajas y venta. En desarrollo.' },
   { value: MODULO.SISTEMA, label: 'Sistema', hint: 'Procesamiento de documentos y logs' },
   {
     value: MODULO.CONFIGURACION,
@@ -147,6 +149,14 @@ export interface SeccionDef {
   importes?: boolean
   /** Reservado a administradores. */
   soloAdmin?: boolean
+  /**
+   * En desarrollo: no se da por defecto a nadie, ni siquiera a los
+   * administradores ni al fallback de los usuarios sin matriz. Sólo la ve
+   * quien la tenga cargada explícitamente en sus permisos. Es para poder
+   * dejar un módulo a medio hacer en producción sin que aparezca en el menú
+   * del resto del equipo.
+   */
+  beta?: boolean
 }
 
 /**
@@ -454,6 +464,15 @@ export const SECCIONES: SeccionDef[] = [
 
   // --- Sistema -------------------------------------------------------------
   {
+    value: 'pos.general',
+    modulo: MODULO.POS,
+    label: 'Punto de venta',
+    paginas: ['/pos', '/configuracion/pos'],
+    apis: ['/api/pos'],
+    importes: true,
+    beta: true,
+  },
+  {
     value: 'sistema.procesamiento',
     modulo: MODULO.SISTEMA,
     label: 'Procesamiento',
@@ -468,7 +487,7 @@ export const SECCIONES: SeccionDef[] = [
     label: 'Configuración',
     paginas: ['/configuracion'],
     // El catálogo del punto de venta es configuración: precios y carta.
-    apis: ['/api/configuracion', '/api/suscripciones', '/api/pos'],
+    apis: ['/api/configuracion', '/api/suscripciones'],
     soloAdmin: true,
   },
 ]
@@ -509,6 +528,7 @@ export const SECCION = {
   INFORMES_PRECIOS: 'informes.precios',
   INFORMES_COMPRAS: 'informes.compras',
   INFORMES_PROYECCIONES: 'informes.proyecciones',
+  POS: 'pos.general',
   RECETAS_LIBRO: 'recetas.libro',
   SISTEMA_PROCESAMIENTO: 'sistema.procesamiento',
   CONFIGURACION: 'configuracion.general',
@@ -621,7 +641,7 @@ export function matrizVacia(): Matriz {
 export function matrizLegacyViewer(): Matriz {
   const m = matrizVacia()
   for (const def of SECCIONES) {
-    if (def.soloAdmin) continue
+    if (def.soloAdmin || def.beta) continue
     m[def.value] = { nivel: 'view', importes: true }
   }
   return m
@@ -631,7 +651,10 @@ export function matrizLegacyViewer(): Matriz {
 export function matrizAdmin(): Matriz {
   const m: Matriz = {}
   for (const def of SECCIONES) {
-    m[def.value] = { nivel: def.soloLectura ? 'view' : 'edit', importes: true }
+    // Las beta no entran ni para el admin: hay que pedirlas por nombre.
+    m[def.value] = def.beta
+      ? { nivel: 'none', importes: false }
+      : { nivel: def.soloLectura ? 'view' : 'edit', importes: true }
   }
   return m
 }
@@ -727,7 +750,16 @@ export interface SujetoPermisos {
 
 /** Matriz efectiva de un usuario, contemplando admin y el fallback legacy. */
 export function matrizDe({ esAdmin, permisos }: SujetoPermisos): Matriz {
-  if (esAdmin) return matrizAdmin()
+  if (esAdmin) {
+    // El admin tiene todo menos las beta, pero si le cargaron una por nombre
+    // la conserva: es lo que permite probar un módulo nuevo en producción con
+    // una sola persona.
+    const m = matrizAdmin()
+    for (const [clave, p] of Object.entries(parsePermisos(permisos))) {
+      if (p.nivel !== 'none' && SECCION_POR_VALUE.get(clave)?.beta) m[clave] = p
+    }
+    return m
+  }
   if (!tieneMatriz(permisos)) return matrizLegacyViewer()
   return parsePermisos(permisos)
 }

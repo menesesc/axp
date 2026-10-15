@@ -15,7 +15,7 @@ interface Cuerpo {
 }
 
 export async function POST(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
   const b = (await request.json().catch(() => null)) as Cuerpo | null
   if (!b?.nombre?.trim()) return NextResponse.json({ error: 'Poné un nombre' }, { status: 400 })
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
   const b = (await request.json().catch(() => null)) as Cuerpo | null
   if (!b?.id) return NextResponse.json({ error: 'Falta el id' }, { status: 400 })
@@ -56,7 +56,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
   const id = request.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Falta el id' }, { status: 400 })

@@ -62,7 +62,7 @@ async function candidatos(clienteId: string): Promise<Fila[]> {
 
 /** Vista previa: qué se crearía, sin tocar nada. */
 export async function GET() {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
   const filas = await candidatos(clienteId!)
@@ -80,7 +80,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { clienteId, user, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, user, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
   const body = (await request.json().catch(() => ({}))) as { soloConPrecio?: boolean }

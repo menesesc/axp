@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 const ROLES = ['admin', 'supervisor', 'cajero', 'mozo']
 
 export async function GET() {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
 
   const [usuarios, permisos, mozosDeCierres] = await Promise.all([
@@ -45,7 +45,7 @@ interface Cuerpo {
 }
 
 export async function POST(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
   const b = (await request.json().catch(() => null)) as (Cuerpo & { sembrar?: Array<{ codigo: string; nombre: string }> }) | null
   if (!b) return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
+  const { clienteId, error } = await requireSeccion(SECCION.POS, 'edit')
   if (error) return error
   const b = (await request.json().catch(() => null)) as
     | (Cuerpo & { permisos?: Array<{ rol: string; accion: string; permitido: boolean; requiereAutorizacion: boolean; limite?: number | null }> })
