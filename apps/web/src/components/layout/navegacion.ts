@@ -7,6 +7,7 @@ import {
   PieChart,
   Settings,
   ShoppingCart,
+  Store,
   Users,
   Warehouse,
 } from 'lucide-react'
@@ -86,6 +87,16 @@ export const MENU: Modulo[][] = [
   ],
   [
     {
+      id: 'pos',
+      nombre: 'Punto de venta',
+      icono: Store,
+      escena: 'ventas',
+      subs: [
+        { nombre: 'Vender', href: '/pos' },
+        { nombre: 'Catálogo y cajas', href: '/configuracion/pos' },
+      ],
+    },
+    {
       id: 'recetario',
       nombre: 'Recetario',
       icono: ChefHat,
@@ -131,7 +142,6 @@ export const CONFIGURACION: Modulo = {
     { nombre: 'Canales', href: '/configuracion/canales' },
     { nombre: 'Informes por mail', href: '/configuracion/informes' },
     { nombre: 'Depósitos', href: '/configuracion/depositos' },
-    { nombre: 'Punto de venta', href: '/configuracion/pos' },
     { nombre: 'Procesamiento', href: '/procesamiento' },
     { nombre: 'Mi plan', href: '/configuracion/plan' },
   ],
