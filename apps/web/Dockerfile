@@ -44,6 +44,13 @@ COPY package.json tsconfig.json .eslintrc.json ./
 # De ahí que la pantalla de Insumos viniera devolviendo 500 y se viera vacía.
 RUN pnpm dlx prisma@5.22.0 generate --schema=packages/database/prisma/schema.prisma
 
+# Sello del build, servido como archivo estático en /build.txt.
+#
+# Sin esto, "¿se deployó lo último?" no se puede contestar desde afuera: todas
+# las rutas redirigen al login y los hashes de los chunks no dicen de cuándo
+# son. Con el sello alcanza un curl.
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > apps/web/public/build.txt
+
 # Build de Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
