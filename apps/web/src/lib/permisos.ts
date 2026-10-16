@@ -562,8 +562,13 @@ export const MODULOS_ASIGNABLES = MODULOS.filter(
 /**
  * Rutas que cualquier usuario autenticado puede usar, sin importar su matriz:
  * su propio plan, el visor de PDF y el consumo de su empresa.
+ *
+ * `/panel` estaba acá: era la pantalla sin menú de los usuarios restringidos
+ * del modelo viejo, y con la matriz por secciones cada uno aterriza en la
+ * primera sección que tiene. Quedó como una puerta lateral al ranking de
+ * ventas, abierta a cualquiera con sesión.
  */
-const COMUNES_PAGINAS = ['/configuracion/plan', '/panel', '/sin-acceso']
+const COMUNES_PAGINAS = ['/configuracion/plan', '/sin-acceso']
 const COMUNES_APIS = ['/api/pdf', '/api/planes', '/api/configuracion/usage']
 
 function matchPrefijo(pathname: string, prefijos: string[]): string | null {
