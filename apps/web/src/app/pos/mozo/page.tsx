@@ -9,6 +9,7 @@ import { MapaMesas, LeyendaMesas, type MesaEstado } from '@/components/pos/mapa-
 import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
 import { Autorizacion } from '@/components/pos/autorizacion'
+import { MesasAbiertas, Reloj, duracion } from '@/components/pos/resumen-salon'
 import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
 import type { GrupoPos } from '@/components/pos/opciones-producto'
@@ -144,6 +145,9 @@ export default function MozoPage() {
 
   if (!usuario) return <TecladoPin onEntrar={setUsuario} />
 
+  const mesaViva = pedido.mesa ? salon.data?.mesas.find((m) => m.id === pedido.mesa!.id) : undefined
+  const mias = (salon.data?.mesas ?? []).filter((m) => m.estado !== 'libre' && m.mozoId === usuario.id)
+
   if (pedido.pedidoId) {
     return (
       <div className="flex h-dvh flex-col bg-slate-50 lg:flex-row">
@@ -153,6 +157,7 @@ export default function MozoPage() {
               categorias={cat?.categorias ?? []}
               productos={cat?.productos ?? []}
               grupos={cat?.grupos ?? []}
+              enPedido={pedido.lineas.reduce<Record<string, number>>((acc, l) => ((acc[l.productoId] = (acc[l.productoId] ?? 0) + l.cantidad), acc), {})}
               onAgregar={(p, opciones, nota) => pedido.agregar(p, opciones, nota)}
             />
           </div>
@@ -167,7 +172,13 @@ export default function MozoPage() {
         <Carrito
           className={cn('flex-1 lg:flex-none', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
           titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Pedido'}
-          subtitulo={`${pedido.comensales ?? 1} cubiertos · ${usuario.nombre}`}
+          subtitulo={[
+            `${pedido.comensales ?? 1} cubiertos`,
+            usuario.nombre,
+            mesaViva?.minutos != null ? `abierta hace ${duracion(mesaViva.minutos)}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
           lineas={pedido.lineas}
           onCambiar={pedido.cambiar}
           onMarca={pedido.marcar}
@@ -206,37 +217,52 @@ export default function MozoPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-slate-50 p-3">
-      <div className="mb-3 flex items-center gap-3">
-        <p className="text-lg font-bold">{usuario.nombre}</p>
+    <div className="flex h-dvh flex-col bg-[#f3f6fb]">
+      <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-4 py-2.5">
+        <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-base font-bold text-white">
+          {usuario.nombre.slice(0, 1).toUpperCase()}
+        </span>
+        <div className="leading-tight">
+          <p className="text-base font-bold">{usuario.nombre}</p>
+          <p className="text-xs text-slate-500">
+            {mias.length === 0 ? 'Sin mesas abiertas' : `${mias.length} ${mias.length === 1 ? 'mesa abierta' : 'mesas abiertas'}`}
+          </p>
+        </div>
+        <Reloj className="ml-auto text-2xl font-semibold text-slate-700" />
         <button
           onClick={() => setUsuario(null)}
-          className="ml-auto flex h-12 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-slate-600"
+          className="flex h-12 items-center gap-2 rounded-xl px-4 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 active:bg-slate-50"
         >
           <LogOut className="h-4 w-4" /> Salir
         </button>
-      </div>
+      </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        <div className="shrink-0 lg:w-64">
-          <p className="mb-2 text-sm text-slate-500">Número de mesa</p>
-          <div className="mb-2 h-16 rounded-xl border-2 border-slate-200 bg-white text-center text-3xl font-bold leading-[3.5rem] tabular-nums">
-            {numero || <span className="text-slate-300">—</span>}
-          </div>
-          <Teclas
-            onDigito={(d) => setNumero((n) => (n + d).slice(0, 4))}
-            onBorrar={() => setNumero((n) => n.slice(0, -1))}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:flex-row lg:overflow-hidden">
+        <div className="flex shrink-0 flex-col gap-3 lg:w-80">
+          <MesasAbiertas
+            titulo="Tus mesas"
+            mesas={salon.data?.mesas ?? []}
+            soloMozoId={usuario.id}
+            onAbrir={tocarMesa}
+            className="max-h-[22rem] lg:max-h-none lg:min-h-0 lg:flex-1"
           />
-          <button
-            onClick={porNumero}
-            disabled={!numero}
-            className="mt-2 h-16 w-full rounded-xl bg-slate-900 text-lg font-semibold text-white disabled:opacity-30 active:scale-[0.99]"
-          >
-            Abrir mesa
-          </button>
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <p className="mb-2 text-sm font-semibold">Abrir por número</p>
+            <div className="mb-2 h-14 rounded-xl border-2 border-slate-200 bg-slate-50 text-center text-3xl font-bold leading-[3.1rem] tabular-nums">
+              {numero || <span className="text-slate-300">—</span>}
+            </div>
+            <Teclas onDigito={(d) => setNumero((n) => (n + d).slice(0, 4))} onBorrar={() => setNumero((n) => n.slice(0, -1))} />
+            <button
+              onClick={porNumero}
+              disabled={!numero}
+              className="mt-2 h-14 w-full rounded-xl bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-lg font-semibold text-white disabled:opacity-30 active:scale-[0.99]"
+            >
+              Abrir mesa {numero}
+            </button>
+          </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-[22rem] flex-1 flex-col">
           {(salon.data?.sectores.length ?? 0) > 1 && (
             <div className="mb-3 flex flex-wrap gap-2">
               {salon.data!.sectores.map((s) => (
@@ -244,8 +270,8 @@ export default function MozoPage() {
                   key={s.id}
                   onClick={() => setSectorId(s.id)}
                   className={cn(
-                    'h-12 rounded-xl px-4 text-base font-semibold',
-                    s.id === sectorId ? 'bg-white shadow-sm ring-2 ring-slate-900' : 'bg-white text-slate-500'
+                    'h-11 rounded-xl px-4 text-sm font-semibold',
+                    s.id === sectorId ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'
                   )}
                 >
                   {s.nombre}
@@ -253,18 +279,20 @@ export default function MozoPage() {
               ))}
             </div>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             {salon.isLoading ? (
               <div className="grid place-items-center py-16">
                 <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
               </div>
             ) : ubicadas.length > 0 ? (
-              <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
+              <div className="h-full min-h-[18rem]">
+                <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
+              </div>
             ) : (
               <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
             )}
           </div>
-          <div className="mt-3 shrink-0">
+          <div className="mt-2 shrink-0 px-1">
             <LeyendaMesas />
           </div>
         </div>
@@ -309,9 +337,11 @@ function TecladoPin({ onEntrar }: { onEntrar: (u: { id: string; nombre: string; 
   }, [onEntrar])
 
   return (
-    <div className="grid h-dvh place-items-center bg-slate-50 p-4">
-      <div className="w-full max-w-xs text-center">
-        <p className="text-xl font-bold">Tu PIN</p>
+    <div className="grid h-dvh place-items-center bg-[#f3f6fb] p-4">
+      <div className="w-full max-w-xs rounded-3xl border border-slate-200/80 bg-white p-6 text-center shadow-[0_20px_50px_-24px_rgba(15,35,70,0.35)]">
+        <Reloj className="text-4xl font-bold text-slate-800 [font-family:var(--font-display),system-ui]" />
+        <p className="mt-3 text-lg font-semibold">Ingresá tu PIN</p>
+        <p className="text-xs text-slate-500">Para cargar las mesas a tu nombre</p>
         <div className="my-5 flex justify-center gap-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <span
@@ -330,7 +360,7 @@ function TecladoPin({ onEntrar }: { onEntrar: (u: { id: string; nombre: string; 
         <button
           onClick={() => entrar(pin)}
           disabled={pin.length < 4 || probando}
-          className="mt-3 h-16 w-full rounded-xl bg-slate-900 text-lg font-semibold text-white disabled:opacity-30 active:scale-[0.99]"
+          className="mt-3 h-16 w-full rounded-xl bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-lg font-semibold text-white disabled:opacity-30 active:scale-[0.99]"
         >
           {probando ? 'Entrando…' : 'Entrar'}
         </button>
@@ -346,16 +376,16 @@ function Teclas({ onDigito, onBorrar }: { onDigito: (d: string) => void; onBorra
         <button
           key={d}
           onClick={() => onDigito(d)}
-          className="h-16 rounded-xl bg-white text-2xl font-bold shadow-sm active:scale-95"
+          className="h-16 rounded-xl bg-slate-50 text-2xl font-bold ring-1 ring-slate-200 active:scale-95 active:bg-slate-100"
         >
           {d}
         </button>
       ))}
       <span />
-      <button onClick={() => onDigito('0')} className="h-16 rounded-xl bg-white text-2xl font-bold shadow-sm active:scale-95">
+      <button onClick={() => onDigito('0')} className="h-16 rounded-xl bg-slate-50 text-2xl font-bold ring-1 ring-slate-200 active:scale-95 active:bg-slate-100">
         0
       </button>
-      <button onClick={onBorrar} aria-label="Borrar" className="grid h-16 place-items-center rounded-xl bg-white shadow-sm active:scale-95">
+      <button onClick={onBorrar} aria-label="Borrar" className="grid h-16 place-items-center rounded-xl bg-slate-50 ring-1 ring-slate-200 active:scale-95 active:bg-slate-100">
         <Delete className="h-6 w-6 text-slate-500" />
       </button>
     </div>

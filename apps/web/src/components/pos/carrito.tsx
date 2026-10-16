@@ -83,6 +83,11 @@ export function Carrito({
   const comandas = [...new Set(lineas.filter((l) => l.enviado).map((l) => l.comanda ?? 0))].sort((a, b) => a - b)
   const nuevas = lineas.filter((l) => !l.enviado)
 
+  // Lo que la cocina todavía no sirvió, y el plato que más espera.
+  const enCocina = lineas.filter((l) => l.enviado && l.estadoKds !== 'despachado')
+  const espera = Math.max(0, ...enCocina.map((l) => l.minutosCocina ?? 0))
+  const demora = espera >= 15
+
   return (
     <aside className={cn('flex min-h-0 w-full flex-col bg-white lg:w-[25rem] lg:shrink-0 lg:border-l lg:border-slate-200', className)}>
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
@@ -99,6 +104,23 @@ export function Carrito({
         </button>
       </div>
 
+      {comandas.length > 0 && (
+        <div className={cn('flex items-center gap-3 border-b px-3 py-2 text-sm', demora ? 'border-red-100 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 text-slate-600')}>
+          <Clock className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1">
+            {comandas.length} {comandas.length === 1 ? 'comanda' : 'comandas'}
+            {enCocina.length > 0 ? (
+              <>
+                {' · '}
+                <b>{enCocina.reduce((s, l) => s + l.cantidad, 0)}</b> en cocina, el que más espera hace <b>{espera}′</b>
+              </>
+            ) : (
+              ' · todo servido'
+            )}
+          </span>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         {lineas.length === 0 && (
           <p className="p-10 text-center text-slate-400">Tocá un producto para agregarlo</p>
@@ -107,11 +129,22 @@ export function Carrito({
         {comandas.map((c) => {
           const items = lineas.filter((l) => l.enviado && (l.comanda ?? 0) === c)
           const hora = items.find((i) => i.enviadoHora)?.enviadoHora
+          const pendientes = items.filter((i) => i.estadoKds !== 'despachado')
+          const min = Math.max(0, ...pendientes.map((i) => i.minutosCocina ?? 0))
+          const servida = pendientes.length === 0
           return (
             <div key={c}>
-              <p className="sticky top-0 flex items-center gap-2 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <p className="sticky top-0 z-10 flex items-center gap-2 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">
                 Comanda {c || 1}
-                {hora && <span className="font-normal normal-case">· {hora}</span>}
+                {hora && <span className="font-normal text-slate-400">{hora}</span>}
+                <span
+                  className={cn(
+                    'ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                    servida ? 'bg-emerald-100 text-emerald-700' : min >= 15 ? 'bg-red-100 text-red-700' : 'bg-sky-100 text-sky-700'
+                  )}
+                >
+                  {servida ? 'Servida' : `En cocina · ${min}′`}
+                </span>
               </p>
               <ul className="divide-y divide-slate-100">
                 {items.map((l) => (
@@ -124,8 +157,9 @@ export function Carrito({
 
         {nuevas.length > 0 && (
           <div>
-            <p className="sticky top-0 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+            <p className="sticky top-0 z-10 flex items-center bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
               Sin comandar
+              <span className="ml-auto rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px]">{nuevas.reduce((s, l) => s + l.cantidad, 0)} por enviar</span>
             </p>
             <ul className="divide-y divide-slate-100">
               {nuevas.map((l) => (
@@ -144,7 +178,7 @@ export function Carrito({
         )}
         <div className="mb-3 flex items-baseline justify-between">
           <span className="text-slate-500">Total</span>
-          <span className="text-3xl font-bold tabular-nums">{pesos(total)}</span>
+          <span className="text-3xl font-bold tabular-nums [font-family:var(--font-display),system-ui]">{pesos(total)}</span>
         </div>
         {children}
       </div>

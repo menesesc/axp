@@ -10,6 +10,7 @@ import { MapaMesas, LeyendaMesas, type MesaEstado } from '@/components/pos/mapa-
 import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
 import { Autorizacion } from '@/components/pos/autorizacion'
+import { CifrasSalon, MesasAbiertas, Reloj, duracion } from '@/components/pos/resumen-salon'
 import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
 import type { GrupoPos } from '@/components/pos/opciones-producto'
@@ -60,7 +61,7 @@ export default function PosPage() {
       if (!r.ok) throw new Error('No se pudo cargar la caja')
       return r.json() as Promise<{
         cajas: Array<{ id: string; nombre: string; sucursal: string; sucursalId: string }>
-        sesion: { id: string; numero: number; fondoInicial: number; vendido: number } | null
+        sesion: { id: string; numero: number; fondoInicial: number; vendido: number; pedidos?: number; abiertaAt?: string; usuario?: string | null } | null
       }>
     },
     refetchInterval: 30_000,
@@ -204,85 +205,133 @@ export default function PosPage() {
   const enMesa = !!pedido.pedidoId
   const sector = salon.data?.sectores.find((s) => s.id === sectorId)
 
+  const caja = ses.cajas.find((c) => c.id === cajaId)
+  const horaApertura = ses.sesion.abiertaAt ? ses.sesion.abiertaAt.slice(11, 16) : null
+  // Datos en vivo de la mesa abierta (tiempo, cocina), para el encabezado del consumo.
+  const mesaViva = pedido.mesa ? salon.data?.mesas.find((m) => m.id === pedido.mesa!.id) : undefined
+
   return (
-    <div className="flex h-dvh flex-col bg-slate-50 lg:flex-row">
-      {/* El mapa. Se achica cuando hay una mesa abierta, pero no se va: en
-          pantalla grande el cajero sigue viendo el resto del salón. */}
-      <section
-        className={cn('flex min-h-0 flex-col p-3', enMesa ? 'hidden' : 'flex-1')}
-      >
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="flex h-dvh flex-col bg-[#f3f6fb]">
+      {/* Barra de la caja: siempre arriba, con lo que se mira de reojo. */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200/80 bg-white px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-sm font-bold text-white">
+            {caja?.nombre?.slice(0, 2).toUpperCase() ?? 'PV'}
+          </span>
+          <div className="leading-tight">
+            <p className="text-sm font-semibold">
+              {caja?.sucursal} · {caja?.nombre}
+            </p>
+            <p className="text-xs text-slate-500">
+              Turno {ses.sesion.numero}
+              {horaApertura ? ` · abierto ${horaApertura}` : ''}
+              {ses.sesion.usuario ? ` · ${ses.sesion.usuario}` : ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex rounded-xl bg-slate-100 p-1">
           {(['salon', 'rapida'] as const).map((m) => (
             <button
               key={m}
-              onClick={() => { setModo(m); pedido.limpiar() }}
+              onClick={() => {
+                setModo(m)
+                pedido.limpiar()
+              }}
               className={cn(
-                'h-12 rounded-xl px-4 text-sm font-semibold',
-                modo === m ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'
+                'h-10 rounded-lg px-4 text-sm font-semibold transition-colors',
+                modo === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
               )}
             >
               {m === 'salon' ? 'Salón' : 'Venta rápida'}
             </button>
           ))}
-          <span className="ml-auto text-xs text-slate-400">
-            Caja {ses.cajas.find((c) => c.id === cajaId)?.nombre} · turno {ses.sesion.numero}
-          </span>
-          <a
-            href="/configuracion/pos/plano"
-            className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
-          >
-            Plano
-          </a>
         </div>
 
+        <div className="ml-auto flex items-center gap-4">
+          <div className="text-right leading-tight">
+            <p className="text-[11px] text-slate-500">Vendido en el turno</p>
+            <p className="text-lg font-bold tabular-nums [font-family:var(--font-display),system-ui]">
+              ${Math.round(ses.sesion.vendido ?? 0).toLocaleString('es-AR')}
+              {ses.sesion.pedidos != null && <span className="ml-1.5 text-xs font-normal text-slate-400">{ses.sesion.pedidos} pedidos</span>}
+            </p>
+          </div>
+          <Reloj className="hidden text-2xl font-semibold text-slate-700 sm:inline" />
+          <a href="/configuracion/pos/plano" className="hidden h-10 items-center rounded-xl px-3 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 md:inline-flex">
+            Editar plano
+          </a>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      {/* El salón. Se oculta mientras se carga una mesa: todo el ancho es para
+          la carta y el consumo. */}
+      <section className={cn('min-h-0 flex-1 gap-3 p-3', enMesa ? 'hidden' : 'flex flex-col lg:flex-row')}>
         {modo === 'rapida' ? (
-          <div className="grid flex-1 place-items-center">
-            <button
-              onClick={pedido.nuevoMostrador}
-              disabled={enMesa}
-              className="h-20 rounded-xl bg-slate-900 px-10 text-xl font-semibold text-white disabled:opacity-30 active:scale-95"
-            >
-              Nuevo pedido
-            </button>
+          <div className="grid flex-1 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/60">
+            <div className="text-center">
+              <p className="text-lg font-semibold">Venta rápida</p>
+              <p className="mb-5 mt-1 text-sm text-slate-500">Mostrador o para llevar, sin mesa.</p>
+              <button
+                onClick={pedido.nuevoMostrador}
+                disabled={enMesa}
+                className="h-20 rounded-2xl bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] px-12 text-xl font-semibold text-white shadow-[0_14px_30px_-12px_rgba(31,127,230,0.8)] disabled:opacity-30 active:scale-95"
+              >
+                Nuevo pedido
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            {(salon.data?.sectores.length ?? 0) > 1 && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {salon.data!.sectores.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSectorId(s.id)}
-                    className={cn(
-                      'h-12 rounded-xl px-4 text-base font-semibold',
-                      s.id === sectorId ? 'bg-white shadow-sm ring-2 ring-slate-900' : 'bg-white text-slate-500'
-                    )}
-                  >
-                    {s.nombre}
-                    <span className="ml-2 text-xs font-normal opacity-60">{s.mesas}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {salon.isLoading ? (
-                <div className="grid place-items-center py-16">
-                  <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {(salon.data?.sectores.length ?? 0) > 1 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {salon.data!.sectores.map((s) => {
+                    const abiertasSector = (salon.data?.mesas ?? []).filter((m) => m.sectorId === s.id && m.estado !== 'libre').length
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setSectorId(s.id)}
+                        className={cn(
+                          'h-11 rounded-xl px-4 text-sm font-semibold transition-colors',
+                          s.id === sectorId ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                        )}
+                      >
+                        {s.nombre}
+                        <span className="ml-2 text-xs font-normal opacity-70">
+                          {abiertasSector}/{s.mesas}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
-              ) : mesas.length === 0 && sector && sucursalId ? (
-                <CrearMesas sucursalId={sucursalId} sectorId={sector.id} onListo={() => salon.refetch()} />
-              ) : ubicadas.length > 0 ? (
-                <div className="h-full min-h-[18rem]">
-                  <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
-                </div>
-              ) : (
-                <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
               )}
+
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                {salon.isLoading ? (
+                  <div className="grid h-full place-items-center py-16">
+                    <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+                  </div>
+                ) : mesas.length === 0 && sector && sucursalId ? (
+                  <CrearMesas sucursalId={sucursalId} sectorId={sector.id} onListo={() => salon.refetch()} />
+                ) : ubicadas.length > 0 ? (
+                  <div className="h-full min-h-[18rem]">
+                    <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
+                  </div>
+                ) : (
+                  <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
+                )}
+              </div>
+              <div className="mt-2 shrink-0 px-1">
+                <LeyendaMesas />
+              </div>
             </div>
-            <div className="mt-3 shrink-0">
-              <LeyendaMesas />
-            </div>
+
+            {/* Lo que pide atención: cifras y mesas abiertas por urgencia. */}
+            <aside className="flex min-h-0 flex-col gap-3 lg:w-[24rem] lg:shrink-0">
+              <CifrasSalon mesas={salon.data?.mesas ?? []} />
+              <MesasAbiertas className="min-h-[14rem] flex-1" mesas={salon.data?.mesas ?? []} onAbrir={tocarMesa} />
+            </aside>
           </>
         )}
       </section>
@@ -295,6 +344,7 @@ export default function PosPage() {
                 categorias={cat?.categorias ?? []}
                 productos={cat?.productos ?? []}
                 grupos={cat?.grupos ?? []}
+                enPedido={pedido.lineas.reduce<Record<string, number>>((acc, l) => ((acc[l.productoId] = (acc[l.productoId] ?? 0) + l.cantidad), acc), {})}
                 onAgregar={(p, opciones, nota) =>
                   pedido.bloqueado
                     ? toast.error('La mesa tiene la precuenta impresa')
@@ -314,7 +364,13 @@ export default function PosPage() {
           <Carrito
             className={cn('flex-1 lg:flex-none', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
             titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Venta rápida'}
-            subtitulo={pedido.comensales ? `${pedido.comensales} cubiertos` : null}
+            subtitulo={[
+              pedido.comensales ? `${pedido.comensales} cubiertos` : null,
+              mesaViva?.mozo ?? null,
+              mesaViva?.minutos != null ? `abierta hace ${duracion(mesaViva.minutos)}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || null}
             lineas={pedido.lineas}
             bloqueado={pedido.bloqueado}
             onCambiar={pedido.cambiar}
@@ -354,6 +410,8 @@ export default function PosPage() {
           </Carrito>
         </>
       )}
+
+      </div>
 
       {anulando && (
         <Autorizacion

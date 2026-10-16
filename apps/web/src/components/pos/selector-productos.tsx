@@ -17,7 +17,10 @@ export function SelectorProductos({
   productos,
   grupos,
   onAgregar,
+  enPedido,
 }: {
+  /** Unidades de cada producto ya cargadas en el pedido. */
+  enPedido?: Record<string, number>
   categorias: CategoriaPos[]
   productos: ProductoPos[]
   grupos: GrupoPos[]
@@ -32,6 +35,7 @@ export function SelectorProductos({
       <GrillaProductos
         categorias={categorias}
         productos={productos}
+        {...(enPedido ? { enPedido } : {})}
         onElegir={(p) => {
           if (gruposDe(p).length > 0) setPendiente(p)
           else onAgregar(p, [], null)
