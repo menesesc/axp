@@ -19,6 +19,15 @@ import type { MesaEstado } from './mapa-mesas'
 
 export const LIENZO = { ancho: 1000, alto: 700 }
 
+/**
+ * Lienzo visible según el zoom del plano. Con zoom 0,5 se ve el doble de
+ * salón: las mesas se achican y entran los salones grandes.
+ */
+export function lienzoDe(zoom = 1) {
+  const z = zoom > 0 ? zoom : 1
+  return { ancho: Math.round(LIENZO.ancho / z), alto: Math.round(LIENZO.alto / z) }
+}
+
 export interface ElementoPlano {
   id: string
   sectorId: string | null
@@ -115,7 +124,10 @@ export function PlanoSalon({
   onTocarElemento,
   onFondo,
   onArrastrar,
+  zoom = 1,
 }: {
+  /** Zoom del plano (del sector): menos de 1 muestra más salón. */
+  zoom?: number
   mesas: MesaEstado[]
   elementos: ElementoPlano[]
   /** Id de la pieza seleccionada, sólo en el diseñador. */
@@ -127,9 +139,10 @@ export function PlanoSalon({
   /** Arranca el arrastre de una pieza. Sólo en el diseñador. */
   onArrastrar?: (id: string, tipo: 'mesa' | 'elemento', ev: React.PointerEvent<SVGGElement>) => void
 }) {
+  const lienzo = lienzoDe(zoom)
   return (
     <svg
-      viewBox={`0 0 ${LIENZO.ancho} ${LIENZO.alto}`}
+      viewBox={`0 0 ${lienzo.ancho} ${lienzo.alto}`}
       preserveAspectRatio="xMidYMid meet"
       className={cn('h-full w-full touch-none select-none', edicion && 'cursor-default')}
       onPointerDown={(e) => {
@@ -143,7 +156,7 @@ export function PlanoSalon({
               <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e2e8f0" strokeWidth="1" />
             </pattern>
           </defs>
-          <rect width={LIENZO.ancho} height={LIENZO.alto} fill="url(#grilla)" />
+          <rect width={lienzo.ancho} height={lienzo.alto} fill="url(#grilla)" />
         </>
       )}
 

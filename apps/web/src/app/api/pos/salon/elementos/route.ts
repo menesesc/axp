@@ -62,20 +62,22 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Falta el id' }, { status: 400 })
   }
 
-  for (const c of cambios) {
-    await prisma.$executeRaw`
-      UPDATE pos_elementos SET
-        etiqueta = COALESCE(${c.etiqueta?.trim()?.slice(0, 40) ?? null}, etiqueta),
-        x        = COALESCE(${c.x ?? null}, x),
-        y        = COALESCE(${c.y ?? null}, y),
-        ancho    = COALESCE(${c.ancho ?? null}, ancho),
-        alto     = COALESCE(${c.alto ?? null}, alto),
-        rotacion = COALESCE(${c.rotacion ?? null}, rotacion),
-        color    = COALESCE(${c.color ?? null}, color),
-        "updatedAt" = now()
-      WHERE id = ${c.id}::uuid AND "clienteId" = ${clienteId}::uuid
-    `
-  }
+  await prisma.$transaction(
+    cambios.map(
+      (c) => prisma.$executeRaw`
+        UPDATE pos_elementos SET
+          etiqueta = COALESCE(${c.etiqueta?.trim()?.slice(0, 40) ?? null}, etiqueta),
+          x        = COALESCE(${c.x ?? null}, x),
+          y        = COALESCE(${c.y ?? null}, y),
+          ancho    = COALESCE(${c.ancho ?? null}, ancho),
+          alto     = COALESCE(${c.alto ?? null}, alto),
+          rotacion = COALESCE(${c.rotacion ?? null}, rotacion),
+          color    = COALESCE(${c.color ?? null}, color),
+          "updatedAt" = now()
+        WHERE id = ${c.id}::uuid AND "clienteId" = ${clienteId}::uuid
+      `
+    )
+  )
   return NextResponse.json({ ok: true })
 }
 

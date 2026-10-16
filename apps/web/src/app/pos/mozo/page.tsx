@@ -68,7 +68,7 @@ export default function MozoPage() {
       const r = await fetch(`/api/pos/salon?sucursalId=${sucursalId}`)
       if (!r.ok) throw new Error('No se pudo cargar el salón')
       return r.json() as Promise<{
-        sectores: Array<{ id: string; nombre: string; mesas: number }>
+        sectores: Array<{ id: string; nombre: string; mesas: number; planoZoom?: number }>
         mesas: MesaEstado[]
         elementos: ElementoPlano[]
       }>
@@ -116,6 +116,8 @@ export default function MozoPage() {
     [salon.data, sectorId]
   )
   const ubicadas = mesas.filter((m) => m.x != null)
+  // Zoom guardado del plano de este sector (se elige en el diseñador).
+  const zoomPlano = salon.data?.sectores.find((s) => s.id === sectorId)?.planoZoom ?? 1
 
   const tocarMesa = (m: MesaEstado) => {
     setVista('detalle')
@@ -257,7 +259,7 @@ export default function MozoPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
               </div>
             ) : ubicadas.length > 0 ? (
-              <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} />
+              <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
             ) : (
               <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
             )}

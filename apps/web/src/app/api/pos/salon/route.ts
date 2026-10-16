@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
   const sucursalId = request.nextUrl.searchParams.get('sucursalId')
 
   const [sectores, mesas, elementos] = await Promise.all([
-    prisma.$queryRaw<Array<{ id: string; nombre: string; sucursalId: string; mesas: number }>>`
-      SELECT se.id, se.nombre, se."sucursalId",
+    prisma.$queryRaw<Array<{ id: string; nombre: string; sucursalId: string; mesas: number; planoZoom: number }>>`
+      SELECT se.id, se.nombre, se."sucursalId", se."planoZoom"::float8 AS "planoZoom",
              (SELECT count(*)::int FROM pos_mesas m WHERE m."sectorId" = se.id AND m.activa) AS mesas
         FROM pos_sectores se
        WHERE se."clienteId" = ${clienteId}::uuid AND se.activo
@@ -136,27 +136,35 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Falta el id' }, { status: 400 })
   }
 
-  for (const c of cambios) {
-    const forma = c.forma && FORMAS.includes(c.forma) ? c.forma : null
-    try {
-      await prisma.$executeRaw`
-        UPDATE pos_mesas SET
-          nombre      = COALESCE(${c.nombre?.trim()?.slice(0, 30) ?? null}, nombre),
-          capacidad   = COALESCE(${c.capacidad ?? null}, capacidad),
-          x           = COALESCE(${c.x ?? null}, x),
-          y           = COALESCE(${c.y ?? null}, y),
-          forma       = COALESCE(${forma}, forma),
-          ancho       = COALESCE(${c.ancho ?? null}, ancho),
-          alto        = COALESCE(${c.alto ?? null}, alto),
-          rotacion    = COALESCE(${c.rotacion ?? null}, rotacion),
-          cabeceras   = COALESCE(${c.cabeceras ?? null}, cabeceras),
-          "sectorId"  = COALESCE(${c.sectorId ?? null}::uuid, "sectorId"),
-          activa      = COALESCE(${c.activa ?? null}, activa)
-        WHERE id = ${c.id}::uuid AND "clienteId" = ${clienteId}::uuid
-      `
-    } catch {
-      return NextResponse.json({ error: `Ya hay una mesa llamada ${c.nombre}` }, { status: 409 })
-    }
+  // Todo junto en una transacción: el diseñador guarda el plano entero de una
+  // vez, y si un nombre choca no queda la mitad guardada.
+  try {
+    await prisma.$transaction(
+      cambios.map((c) => {
+        const forma = c.forma && FORMAS.includes(c.forma) ? c.forma : null
+        return prisma.$executeRaw`
+          UPDATE pos_mesas SET
+            nombre      = COALESCE(${c.nombre?.trim()?.slice(0, 30) ?? null}, nombre),
+            capacidad   = COALESCE(${c.capacidad ?? null}, capacidad),
+            x           = COALESCE(${c.x ?? null}, x),
+            y           = COALESCE(${c.y ?? null}, y),
+            forma       = COALESCE(${forma}, forma),
+            ancho       = COALESCE(${c.ancho ?? null}, ancho),
+            alto        = COALESCE(${c.alto ?? null}, alto),
+            rotacion    = COALESCE(${c.rotacion ?? null}, rotacion),
+            cabeceras   = COALESCE(${c.cabeceras ?? null}, cabeceras),
+            "sectorId"  = COALESCE(${c.sectorId ?? null}::uuid, "sectorId"),
+            activa      = COALESCE(${c.activa ?? null}, activa)
+          WHERE id = ${c.id}::uuid AND "clienteId" = ${clienteId}::uuid
+        `
+      })
+    )
+  } catch {
+    const nombres = cambios.map((c) => c.nombre).filter(Boolean)
+    return NextResponse.json(
+      { error: nombres.length === 1 ? `Ya hay una mesa llamada ${nombres[0]}` : 'Hay dos mesas con el mismo número' },
+      { status: 409 }
+    )
   }
   return NextResponse.json({ ok: true })
 }
