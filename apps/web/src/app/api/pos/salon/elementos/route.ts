@@ -62,22 +62,38 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Falta el id' }, { status: 400 })
   }
 
-  await prisma.$transaction(
-    cambios.map(
-      (c) => prisma.$executeRaw`
-        UPDATE pos_elementos SET
-          etiqueta = COALESCE(${c.etiqueta?.trim()?.slice(0, 40) ?? null}, etiqueta),
-          x        = COALESCE(${c.x ?? null}, x),
-          y        = COALESCE(${c.y ?? null}, y),
-          ancho    = COALESCE(${c.ancho ?? null}, ancho),
-          alto     = COALESCE(${c.alto ?? null}, alto),
-          rotacion = COALESCE(${c.rotacion ?? null}, rotacion),
-          color    = COALESCE(${c.color ?? null}, color),
-          "updatedAt" = now()
-        WHERE id = ${c.id}::uuid AND "clienteId" = ${clienteId}::uuid
-      `
-    )
-  )
+  // Una sola sentencia para todos: atómica y en un solo viaje a la base.
+  const filas = cambios.map((c) => ({
+    id: c.id,
+    etiqueta: c.etiqueta != null ? c.etiqueta.trim().slice(0, 40) : null,
+    x: c.x ?? null,
+    y: c.y ?? null,
+    ancho: c.ancho ?? null,
+    alto: c.alto ?? null,
+    rotacion: c.rotacion != null ? Math.round(c.rotacion) : null,
+    color: c.color ?? null,
+  }))
+  try {
+    await prisma.$executeRaw`
+      UPDATE pos_elementos e SET
+        etiqueta = COALESCE(v.etiqueta, e.etiqueta),
+        x        = COALESCE(v.x, e.x),
+        y        = COALESCE(v.y, e.y),
+        ancho    = COALESCE(v.ancho, e.ancho),
+        alto     = COALESCE(v.alto, e.alto),
+        rotacion = COALESCE(v.rotacion, e.rotacion),
+        color    = COALESCE(v.color, e.color),
+        "updatedAt" = now()
+      FROM jsonb_to_recordset(${JSON.stringify(filas)}::jsonb) AS v(
+        id uuid, etiqueta text, x numeric, y numeric, ancho numeric, alto numeric, rotacion int, color text
+      )
+      WHERE e.id = v.id AND e."clienteId" = ${clienteId}::uuid
+    `
+  } catch (e) {
+    const msg = String((e as { meta?: { message?: string } }).meta?.message ?? (e as Error).message ?? '')
+    console.error('[pos/salon/elementos PATCH]', msg)
+    return NextResponse.json({ error: `No se pudo guardar el plano: ${msg.slice(0, 160)}` }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }
 

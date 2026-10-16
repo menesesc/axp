@@ -13,6 +13,16 @@ import type { MesaEstado } from '@/components/pos/mapa-mesas'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { cn } from '@/lib/utils'
+import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalSpaceAround,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalSpaceAround,
+} from 'lucide-react'
 import { ArrowLeft, Copy, LayoutGrid, Loader2, Maximize2, Plus, RotateCw, Save, Trash2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
 
 /**
@@ -119,7 +129,7 @@ export default function PlanoPage() {
   const lienzo = lienzoDe(zoom)
   const setZoom = (z: number) => {
     if (!sector) return
-    setZoomB((b) => ({ ...b, [sector]: Math.min(1.5, Math.max(0.3, Math.round(z * 20) / 20)) }))
+    setZoomB((b) => ({ ...b, [sector]: Math.min(1.5, Math.max(0.3, Math.round(z * 100) / 100)) }))
     tocar(`z-${sector}`)
   }
 
@@ -284,6 +294,49 @@ export default function PlanoPage() {
       for (const p of lista) n.add(p.id)
       return n
     })
+  }
+
+  /**
+   * Alinear y distribuir lo seleccionado. La grilla de 25 deja mesas a medio
+   * paso de distancia; esto las pone exactamente en fila o columna.
+   */
+  type Alineacion = 'izq' | 'centroH' | 'der' | 'arriba' | 'centroV' | 'abajo' | 'distH' | 'distV'
+  const alinear = (modo: Alineacion) => {
+    const ps = sel.flatMap((p) => {
+      const d = p.tipo === 'mesa' ? mesasB[p.id] : elemsB[p.id]
+      const x = (d as { x: number | null } | undefined)?.x
+      if (!d || x == null) return []
+      return [{ ...p, x, y: (d as { y: number }).y, a: d.ancho, h: d.alto }]
+    })
+    if (ps.length < 2) return
+    const izq = Math.min(...ps.map((p) => p.x - p.a / 2))
+    const der = Math.max(...ps.map((p) => p.x + p.a / 2))
+    const arr = Math.min(...ps.map((p) => p.y - p.h / 2))
+    const abj = Math.max(...ps.map((p) => p.y + p.h / 2))
+    let nuevas = ps.map((p) => ({ id: p.id, tipo: p.tipo, x: p.x, y: p.y }))
+    if (modo === 'izq') nuevas = ps.map((p) => ({ ...p, x: izq + p.a / 2 }))
+    if (modo === 'der') nuevas = ps.map((p) => ({ ...p, x: der - p.a / 2 }))
+    if (modo === 'centroH') nuevas = ps.map((p) => ({ ...p, x: (izq + der) / 2 }))
+    if (modo === 'arriba') nuevas = ps.map((p) => ({ ...p, y: arr + p.h / 2 }))
+    if (modo === 'abajo') nuevas = ps.map((p) => ({ ...p, y: abj - p.h / 2 }))
+    if (modo === 'centroV') nuevas = ps.map((p) => ({ ...p, y: (arr + abj) / 2 }))
+    if (modo === 'distH' || modo === 'distV') {
+      // Mismo espacio libre entre cada pieza, dejando fijas la primera y la última.
+      const eje = modo === 'distH' ? 'x' : 'y'
+      const tam = modo === 'distH' ? 'a' : 'h'
+      const orden = [...ps].sort((p, q) => p[eje] - q[eje])
+      const total = orden.reduce((s2, p) => s2 + p[tam], 0)
+      const desde = orden[0]![eje] - orden[0]![tam] / 2
+      const hasta = orden.at(-1)![eje] + orden.at(-1)![tam] / 2
+      const hueco = (hasta - desde - total) / (orden.length - 1)
+      let cursor = desde
+      nuevas = orden.map((p) => {
+        const c = cursor + p[tam] / 2
+        cursor += p[tam] + hueco
+        return { ...p, [eje]: c }
+      })
+    }
+    moverPiezas(nuevas.map((n) => ({ id: n.id, tipo: n.tipo, x: Math.round(n.x * 100) / 100, y: Math.round(n.y * 100) / 100 })))
   }
 
   /** Selección por área: arrastrar sobre el fondo dibuja un rectángulo. */
@@ -478,7 +531,7 @@ export default function PlanoPage() {
     if (piezas.length === 0) return setZoom(1)
     const maxX = Math.max(...piezas.map((p) => p.x + p.a / 2 + 30)) + 40
     const maxY = Math.max(...piezas.map((p) => p.y + p.h / 2 + 30)) + 40
-    setZoom(Math.floor(Math.min(LIENZO.ancho / maxX, LIENZO.alto / maxY, 1.5) * 20) / 20)
+    setZoom(Math.floor(Math.min(LIENZO.ancho / maxX, LIENZO.alto / maxY, 1.5) * 100) / 100)
   }
 
   const agregarMesa = async () => {
@@ -618,11 +671,38 @@ export default function PlanoPage() {
           <div className="ml-auto flex items-center gap-1.5">
             <span className="text-xs text-slate-500">Zoom del plano</span>
             <div className="flex items-center rounded-xl border border-slate-900/[0.12] bg-white">
-              <button type="button" onClick={() => setZoom(zoom - 0.1)} disabled={!puedeEditar || zoom <= 0.3} className="grid h-9 w-9 place-items-center text-slate-500 hover:text-slate-900 disabled:opacity-30" aria-label="Alejar">
+              <button type="button" onClick={() => setZoom(zoom - 0.01)} disabled={!puedeEditar || zoom <= 0.3} className="grid h-9 w-9 place-items-center text-slate-500 hover:text-slate-900 disabled:opacity-30" aria-label="Alejar 1%">
                 <ZoomOut className="h-4 w-4" />
               </button>
-              <span className="w-12 text-center text-sm tabular-nums">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom(zoom + 0.1)} disabled={!puedeEditar || zoom >= 1.5} className="grid h-9 w-9 place-items-center text-slate-500 hover:text-slate-900 disabled:opacity-30" aria-label="Acercar">
+              <input
+                type="range"
+                min={30}
+                max={150}
+                step={1}
+                value={Math.round(zoom * 100)}
+                disabled={!puedeEditar}
+                onChange={(e) => setZoom(Number(e.target.value) / 100)}
+                className="w-28 accent-[#3b9bff]"
+                aria-label="Zoom del plano"
+              />
+              <label className="flex items-center px-1 text-sm tabular-nums">
+                <input
+                  type="number"
+                  min={30}
+                  max={150}
+                  step={1}
+                  value={Math.round(zoom * 100)}
+                  disabled={!puedeEditar}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    if (Number.isFinite(v) && v >= 30 && v <= 150) setZoom(v / 100)
+                  }}
+                  className="w-11 bg-transparent text-right outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                  aria-label="Zoom en porcentaje"
+                />
+                %
+              </label>
+              <button type="button" onClick={() => setZoom(zoom + 0.01)} disabled={!puedeEditar || zoom >= 1.5} className="grid h-9 w-9 place-items-center text-slate-500 hover:text-slate-900 disabled:opacity-30" aria-label="Acercar 1%">
                 <ZoomIn className="h-4 w-4" />
               </button>
             </div>
@@ -681,6 +761,33 @@ export default function PlanoPage() {
               <div className="space-y-3 rounded-xl border border-slate-200 p-3">
                 <p className="text-sm font-semibold">{sel.length} piezas seleccionadas</p>
                 <p className="text-xs text-slate-500">Arrastrá cualquiera para mover todas juntas, o usá las flechas del teclado.</p>
+                <div>
+                  <span className="mb-1 block text-xs text-slate-500">Alinear</span>
+                  <div className="grid grid-cols-4 gap-1">
+                    {([
+                      ['izq', AlignStartVertical, 'Alinear a la izquierda'],
+                      ['centroH', AlignCenterVertical, 'Centrar en columna'],
+                      ['der', AlignEndVertical, 'Alinear a la derecha'],
+                      ['distH', AlignHorizontalSpaceAround, 'Repartir a lo ancho con el mismo espacio'],
+                      ['arriba', AlignStartHorizontal, 'Alinear arriba'],
+                      ['centroV', AlignCenterHorizontal, 'Centrar en fila'],
+                      ['abajo', AlignEndHorizontal, 'Alinear abajo'],
+                      ['distV', AlignVerticalSpaceAround, 'Repartir a lo alto con el mismo espacio'],
+                    ] as const).map(([modo, Icono, texto]) => (
+                      <button
+                        key={modo}
+                        type="button"
+                        onClick={() => alinear(modo)}
+                        disabled={(modo === 'distH' || modo === 'distV') && sel.length < 3}
+                        title={texto}
+                        aria-label={texto}
+                        className="grid h-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 disabled:opacity-30"
+                      >
+                        <Icono className="h-4 w-4" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1 gap-1.5" onClick={duplicar}>
                     <Copy className="h-4 w-4" /> Duplicar

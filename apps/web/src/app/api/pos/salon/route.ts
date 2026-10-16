@@ -136,35 +136,55 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Falta el id' }, { status: 400 })
   }
 
-  // Todo junto en una transacción: el diseñador guarda el plano entero de una
-  // vez, y si un nombre choca no queda la mitad guardada.
+  // Todo en una sola sentencia: el diseñador guarda el plano entero de una vez,
+  // es atómico (o se guarda todo o nada) y es un solo viaje a la base. Con una
+  // sentencia por mesa, guardar 50 mesas tardaba segundos y podía cortarse.
+  const filas = cambios.map((c) => ({
+    id: c.id,
+    nombre: c.nombre?.trim()?.slice(0, 30) || null,
+    capacidad: c.capacidad ?? null,
+    x: c.x ?? null,
+    y: c.y ?? null,
+    forma: c.forma && FORMAS.includes(c.forma) ? c.forma : null,
+    ancho: c.ancho ?? null,
+    alto: c.alto ?? null,
+    rotacion: c.rotacion != null ? Math.round(c.rotacion) : null,
+    cabeceras: c.cabeceras ?? null,
+    sectorId: c.sectorId ?? null,
+    activa: c.activa ?? null,
+  }))
   try {
-    await prisma.$transaction(
-      cambios.map((c) => {
-        const forma = c.forma && FORMAS.includes(c.forma) ? c.forma : null
-        return prisma.$executeRaw`
-          UPDATE pos_mesas SET
-            nombre      = COALESCE(${c.nombre?.trim()?.slice(0, 30) ?? null}, nombre),
-            capacidad   = COALESCE(${c.capacidad ?? null}, capacidad),
-            x           = COALESCE(${c.x ?? null}, x),
-            y           = COALESCE(${c.y ?? null}, y),
-            forma       = COALESCE(${forma}, forma),
-            ancho       = COALESCE(${c.ancho ?? null}, ancho),
-            alto        = COALESCE(${c.alto ?? null}, alto),
-            rotacion    = COALESCE(${c.rotacion ?? null}, rotacion),
-            cabeceras   = COALESCE(${c.cabeceras ?? null}, cabeceras),
-            "sectorId"  = COALESCE(${c.sectorId ?? null}::uuid, "sectorId"),
-            activa      = COALESCE(${c.activa ?? null}, activa)
-          WHERE id = ${c.id}::uuid AND "clienteId" = ${clienteId}::uuid
-        `
-      })
-    )
-  } catch {
-    const nombres = cambios.map((c) => c.nombre).filter(Boolean)
-    return NextResponse.json(
-      { error: nombres.length === 1 ? `Ya hay una mesa llamada ${nombres[0]}` : 'Hay dos mesas con el mismo número' },
-      { status: 409 }
-    )
+    await prisma.$executeRaw`
+      UPDATE pos_mesas m SET
+        nombre     = COALESCE(v.nombre, m.nombre),
+        capacidad  = COALESCE(v.capacidad, m.capacidad),
+        x          = COALESCE(v.x, m.x),
+        y          = COALESCE(v.y, m.y),
+        forma      = COALESCE(v.forma, m.forma),
+        ancho      = COALESCE(v.ancho, m.ancho),
+        alto       = COALESCE(v.alto, m.alto),
+        rotacion   = COALESCE(v.rotacion, m.rotacion),
+        cabeceras  = COALESCE(v.cabeceras, m.cabeceras),
+        "sectorId" = COALESCE(v."sectorId", m."sectorId"),
+        activa     = COALESCE(v.activa, m.activa)
+      FROM jsonb_to_recordset(${JSON.stringify(filas)}::jsonb) AS v(
+        id uuid, nombre text, capacidad int, x numeric, y numeric, forma text,
+        ancho numeric, alto numeric, rotacion int, cabeceras smallint, "sectorId" uuid, activa boolean
+      )
+      WHERE m.id = v.id AND m."clienteId" = ${clienteId}::uuid
+    `
+  } catch (e) {
+    const msg = String((e as { meta?: { message?: string }; message?: string }).meta?.message ?? (e as Error).message ?? '')
+    // Sólo es un número repetido si lo dice la base; si no, el error real.
+    if (msg.includes('pos_mesas_nombre_unica') || msg.includes('23505')) {
+      const nombres = cambios.map((c) => c.nombre?.trim()).filter(Boolean)
+      return NextResponse.json(
+        { error: nombres.length ? `Ya hay otra mesa con el número ${nombres.join(', ')}` : 'Hay dos mesas con el mismo número' },
+        { status: 409 }
+      )
+    }
+    console.error('[pos/salon PATCH]', msg)
+    return NextResponse.json({ error: `No se pudo guardar el plano: ${msg.slice(0, 160)}` }, { status: 500 })
   }
   return NextResponse.json({ ok: true })
 }
