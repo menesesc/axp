@@ -35,6 +35,8 @@ export interface Linea {
   comanda: number | null
   enviadoHora: string | null
   minutosCocina: number | null
+  /** Listo en el pase y todavía sin levantar. */
+  minutosPase: number | null
   estadoKds: string | null
 }
 

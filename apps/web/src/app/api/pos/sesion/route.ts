@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
+import { configuracionDe } from '@/lib/pos/db'
+import { turnoDe } from '@/lib/pos/turnos'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +46,14 @@ export async function GET(request: NextRequest) {
       : Promise.resolve([]),
   ])
 
-  return NextResponse.json({ cajas, sesion: abierta[0] ?? null })
+  // El nombre del turno (mañana, mediodía, tarde, noche) sale de la hora de
+  // apertura y de los horarios que configuró la casa.
+  const cfg = await configuracionDe(clienteId!)
+  const sesion = abierta[0]
+    ? { ...abierta[0], turno: turnoDe(abierta[0].abiertaAt?.slice(11, 16), cfg.turnos) }
+    : null
+
+  return NextResponse.json({ cajas, sesion, turnos: cfg.turnos })
 }
 
 export async function POST(request: NextRequest) {

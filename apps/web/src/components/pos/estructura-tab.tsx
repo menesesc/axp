@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { TurnosConfig } from './turnos-config'
 import { cn } from '@/lib/utils'
 import { Building2, Plus, Receipt } from 'lucide-react'
 
@@ -164,6 +165,8 @@ export function EstructuraTab() {
           )}
         </div>
       ))}
+
+      <TurnosConfig />
     </div>
   )
 }

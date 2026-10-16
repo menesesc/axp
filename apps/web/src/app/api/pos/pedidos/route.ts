@@ -59,7 +59,14 @@ export async function GET(request: NextRequest) {
              i.nota, i.marca, i.comanda, i."estadoKds",
              i."enviadoAt" IS NOT NULL AS enviado, i."anuladoAt" IS NOT NULL AS anulado,
              to_char(i."enviadoAt", 'HH24:MI') AS "enviadoHora",
-             round(extract(epoch FROM (now() - i."enviadoAt")) / 60)::int AS "minutosCocina",
+             -- Cocina: desde que entró hasta que salió, o hasta ahora si
+             -- todavía no salió. Pase: desde que está listo hasta que el
+             -- mozo lo levanta. Son dos demoras distintas y de dos sectores
+             -- distintos; sumarlas esconde de quién es el problema.
+             round(extract(epoch FROM (COALESCE(i."entregadoAt", now()) - i."enviadoAt")) / 60)::int AS "minutosCocina",
+             CASE WHEN i."entregadoAt" IS NOT NULL
+                  THEN round(extract(epoch FROM (COALESCE(i."despachadoAt", now()) - i."entregadoAt")) / 60)::int
+             END AS "minutosPase",
              COALESCE((
                SELECT json_agg(json_build_object(
                         'opcionId', o."opcionId", 'grupo', o.grupo,

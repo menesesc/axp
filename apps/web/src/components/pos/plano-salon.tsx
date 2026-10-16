@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { MesaEstado } from './mapa-mesas'
 
@@ -142,9 +143,16 @@ export function PlanoSalon({
 }) {
   const lienzo = lienzoDe(zoom)
   const elegidos = new Set(Array.isArray(seleccion) ? seleccion : seleccion ? [seleccion] : [])
+  // El lienzo se estira hasta la forma del contenedor para que el plano se
+  // dibuje lo más grande posible: si no, una pantalla ancha y baja deja dos
+  // franjas vacías a los costados y el salón chiquito en el medio. Lo que
+  // sobra se reparte a los dos lados para que quede centrado.
+  const { ref, caja } = useCaja()
+  const vista = encuadre(lienzo, caja)
   return (
     <svg
-      viewBox={`0 0 ${lienzo.ancho} ${lienzo.alto}`}
+      ref={ref}
+      viewBox={`${vista.x} ${vista.y} ${vista.ancho} ${vista.alto}`}
       preserveAspectRatio="xMidYMid meet"
       className={cn('h-full w-full touch-none select-none', edicion && 'cursor-default')}
       onPointerDown={(e) => {
@@ -159,7 +167,7 @@ export function PlanoSalon({
               <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e2e8f0" strokeWidth="1" />
             </pattern>
           </defs>
-          <rect data-fondo width={lienzo.ancho} height={lienzo.alto} fill="url(#grilla)" />
+          <rect data-fondo x={vista.x} y={vista.y} width={vista.ancho} height={vista.alto} fill="url(#grilla)" />
         </>
       )}
 
@@ -300,4 +308,43 @@ export function PlanoSalon({
       )}
     </svg>
   )
+}
+
+
+/** Mide el contenedor del SVG, para encuadrar el plano sobre lo que hay. */
+function useCaja() {
+  const ref = useRef<SVGSVGElement | null>(null)
+  const [caja, setCaja] = useState<{ ancho: number; alto: number } | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const medir = () => {
+      const r = el.getBoundingClientRect()
+      if (r.width > 0 && r.height > 0) setCaja({ ancho: r.width, alto: r.height })
+    }
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  return { ref, caja }
+}
+
+/**
+ * El rectángulo del lienzo que se muestra.
+ *
+ * Se agranda el lado que le sobra al contenedor —ancho o alto— y el excedente
+ * se reparte a ambos lados. Así el plano ocupa todo lo que hay y queda
+ * centrado, en vez de dejar franjas muertas.
+ */
+function encuadre(lienzo: { ancho: number; alto: number }, caja: { ancho: number; alto: number } | null) {
+  if (!caja) return { x: 0, y: 0, ...lienzo }
+  const relCaja = caja.ancho / caja.alto
+  const relLienzo = lienzo.ancho / lienzo.alto
+  if (relCaja > relLienzo) {
+    const ancho = lienzo.alto * relCaja
+    return { x: -(ancho - lienzo.ancho) / 2, y: 0, ancho, alto: lienzo.alto }
+  }
+  const alto = lienzo.ancho / relCaja
+  return { x: 0, y: -(alto - lienzo.alto) / 2, ancho: lienzo.ancho, alto }
 }

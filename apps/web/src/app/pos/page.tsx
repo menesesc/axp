@@ -11,12 +11,14 @@ import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
 import { Autorizacion } from '@/components/pos/autorizacion'
 import { CifrasSalon, MesasAbiertas, Reloj, duracion } from '@/components/pos/resumen-salon'
+import { PanelTiempos } from '@/components/pos/panel-tiempos'
+import { useUser } from '@/hooks/use-user'
 import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
 import type { GrupoPos } from '@/components/pos/opciones-producto'
 import { usePedido } from '@/lib/pos/usar-pedido'
 import { cn } from '@/lib/utils'
-import { ListPlus, Loader2, Receipt, ReceiptText } from 'lucide-react'
+import { ChefHat, ListPlus, Loader2, Pencil, Receipt, ReceiptText, Users, Utensils, Wallet, X } from 'lucide-react'
 
 /**
  * Pantalla del cajero.
@@ -36,6 +38,7 @@ import { ListPlus, Loader2, Receipt, ReceiptText } from 'lucide-react'
 
 export default function PosPage() {
   const qc = useQueryClient()
+  const { isAdmin, user } = useUser()
   const [cajaId, setCajaId] = useState<string>('')
   const [modo, setModo] = useState<'salon' | 'rapida'>('salon')
   const [sectorId, setSectorId] = useState<string | null>(null)
@@ -44,6 +47,10 @@ export default function PosPage() {
   // por el consumo, que es lo que se mira al llegar a la mesa.
   const [vista, setVista] = useState<'detalle' | 'productos'>('detalle')
   const [anulando, setAnulando] = useState<Linea | null>(null)
+  // Los importes no viven en la pantalla: el salón la ve de reojo todo el
+  // tiempo y lo vendido no es asunto de la mesa de al lado. Están acá
+  // adentro, a un toque.
+  const [verTurno, setVerTurno] = useState(false)
 
   const { data: cat } = useQuery({
     queryKey: ['pos-catalogo'],
@@ -61,7 +68,16 @@ export default function PosPage() {
       if (!r.ok) throw new Error('No se pudo cargar la caja')
       return r.json() as Promise<{
         cajas: Array<{ id: string; nombre: string; sucursal: string; sucursalId: string }>
-        sesion: { id: string; numero: number; fondoInicial: number; vendido: number; pedidos?: number; abiertaAt?: string; usuario?: string | null } | null
+        sesion: {
+          id: string
+          numero: number
+          fondoInicial: number
+          vendido: number
+          pedidos?: number
+          abiertaAt?: string
+          usuario?: string | null
+          turno?: string | null
+        } | null
       }>
     },
     refetchInterval: 30_000,
@@ -206,67 +222,103 @@ export default function PosPage() {
   const sector = salon.data?.sectores.find((s) => s.id === sectorId)
 
   const caja = ses.cajas.find((c) => c.id === cajaId)
+  const ocupadas = mesas.filter((m) => m.estado !== 'libre')
+  const cubiertosSalon = ocupadas.reduce((acc, m) => acc + (m.comensales ?? 0), 0)
+  const demoradas = ocupadas.filter((m) => m.enCocina > 0 && (m.minutosCocina ?? 0) >= 15).length
   const horaApertura = ses.sesion.abiertaAt ? ses.sesion.abiertaAt.slice(11, 16) : null
   // Datos en vivo de la mesa abierta (tiempo, cocina), para el encabezado del consumo.
   const mesaViva = pedido.mesa ? salon.data?.mesas.find((m) => m.id === pedido.mesa!.id) : undefined
+  const horaMesa = pedido.abiertoAt ? pedido.abiertoAt.slice(11, 16) : null
 
   return (
     <div className="flex h-dvh flex-col bg-[#f3f6fb]">
-      {/* Barra de la caja: siempre arriba, con lo que se mira de reojo. */}
-      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200/80 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-3">
+      {/* Barra de la caja. Nada de importes: esta pantalla la ve medio salón
+          y lo vendido no es asunto de la mesa de al lado. */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-3 py-2">
+        <div className="flex shrink-0 items-center gap-2.5">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-sm font-bold text-white">
             {caja?.nombre?.slice(0, 2).toUpperCase() ?? 'PV'}
           </span>
           <div className="leading-tight">
             <p className="text-sm font-semibold">
-              {caja?.sucursal} · {caja?.nombre}
+              {ses.sesion.turno ?? `Turno ${ses.sesion.numero}`}
+              {horaApertura && <span className="font-normal text-slate-500"> · desde {horaApertura}</span>}
             </p>
-            <p className="text-xs text-slate-500">
-              Turno {ses.sesion.numero}
-              {horaApertura ? ` · abierto ${horaApertura}` : ''}
-              {ses.sesion.usuario ? ` · ${ses.sesion.usuario}` : ''}
+            <p className="truncate text-xs text-slate-500">
+              {caja?.nombre}
+              {(ses.sesion.usuario || user?.nombre) && ` · ${ses.sesion.usuario || user?.nombre}`}
             </p>
           </div>
         </div>
 
-        <div className="flex rounded-xl bg-slate-100 p-1">
-          {(['salon', 'rapida'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => {
-                setModo(m)
-                pedido.limpiar()
-              }}
-              className={cn(
-                'h-10 rounded-lg px-4 text-sm font-semibold transition-colors',
-                modo === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-              )}
-            >
-              {m === 'salon' ? 'Salón' : 'Venta rápida'}
-            </button>
-          ))}
+        {/* Los salones y, al final, la venta rápida: lo que se elige acá es
+            dónde se está parado, no una configuración. */}
+        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+          {(salon.data?.sectores ?? []).map((sec) => {
+            const activo = modo === 'salon' && sec.id === sectorId
+            const abiertasSector = (salon.data?.mesas ?? []).filter((m) => m.sectorId === sec.id && m.estado !== 'libre').length
+            return (
+              <button
+                key={sec.id}
+                onClick={() => {
+                  setModo('salon')
+                  setSectorId(sec.id)
+                }}
+                className={cn(
+                  'h-11 shrink-0 rounded-xl px-4 text-sm font-semibold transition-colors',
+                  activo ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+                )}
+              >
+                {sec.nombre}
+                <span className={cn('ml-2 text-xs font-normal', activo ? 'text-white/60' : 'text-slate-400')}>
+                  {abiertasSector}/{sec.mesas}
+                </span>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => {
+              setModo('rapida')
+              pedido.limpiar()
+            }}
+            className={cn(
+              'h-11 shrink-0 rounded-xl px-4 text-sm font-semibold transition-colors',
+              modo === 'rapida' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+            )}
+          >
+            Venta rápida
+          </button>
         </div>
 
-        <div className="ml-auto flex items-center gap-4">
-          <div className="text-right leading-tight">
-            <p className="text-[11px] text-slate-500">Vendido en el turno</p>
-            <p className="text-lg font-bold tabular-nums [font-family:var(--font-display),system-ui]">
-              ${Math.round(ses.sesion.vendido ?? 0).toLocaleString('es-AR')}
-              {ses.sesion.pedidos != null && <span className="ml-1.5 text-xs font-normal text-slate-400">{ses.sesion.pedidos} pedidos</span>}
-            </p>
-          </div>
+        <div className="flex shrink-0 items-center gap-2">
           <Reloj className="hidden text-2xl font-semibold text-slate-700 sm:inline" />
-          <a href="/configuracion/pos/plano" className="hidden h-10 items-center rounded-xl px-3 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 md:inline-flex">
-            Editar plano
-          </a>
+          <button
+            onClick={() => setVerTurno(true)}
+            title="Caja del turno"
+            aria-label="Caja del turno"
+            className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+          >
+            <Wallet className="h-5 w-5" />
+          </button>
+          {/* El plano se dibuja una vez y se toca poco: un ícono, y sólo
+              para quien administra. */}
+          {isAdmin && (
+            <a
+              href="/configuracion/pos/plano"
+              title="Editar el plano del salón"
+              aria-label="Editar el plano del salón"
+              className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+            >
+              <Pencil className="h-4 w-4" />
+            </a>
+          )}
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      {/* El salón. Se oculta mientras se carga una mesa: todo el ancho es para
-          la carta y el consumo. */}
-      <section className={cn('min-h-0 flex-1 gap-3 p-3', enMesa ? 'hidden' : 'flex flex-col lg:flex-row')}>
+      <div className="flex min-h-0 flex-1 flex-col">
+      {/* El salón, a pantalla completa. Se oculta mientras se carga una mesa:
+          ahí lo que importa es el consumo, no dónde está la mesa. */}
+      <section className={cn('min-h-0 flex-1 flex-col p-2', enMesa ? 'hidden' : 'flex')}>
         {modo === 'rapida' ? (
           <div className="grid flex-1 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/60">
             <div className="text-center">
@@ -283,132 +335,130 @@ export default function PosPage() {
           </div>
         ) : (
           <>
-            <div className="flex min-h-0 flex-1 flex-col">
-              {(salon.data?.sectores.length ?? 0) > 1 && (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {salon.data!.sectores.map((s) => {
-                    const abiertasSector = (salon.data?.mesas ?? []).filter((m) => m.sectorId === s.id && m.estado !== 'libre').length
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => setSectorId(s.id)}
-                        className={cn(
-                          'h-11 rounded-xl px-4 text-sm font-semibold transition-colors',
-                          s.id === sectorId ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'
-                        )}
-                      >
-                        {s.nombre}
-                        <span className="ml-2 text-xs font-normal opacity-70">
-                          {abiertasSector}/{s.mesas}
-                        </span>
-                      </button>
-                    )
-                  })}
+            <div className="min-h-0 flex-1 rounded-2xl border border-slate-200/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              {salon.isLoading ? (
+                <div className="grid h-full place-items-center py-16">
+                  <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+                </div>
+              ) : mesas.length === 0 && sector && sucursalId ? (
+                <CrearMesas sucursalId={sucursalId} sectorId={sector.id} onListo={() => salon.refetch()} />
+              ) : ubicadas.length > 0 ? (
+                <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
+              ) : (
+                <div className="h-full overflow-y-auto">
+                  <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
                 </div>
               )}
-
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                {salon.isLoading ? (
-                  <div className="grid h-full place-items-center py-16">
-                    <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
-                  </div>
-                ) : mesas.length === 0 && sector && sucursalId ? (
-                  <CrearMesas sucursalId={sucursalId} sectorId={sector.id} onListo={() => salon.refetch()} />
-                ) : ubicadas.length > 0 ? (
-                  <div className="h-full min-h-[18rem]">
-                    <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} zoom={zoomPlano} />
-                  </div>
-                ) : (
-                  <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
-                )}
-              </div>
-              <div className="mt-2 shrink-0 px-1">
-                <LeyendaMesas />
-              </div>
             </div>
 
-            {/* Lo que pide atención: cifras y mesas abiertas por urgencia. */}
-            <aside className="flex min-h-0 flex-col gap-3 lg:w-[24rem] lg:shrink-0">
-              <CifrasSalon mesas={salon.data?.mesas ?? []} />
-              <MesasAbiertas className="min-h-[14rem] flex-1" mesas={salon.data?.mesas ?? []} onAbrir={tocarMesa} />
-            </aside>
+            {/* Una franja fina con lo que se mira sin pensar. Sin un peso:
+                para eso está la billetera de arriba. */}
+            <div className="mt-2 flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 px-2">
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                <Utensils className="h-4 w-4 text-slate-400" />
+                {ocupadas.length}/{mesas.length} ocupadas
+              </span>
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                <Users className="h-4 w-4 text-slate-400" />
+                {cubiertosSalon} cubiertos
+              </span>
+              <span
+                className={cn(
+                  'flex items-center gap-1.5 text-sm font-semibold',
+                  demoradas > 0 ? 'text-red-600' : 'text-emerald-600'
+                )}
+              >
+                <ChefHat className="h-4 w-4" />
+                {demoradas > 0 ? `${demoradas} demorada${demoradas > 1 ? 's' : ''} en cocina` : 'cocina al día'}
+              </span>
+              <span className="ml-auto">
+                <LeyendaMesas />
+              </span>
+            </div>
           </>
         )}
       </section>
 
       {enMesa && (
-        <>
-          <div className={cn('min-h-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
-            <div className="min-h-0 flex-1">
-              <SelectorProductos
-                categorias={cat?.categorias ?? []}
-                productos={cat?.productos ?? []}
-                grupos={cat?.grupos ?? []}
-                enPedido={pedido.lineas.reduce<Record<string, number>>((acc, l) => ((acc[l.productoId] = (acc[l.productoId] ?? 0) + l.cantidad), acc), {})}
-                onAgregar={(p, opciones, nota) =>
-                  pedido.bloqueado
-                    ? toast.error('La mesa tiene la precuenta impresa')
-                    : pedido.agregar(p, opciones, nota)
-                }
-              />
-            </div>
-            <button
-              onClick={() => setVista('detalle')}
-              className="mt-2 flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 text-base font-semibold text-white lg:hidden"
+        <section className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            {/* El consumo primero: es lo que se mira estando en la mesa. */}
+            <Carrito
+              className={cn('flex-1 lg:flex-none lg:border-l-0 lg:border-r lg:border-slate-200', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
+              titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Venta rápida'}
+              subtitulo={[
+                pedido.comensales ? `${pedido.comensales} cub.` : null,
+                horaMesa ? `desde ${horaMesa}` : null,
+                mesaViva?.minutos != null ? `hace ${duracion(mesaViva.minutos)}` : null,
+                mesaViva?.mozo ?? ses.sesion.usuario ?? user?.nombre ?? null,
+              ]
+                .filter(Boolean)
+                .join(' · ') || null}
+              lineas={pedido.lineas}
+              bloqueado={pedido.bloqueado}
+              onCambiar={pedido.cambiar}
+              onMarca={pedido.marcar}
+              onAnular={(l) => setAnulando(l)}
+              onCerrar={() => void salir()}
             >
-              Ver el consumo
-              {pedido.lineas.length > 0 && ` · ${pedido.lineas.length}`}
-            </button>
+              <button
+                onClick={() => setVista('productos')}
+                className="mb-2 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 lg:hidden"
+              >
+                <ListPlus className="h-5 w-5" /> Agregar producto
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => precuenta.mutate()}
+                  disabled={pedido.bloqueado || precuenta.isPending || pedido.lineas.length === 0}
+                  className="flex h-16 items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 disabled:opacity-30 active:scale-[0.98]"
+                >
+                  <ReceiptText className="h-5 w-5" /> Precuenta
+                </button>
+                <button
+                  disabled
+                  title="En la próxima etapa"
+                  className="flex h-16 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white disabled:opacity-30"
+                >
+                  <Receipt className="h-5 w-5" /> Cobrar
+                </button>
+              </div>
+              <button
+                onClick={() => void salir()}
+                disabled={pedido.cerrando}
+                className="mt-2 h-16 w-full rounded-xl bg-slate-900 text-lg font-semibold text-white disabled:opacity-40 active:scale-[0.99]"
+              >
+                {pedido.sinEnviar > 0 ? `Comandar y salir · ${pedido.sinEnviar}` : 'Salir de la mesa'}
+              </button>
+            </Carrito>
+
+            <div className={cn('min-h-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
+              <div className="min-h-0 flex-1">
+                <SelectorProductos
+                  categorias={cat?.categorias ?? []}
+                  productos={cat?.productos ?? []}
+                  grupos={cat?.grupos ?? []}
+                  enPedido={pedido.lineas.reduce<Record<string, number>>((acc, l) => ((acc[l.productoId] = (acc[l.productoId] ?? 0) + l.cantidad), acc), {})}
+                  onAgregar={(p, opciones, nota) =>
+                    pedido.bloqueado
+                      ? toast.error('La mesa tiene la precuenta impresa')
+                      : pedido.agregar(p, opciones, nota)
+                  }
+                />
+              </div>
+              <button
+                onClick={() => setVista('detalle')}
+                className="mt-2 flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 text-base font-semibold text-white lg:hidden"
+              >
+                Ver el consumo
+                {pedido.lineas.length > 0 && ` · ${pedido.lineas.length}`}
+              </button>
+            </div>
           </div>
 
-          <Carrito
-            className={cn('flex-1 lg:flex-none', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
-            titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Venta rápida'}
-            subtitulo={[
-              pedido.comensales ? `${pedido.comensales} cubiertos` : null,
-              mesaViva?.mozo ?? null,
-              mesaViva?.minutos != null ? `abierta hace ${duracion(mesaViva.minutos)}` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ') || null}
-            lineas={pedido.lineas}
-            bloqueado={pedido.bloqueado}
-            onCambiar={pedido.cambiar}
-            onMarca={pedido.marcar}
-            onAnular={(l) => setAnulando(l)}
-            onCerrar={() => void salir()}
-          >
-            <button
-              onClick={() => setVista('productos')}
-              className="mb-2 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 lg:hidden"
-            >
-              <ListPlus className="h-5 w-5" /> Agregar producto
-            </button>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => precuenta.mutate()}
-                disabled={pedido.bloqueado || precuenta.isPending || pedido.lineas.length === 0}
-                className="flex h-16 items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 disabled:opacity-30 active:scale-[0.98]"
-              >
-                <ReceiptText className="h-5 w-5" /> Precuenta
-              </button>
-              <button
-                disabled
-                title="En la próxima etapa"
-                className="flex h-16 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white disabled:opacity-30"
-              >
-                <Receipt className="h-5 w-5" /> Cobrar
-              </button>
-            </div>
-            <button
-              onClick={() => void salir()}
-              disabled={pedido.cerrando}
-              className="mt-2 h-16 w-full rounded-xl bg-slate-900 text-lg font-semibold text-white disabled:opacity-40 active:scale-[0.99]"
-            >
-              {pedido.sinEnviar > 0 ? `Comandar y salir · ${pedido.sinEnviar}` : 'Salir de la mesa'}
-            </button>
-          </Carrito>
-        </>
+          {/* Los tiempos, abajo de todo y plegables. */}
+          <PanelTiempos lineas={pedido.lineas} />
+        </section>
       )}
 
       </div>
@@ -424,6 +474,54 @@ export default function PosPage() {
             setAnulando(null)
           }}
         />
+      )}
+
+      {/* La caja del turno, con los importes. Acá adentro y no en la barra:
+          la pantalla del salón la ve cualquiera que pase. */}
+      {verTurno && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setVerTurno(false)}>
+          <div
+            className="flex h-full w-full max-w-md flex-col bg-white p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold">Caja del turno</p>
+                <p className="text-xs text-slate-500">
+                  {ses.sesion.turno ?? `Turno ${ses.sesion.numero}`}
+                  {horaApertura ? ` · desde ${horaApertura}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setVerTurno(false)}
+                aria-label="Cerrar"
+                className="grid h-11 w-11 place-items-center rounded-xl bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-3 rounded-2xl bg-slate-900 px-4 py-3 text-white">
+              <p className="text-xs text-white/60">Vendido en el turno</p>
+              <p className="text-3xl font-bold tabular-nums">
+                ${Math.round(ses.sesion.vendido ?? 0).toLocaleString('es-AR')}
+              </p>
+              <p className="mt-0.5 text-xs text-white/60">
+                {ses.sesion.pedidos ?? 0} pedidos · fondo ${Math.round(ses.sesion.fondoInicial ?? 0).toLocaleString('es-AR')}
+              </p>
+            </div>
+
+            <CifrasSalon mesas={salon.data?.mesas ?? []} />
+            <MesasAbiertas
+              className="mt-3 min-h-[12rem] flex-1"
+              mesas={salon.data?.mesas ?? []}
+              onAbrir={(m) => {
+                setVerTurno(false)
+                tocarMesa(m)
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {abriendo && (

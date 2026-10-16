@@ -34,6 +34,8 @@ export function usePedido(opts: {
   const [comensales, setComensales] = useState<number | null>(null)
   const [lineas, setLineas] = useState<Linea[]>([])
   const [bloqueado, setBloqueado] = useState(false)
+  // Hora en que se abrió la mesa: va arriba del consumo, siempre visible.
+  const [abiertoAt, setAbiertoAt] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
@@ -89,6 +91,7 @@ export function usePedido(opts: {
       setComensales(cubiertos)
       setLineas([])
       setBloqueado(false)
+      setAbiertoAt(new Date().toISOString().slice(0, 19))
       // Se guarda vacío para que la mesa se pinte ocupada en el resto de las
       // pantallas desde el momento en que el mozo la tomó, no cuando cargue
       // el primer plato.
@@ -110,11 +113,13 @@ export function usePedido(opts: {
         comensales: number | null
         mesaId: string | null
         mesa: string | null
+        abiertoAt: string | null
       }
       setPedidoId(p.id)
       setMesa(p.mesaId ? { id: p.mesaId, nombre: p.mesa ?? '' } : null)
       setComensales(p.comensales)
       setBloqueado(p.estado === 'bloqueado')
+      setAbiertoAt(p.abiertoAt ?? null)
       setLineas(
         (j.items as Array<Record<string, unknown>>)
           .filter((i) => !i.anulado)
@@ -132,6 +137,7 @@ export function usePedido(opts: {
             comanda: (i.comanda as number | null) ?? null,
             enviadoHora: (i.enviadoHora as string | null) ?? null,
             minutosCocina: (i.minutosCocina as number | null) ?? null,
+            minutosPase: (i.minutosPase as number | null) ?? null,
             estadoKds: (i.estadoKds as string | null) ?? null,
           }))
       )
@@ -151,6 +157,7 @@ export function usePedido(opts: {
     setComensales(null)
     setLineas([])
     setBloqueado(false)
+    setAbiertoAt(new Date().toISOString().slice(0, 19))
   }, [])
 
   const agregar = useCallback(
@@ -190,6 +197,7 @@ export function usePedido(opts: {
                   comanda: null,
                   enviadoHora: null,
                   minutosCocina: null,
+                  minutosPase: null,
                   estadoKds: 'pendiente',
                 },
               ]
@@ -273,6 +281,7 @@ export function usePedido(opts: {
     setComensales(null)
     setLineas([])
     setBloqueado(false)
+    setAbiertoAt(null)
   }, [])
 
   /**
@@ -302,6 +311,7 @@ export function usePedido(opts: {
     pedidoId,
     mesa,
     comensales,
+    abiertoAt,
     lineas,
     bloqueado,
     cargando,

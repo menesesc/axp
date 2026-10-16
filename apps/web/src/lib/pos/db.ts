@@ -136,11 +136,17 @@ export async function estructuraDe(clienteId: string): Promise<Sucursal[]> {
 /** Config del POS. Se crea en la primera lectura para no tener que darla de alta. */
 export async function configuracionDe(clienteId: string) {
   const [cfg] = await prisma.$queryRaw<
-    Array<{ pantallas: string[]; monedas: string[]; usaCuentaCorriente: boolean; usaPropina: boolean }>
+    Array<{
+      pantallas: string[]
+      monedas: string[]
+      usaCuentaCorriente: boolean
+      usaPropina: boolean
+      turnos: Array<{ nombre: string; desde: string }>
+    }>
   >`
     INSERT INTO pos_configuracion ("clienteId") VALUES (${clienteId}::uuid)
     ON CONFLICT ("clienteId") DO UPDATE SET "updatedAt" = pos_configuracion."updatedAt"
-    RETURNING pantallas, monedas, "usaCuentaCorriente", "usaPropina"
+    RETURNING pantallas, monedas, "usaCuentaCorriente", "usaPropina", turnos
   `
   return cfg!
 }
