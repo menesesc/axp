@@ -11,8 +11,10 @@ import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
 import { Autorizacion } from '@/components/pos/autorizacion'
 import { CifrasSalon, MesasAbiertas, Reloj, duracion } from '@/components/pos/resumen-salon'
-import { PanelTiempos } from '@/components/pos/panel-tiempos'
 import { BotoneraMesa, accionesMesa } from '@/components/pos/botonera-mesa'
+import { Cobro } from '@/components/pos/cobro'
+import { Descuento } from '@/components/pos/descuento'
+import { NombreCliente } from '@/components/pos/nombre-cliente'
 import { useUser } from '@/hooks/use-user'
 import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
@@ -47,11 +49,14 @@ export default function PosPage() {
   // En pantalla chica sólo entra una cosa: el consumo o la carta. Se arranca
   // por el consumo, que es lo que se mira al llegar a la mesa.
   const [vista, setVista] = useState<'detalle' | 'productos'>('detalle')
-  const [anulando, setAnulando] = useState<Linea | null>(null)
+  const [anulando, setAnulando] = useState<Linea[] | null>(null)
   // Los importes no viven en la pantalla: el salón la ve de reojo todo el
   // tiempo y lo vendido no es asunto de la mesa de al lado. Están acá
   // adentro, a un toque.
   const [verTurno, setVerTurno] = useState(false)
+  const [cobrando, setCobrando] = useState(false)
+  const [descontando, setDescontando] = useState(false)
+  const [editandoCliente, setEditandoCliente] = useState(false)
 
   const { data: cat } = useQuery({
     queryKey: ['pos-catalogo'],
@@ -252,14 +257,12 @@ export default function PosPage() {
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-sm font-bold text-white">
             {caja?.nombre?.slice(0, 2).toUpperCase() ?? 'PV'}
           </span>
+          {/* El turno con su horario debajo: es lo que define todo lo demás
+              —qué se vendió, quién responde por la caja— y se mira seguido. */}
           <div className="leading-tight">
-            <p className="text-sm font-semibold">
-              {ses.sesion.turno ?? `Turno ${ses.sesion.numero}`}
-              {horaApertura && <span className="font-normal text-slate-500"> · desde {horaApertura}</span>}
-            </p>
+            <p className="text-sm font-semibold">{ses.sesion.turno ?? `Turno ${ses.sesion.numero}`}</p>
             <p className="truncate text-xs text-slate-500">
-              {caja?.nombre}
-              {(ses.sesion.usuario || user?.nombre) && ` · ${ses.sesion.usuario || user?.nombre}`}
+              {horaApertura ? `abierto ${horaApertura}` : caja?.nombre}
             </p>
           </div>
         </div>
@@ -303,7 +306,13 @@ export default function PosPage() {
           </button>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-3">
+          {/* Quién está en la caja, a la derecha: es de quien se habla cuando
+              el arqueo no cierra. */}
+          <div className="hidden text-right leading-tight sm:block">
+            <p className="text-sm font-semibold">{ses.sesion.usuario || user?.nombre}</p>
+            <p className="text-xs text-slate-500">{caja?.nombre}</p>
+          </div>
           <Reloj className="hidden text-2xl font-semibold text-slate-700 sm:inline" />
           <button
             onClick={() => setVerTurno(true)}
@@ -397,8 +406,17 @@ export default function PosPage() {
           <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
             {/* El consumo primero: es lo que se mira estando en la mesa. */}
             <Carrito
-              className={cn('flex-1 lg:flex-none lg:border-l-0 lg:border-r lg:border-slate-200', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
+              className={cn('flex-1 lg:flex-none lg:border-r', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
               titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Venta rápida'}
+              cliente={pedido.cliente}
+              onCliente={() => setEditandoCliente(true)}
+              onRepetir={(l) =>
+                pedido.agregar(
+                  { id: l.productoId, nombre: l.nombre, precio: l.precioUnitario, alicuotaIva: l.alicuotaIva },
+                  l.opciones,
+                  l.nota
+                )
+              }
               subtitulo={[
                 pedido.comensales ? `${pedido.comensales} cub.` : null,
                 horaMesa ? `desde ${horaMesa}` : null,
@@ -411,8 +429,7 @@ export default function PosPage() {
               bloqueado={pedido.bloqueado}
               onCambiar={pedido.cambiar}
               onMarca={pedido.marcar}
-              onAnular={(l) => setAnulando(l)}
-              onCerrar={() => void salir()}
+              onAnular={(ls) => setAnulando(ls)}
             >
               <button
                 onClick={() => setVista('productos')}
@@ -423,9 +440,13 @@ export default function PosPage() {
               <BotoneraMesa
                 acciones={accionesMesa({
                   sinEnviar: pedido.sinEnviar,
-                  bloqueado: pedido.bloqueado || pedido.lineas.length === 0,
+                  vacio: pedido.lineas.length === 0,
+                  bloqueado: pedido.bloqueado,
                   onComandar: () => void comandar(),
-                  onPrecuenta: () => precuenta.mutate(),
+                  onCuenta: () => precuenta.mutate(),
+                  onCobrar: () => setCobrando(true),
+                  onDescuento: () => setDescontando(true),
+                  onSalir: () => void salir(),
                 })}
               />
             </Carrito>
@@ -453,23 +474,59 @@ export default function PosPage() {
               </button>
             </div>
           </div>
-
-          {/* Los tiempos, abajo de todo y plegables. */}
-          <PanelTiempos lineas={pedido.lineas} />
         </section>
       )}
 
       </div>
 
-      {anulando && (
+      {anulando && anulando.length > 0 && (
         <Autorizacion
           titulo="Sacar un plato comandado"
-          detalle={`${anulando.cantidad} × ${anulando.nombre}. La cocina ya lo tiene.`}
+          detalle={`${anulando.reduce((s, l) => s + l.cantidad, 0)} × ${anulando[0]!.nombre}. La cocina ya lo tiene.`}
           accion="anular_item_enviado"
           onCancelar={() => setAnulando(null)}
           onAutorizado={(usuarioId, motivo) => {
-            void pedido.anularItem(anulando.id, motivo, usuarioId)
+            for (const l of anulando) void pedido.anularItem(l.id, motivo, usuarioId)
             setAnulando(null)
+          }}
+        />
+      )}
+
+      {cobrando && pedido.pedidoId && (
+        <Cobro
+          pedidoId={pedido.pedidoId}
+          titulo={pedido.mesa ? `mesa ${pedido.mesa.nombre}` : 'el pedido'}
+          total={pedido.lineas.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0) * (1 - pedido.descuento.pct / 100) - pedido.descuento.importe}
+          onCerrar={() => setCobrando(false)}
+          onCobrado={() => {
+            setCobrando(false)
+            pedido.limpiar()
+            salon.refetch()
+            qc.invalidateQueries({ queryKey: ['pos-sesion'] })
+          }}
+        />
+      )}
+
+      {descontando && (
+        <Descuento
+          total={pedido.lineas.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0)}
+          pct={pedido.descuento.pct}
+          importe={pedido.descuento.importe}
+          onCerrar={() => setDescontando(false)}
+          onAplicar={(pct, importe, motivo) => {
+            void pedido.aplicarDescuento(pct, importe, motivo)
+            setDescontando(false)
+          }}
+        />
+      )}
+
+      {editandoCliente && (
+        <NombreCliente
+          valor={pedido.cliente}
+          onCerrar={() => setEditandoCliente(false)}
+          onGuardar={(nombre) => {
+            pedido.ponerCliente(nombre)
+            setEditandoCliente(false)
           }}
         />
       )}

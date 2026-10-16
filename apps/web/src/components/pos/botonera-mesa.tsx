@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { ChefHat, Percent, Printer, Split, UserPlus, Wallet } from 'lucide-react'
+import { ChefHat, Percent, Printer, Split, Wallet, X } from 'lucide-react'
 
 /**
  * La botonera de la mesa, de íconos.
@@ -10,7 +10,8 @@ import { ChefHat, Percent, Printer, Split, UserPlus, Wallet } from 'lucide-react
  * lugar y no se lee nada. Por eso son íconos del mismo tamaño en una fila
  * fija, y no botones de texto que cambian de ancho según lo que digan.
  *
- * Salir no está acá: es la X de arriba, y manda a cocina lo que falte.
+ * Salir es la última, al lado de dividir, y manda a cocina lo que falte: en
+ * el salón uno se va de la mesa, no "confirma el pedido".
  *
  * Lo que todavía no existe se muestra apagado en vez de esconderse: que el
  * lugar esté reservado ayuda a aprender la pantalla, y esconder y aparecer
@@ -64,10 +65,13 @@ export function BotoneraMesa({ acciones }: { acciones: AccionMesa[] }) {
 /** Las acciones de una mesa en el salón, en el orden en que se usan. */
 export function accionesMesa(o: {
   sinEnviar: number
+  vacio?: boolean
   bloqueado?: boolean
   onComandar?: () => void
-  onPrecuenta?: () => void
+  onCuenta?: () => void
   onCobrar?: (() => void) | undefined
+  onDescuento?: (() => void) | undefined
+  onSalir?: () => void
 }): AccionMesa[] {
   return [
     {
@@ -78,10 +82,10 @@ export function accionesMesa(o: {
       destacado: o.sinEnviar > 0,
       deshabilitado: o.sinEnviar === 0,
     },
-    { icono: Printer, nombre: 'Precuenta', onClick: o.onPrecuenta, deshabilitado: o.bloqueado },
-    { icono: Wallet, nombre: 'Cobrar', onClick: o.onCobrar, proximamente: !o.onCobrar },
-    { icono: Percent, nombre: 'Descuento', proximamente: true },
-    { icono: UserPlus, nombre: 'Cliente', proximamente: true },
+    { icono: Printer, nombre: 'Cuenta', onClick: o.onCuenta, deshabilitado: o.vacio || o.bloqueado },
+    { icono: Wallet, nombre: 'Cobrar', onClick: o.onCobrar, deshabilitado: o.vacio, proximamente: !o.onCobrar },
+    { icono: Percent, nombre: 'Descuento', onClick: o.onDescuento, deshabilitado: o.vacio, proximamente: !o.onDescuento },
     { icono: Split, nombre: 'Dividir', proximamente: true },
+    { icono: X, nombre: 'Salir', onClick: o.onSalir },
   ]
 }

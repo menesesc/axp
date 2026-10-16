@@ -36,6 +36,8 @@ export function usePedido(opts: {
   const [bloqueado, setBloqueado] = useState(false)
   // Hora en que se abrió la mesa: va arriba del consumo, siempre visible.
   const [abiertoAt, setAbiertoAt] = useState<string | null>(null)
+  const [cliente, setCliente] = useState<string | null>(null)
+  const [descuento, setDescuento] = useState({ pct: 0, importe: 0 })
   const [cargando, setCargando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
@@ -57,6 +59,7 @@ export function usePedido(opts: {
             sucursalId: opts.sucursalId,
             sesionId: opts.sesionId ?? null,
             mesaId: datos?.mesaId !== undefined ? datos.mesaId : (mesa?.id ?? null),
+            cliente,
             mozoId: opts.mozoId ?? null,
             tipo: (datos?.mesaId !== undefined ? datos.mesaId : mesa?.id) ? 'mesa' : 'mostrador',
             comensales: (datos?.comensales !== undefined ? datos.comensales : comensales) ?? 1,
@@ -79,7 +82,7 @@ export function usePedido(opts: {
         if (turno === envio.current) toast.error((e as Error).message)
       }
     },
-    [opts.sucursalId, opts.sesionId, opts.mozoId, pedidoId, mesa, comensales]
+    [opts.sucursalId, opts.sesionId, opts.mozoId, pedidoId, mesa, comensales, cliente]
   )
 
   /** Abre una mesa que estaba libre: pedido nuevo con los cubiertos cargados. */
@@ -114,12 +117,17 @@ export function usePedido(opts: {
         mesaId: string | null
         mesa: string | null
         abiertoAt: string | null
+        cliente: string | null
+        descuentoPct: number | null
+        descuentoImporte: number | null
       }
       setPedidoId(p.id)
       setMesa(p.mesaId ? { id: p.mesaId, nombre: p.mesa ?? '' } : null)
       setComensales(p.comensales)
       setBloqueado(p.estado === 'bloqueado')
       setAbiertoAt(p.abiertoAt ?? null)
+      setCliente(p.cliente ?? null)
+      setDescuento({ pct: Number(p.descuentoPct ?? 0), importe: Number(p.descuentoImporte ?? 0) })
       setLineas(
         (j.items as Array<Record<string, unknown>>)
           .filter((i) => !i.anulado)
@@ -262,6 +270,61 @@ export function usePedido(opts: {
     [pedidoId]
   )
 
+  /** El nombre de quien ocupa la mesa. Se guarda con el pedido. */
+  const ponerCliente = useCallback(
+    (nombre: string | null) => {
+      setCliente(nombre)
+      if (!pedidoId || !opts.sucursalId) return
+      void fetch('/api/pos/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: pedidoId,
+          sucursalId: opts.sucursalId,
+          sesionId: opts.sesionId ?? null,
+          mesaId: mesa?.id ?? null,
+          mozoId: opts.mozoId ?? null,
+          tipo: mesa?.id ? 'mesa' : 'mostrador',
+          comensales: comensales ?? 1,
+          cliente: nombre,
+          items: lineas.map((l) => ({
+            id: l.id,
+            productoId: l.productoId,
+            nombre: l.nombre,
+            cantidad: l.cantidad,
+            precioUnitario: l.precioUnitario,
+            alicuotaIva: l.alicuotaIva,
+            nota: l.nota,
+            marca: l.marca,
+            opciones: l.opciones,
+          })),
+        }),
+      })
+    },
+    [pedidoId, opts.sucursalId, opts.sesionId, opts.mozoId, mesa, comensales, lineas]
+  )
+
+  /** Descuento sobre toda la mesa. */
+  const aplicarDescuento = useCallback(
+    async (pct: number, importe: number, motivo: string) => {
+      if (!pedidoId) return
+      try {
+        const r = await fetch('/api/pos/pedidos', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: pedidoId, accion: 'descuento', descuentoPct: pct, descuentoImporte: importe, motivo }),
+        })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || 'No se pudo aplicar')
+        setDescuento({ pct, importe })
+        toast.success(pct || importe ? 'Descuento aplicado' : 'Descuento quitado')
+      } catch (e) {
+        toast.error((e as Error).message)
+      }
+    },
+    [pedidoId]
+  )
+
   const enviar = useCallback(async () => {
     if (!pedidoId) return 0
     const r = await fetch('/api/pos/pedidos', {
@@ -282,6 +345,8 @@ export function usePedido(opts: {
     setLineas([])
     setBloqueado(false)
     setAbiertoAt(null)
+    setCliente(null)
+    setDescuento({ pct: 0, importe: 0 })
   }, [])
 
   /**
@@ -312,6 +377,10 @@ export function usePedido(opts: {
     mesa,
     comensales,
     abiertoAt,
+    cliente,
+    descuento,
+    ponerCliente,
+    aplicarDescuento,
     lineas,
     bloqueado,
     cargando,

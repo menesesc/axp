@@ -39,7 +39,7 @@ export default function MozoPage() {
   const [numero, setNumero] = useState('')
   // El celular muestra el consumo y un botón para agregar. Nada más entra.
   const [vista, setVista] = useState<'detalle' | 'productos'>('detalle')
-  const [anulando, setAnulando] = useState<Linea | null>(null)
+  const [anulando, setAnulando] = useState<Linea[] | null>(null)
 
   const { data: cat } = useQuery({
     queryKey: ['pos-catalogo'],
@@ -215,8 +215,14 @@ export default function MozoPage() {
           bloqueado={pedido.bloqueado}
           onCambiar={pedido.cambiar}
           onMarca={pedido.marcar}
-          onAnular={(l) => setAnulando(l)}
-          onCerrar={() => void salir()}
+          onAnular={(ls) => setAnulando(ls)}
+          onRepetir={(l) =>
+            pedido.agregar(
+              { id: l.productoId, nombre: l.nombre, precio: l.precioUnitario, alicuotaIva: l.alicuotaIva },
+              l.opciones,
+              l.nota
+            )
+          }
         >
           <button
             onClick={() => setVista('productos')}
@@ -227,21 +233,23 @@ export default function MozoPage() {
           <BotoneraMesa
             acciones={accionesMesa({
               sinEnviar: pedido.sinEnviar,
-              bloqueado: pedido.bloqueado || pedido.lineas.length === 0,
+              vacio: pedido.lineas.length === 0,
+              bloqueado: pedido.bloqueado,
               onComandar: () => void comandar(),
-              onPrecuenta: () => void precuenta(),
+              onCuenta: () => void precuenta(),
+              onSalir: () => void salir(),
             })}
           />
         </Carrito>
 
-        {anulando && (
+        {anulando && anulando.length > 0 && (
           <Autorizacion
             titulo="Sacar un plato comandado"
-            detalle={`${anulando.cantidad} × ${anulando.nombre}. La cocina ya lo tiene.`}
+            detalle={`${anulando.reduce((s, l) => s + l.cantidad, 0)} × ${anulando[0]!.nombre}. La cocina ya lo tiene.`}
             accion="anular_item_enviado"
             onCancelar={() => setAnulando(null)}
             onAutorizado={(usuarioId, motivo) => {
-              void pedido.anularItem(anulando.id, motivo, usuarioId)
+              for (const l of anulando) void pedido.anularItem(l.id, motivo, usuarioId)
               setAnulando(null)
             }}
           />
