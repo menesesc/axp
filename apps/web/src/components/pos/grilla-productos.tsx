@@ -147,7 +147,9 @@ export function GrillaProductos({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    // min-w-0: sin esto, la tira de categorías (que scrollea sola) estira la
+    // columna hasta su ancho natural y empuja toda la pantalla a la derecha.
+    <div className="flex h-full min-w-0 flex-col">
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
         <input

@@ -231,7 +231,7 @@ export default function PosPage() {
   const horaMesa = pedido.abiertoAt ? pedido.abiertoAt.slice(11, 16) : null
 
   return (
-    <div className="flex h-dvh flex-col bg-[#f3f6fb]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#f3f6fb]">
       {/* Barra de la caja. Nada de importes: esta pantalla la ve medio salón
           y lo vendido no es asunto de la mesa de al lado. */}
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-3 py-2">
@@ -381,7 +381,7 @@ export default function PosPage() {
 
       {enMesa && (
         <section className="flex min-h-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
             {/* El consumo primero: es lo que se mira estando en la mesa. */}
             <Carrito
               className={cn('flex-1 lg:flex-none lg:border-l-0 lg:border-r lg:border-slate-200', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
@@ -432,8 +432,8 @@ export default function PosPage() {
               </button>
             </Carrito>
 
-            <div className={cn('min-h-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
-              <div className="min-h-0 flex-1">
+            <div className={cn('min-h-0 min-w-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
+              <div className="min-h-0 min-w-0 flex-1">
                 <SelectorProductos
                   categorias={cat?.categorias ?? []}
                   productos={cat?.productos ?? []}

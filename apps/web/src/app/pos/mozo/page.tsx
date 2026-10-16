@@ -150,9 +150,9 @@ export default function MozoPage() {
 
   if (pedido.pedidoId) {
     return (
-      <div className="flex h-dvh flex-col bg-slate-50 lg:flex-row">
-        <div className={cn('min-h-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
-          <div className="min-h-0 flex-1">
+      <div className="flex h-dvh flex-col overflow-hidden bg-slate-50 lg:flex-row">
+        <div className={cn('min-h-0 min-w-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
+          <div className="min-h-0 min-w-0 flex-1">
             <SelectorProductos
               categorias={cat?.categorias ?? []}
               productos={cat?.productos ?? []}
@@ -217,7 +217,7 @@ export default function MozoPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[#f3f6fb]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#f3f6fb]">
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-4 py-2.5">
         <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-b from-[#4aa6ff] to-[#1f7fe6] text-base font-bold text-white">
           {usuario.nombre.slice(0, 1).toUpperCase()}
