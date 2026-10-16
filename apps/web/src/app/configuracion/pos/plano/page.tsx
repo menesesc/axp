@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -13,7 +13,7 @@ import type { MesaEstado } from '@/components/pos/mapa-mesas'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, LayoutGrid, Loader2, Maximize2, Plus, RotateCw, Save, Trash2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
+import { ArrowLeft, Copy, LayoutGrid, Loader2, Maximize2, Plus, RotateCw, Save, Trash2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
 
 /**
  * El diseñador del plano.
@@ -38,7 +38,9 @@ export default function PlanoPage() {
 
   const [sucursalId, setSucursalId] = useState('')
   const [sectorId, setSectorId] = useState<string | null>(null)
-  const [sel, setSel] = useState<Pieza | null>(null)
+  // Selección: una o varias piezas (clic, Shift/⌘+clic o arrastrando sobre el fondo).
+  const [sel, setSel] = useState<Pieza[]>([])
+  const portapapeles = useRef<{ mesas: MesaEstado[]; elementos: ElementoPlano[] }>({ mesas: [], elementos: [] })
   const [guardando, setGuardando] = useState(false)
 
   const estructura = useQuery({
@@ -188,7 +190,7 @@ export default function PlanoPage() {
 
   const descartar = () => {
     setTocados(new Set())
-    setSel(null)
+    setSel([])
     const d = salon.data
     if (!d) return
     setMesasB(Object.fromEntries(d.mesas.map((m) => [m.id, m])))
@@ -218,42 +220,247 @@ export default function PlanoPage() {
   const arrastrar = (id: string, tipo: 'mesa' | 'elemento', ev: React.PointerEvent<SVGGElement>) => {
     if (!puedeEditar) return
     ev.preventDefault()
-    setSel({ id, tipo })
 
-    const g = ev.currentTarget
-    const svg = g.ownerSVGElement
-    if (!svg) return
-    const ctm = svg.getScreenCTM()
-    if (!ctm) return
+    // Shift o ⌘/Ctrl + clic suma o saca la pieza de la selección, sin mover.
+    if (ev.shiftKey || ev.metaKey || ev.ctrlKey) {
+      setSel((s) => (s.some((p) => p.id === id) ? s.filter((p) => p.id !== id) : [...s, { id, tipo }]))
+      return
+    }
+    // Arrastrar una pieza seleccionada mueve toda la selección; si no lo
+    // estaba, pasa a ser la única seleccionada.
+    const grupo = sel.some((p) => p.id === id) ? sel : [{ id, tipo }]
+    if (grupo !== sel) setSel(grupo)
 
-    const pieza = tipo === 'mesa' ? mesasB[id] : elemsB[id]
-    if (!pieza) return
-    const rot = pieza.rotacion
-    const x0 = (pieza as { x: number | null }).x ?? 0
-    const y0 = (pieza as { y: number | null }).y ?? 0
+    const svg = ev.currentTarget.ownerSVGElement
+    const ctm = svg?.getScreenCTM()
+    if (!svg || !ctm) return
+
+    const piezas = grupo.flatMap((p) => {
+      const d = p.tipo === 'mesa' ? mesasB[p.id] : elemsB[p.id]
+      const g = svg.querySelector<SVGGElement>(`[data-pieza="${p.id}"]`)
+      if (!d || !g) return []
+      return [{ ...p, g, x0: (d as { x: number | null }).x ?? 0, y0: (d as { y: number | null }).y ?? 0, rot: d.rotacion }]
+    })
     const px = ev.clientX
     const py = ev.clientY
-    let destino = { x: x0, y: y0 }
+    let dx = 0
+    let dy = 0
 
     const mover = (e: PointerEvent) => {
-      const dx = (e.clientX - px) / ctm.a
-      const dy = (e.clientY - py) / ctm.d
-      destino = {
-        x: Math.min(lienzo.ancho, Math.max(0, redondear(x0 + dx))),
-        y: Math.min(lienzo.alto, Math.max(0, redondear(y0 + dy))),
+      dx = redondear((e.clientX - px) / ctm.a)
+      dy = redondear((e.clientY - py) / ctm.d)
+      for (const p of piezas) {
+        const x = Math.min(lienzo.ancho, Math.max(0, p.x0 + dx))
+        const y = Math.min(lienzo.alto, Math.max(0, p.y0 + dy))
+        p.g.setAttribute('transform', `translate(${x} ${y}) rotate(${p.rot})`)
       }
-      g.setAttribute('transform', `translate(${destino.x} ${destino.y}) rotate(${rot})`)
     }
     const soltar = () => {
       window.removeEventListener('pointermove', mover)
       window.removeEventListener('pointerup', soltar)
-      if (destino.x === x0 && destino.y === y0) return
-      if (tipo === 'mesa') editarMesa(id, destino)
-      else editarElem(id, destino)
+      if (dx === 0 && dy === 0) return
+      moverPiezas(piezas.map((p) => ({ ...p, x: Math.min(lienzo.ancho, Math.max(0, p.x0 + dx)), y: Math.min(lienzo.alto, Math.max(0, p.y0 + dy)) })))
     }
     window.addEventListener('pointermove', mover)
     window.addEventListener('pointerup', soltar)
   }
+
+  /** Pasa al borrador la nueva posición de varias piezas de una vez. */
+  const moverPiezas = (lista: Array<{ id: string; tipo: 'mesa' | 'elemento'; x: number; y: number }>) => {
+    const mesasM = lista.filter((p) => p.tipo === 'mesa')
+    const elemsM = lista.filter((p) => p.tipo === 'elemento')
+    if (mesasM.length) setMesasB((b) => {
+      const out = { ...b }
+      for (const p of mesasM) if (out[p.id]) out[p.id] = { ...out[p.id]!, x: p.x, y: p.y }
+      return out
+    })
+    if (elemsM.length) setElemsB((b) => {
+      const out = { ...b }
+      for (const p of elemsM) if (out[p.id]) out[p.id] = { ...out[p.id]!, x: p.x, y: p.y }
+      return out
+    })
+    setTocados((t) => {
+      const n = new Set(t)
+      for (const p of lista) n.add(p.id)
+      return n
+    })
+  }
+
+  /** Selección por área: arrastrar sobre el fondo dibuja un rectángulo. */
+  const iniciarMarco = (ev: React.PointerEvent<SVGSVGElement>) => {
+    const sumar = ev.shiftKey || ev.metaKey || ev.ctrlKey
+    if (!sumar) setSel([])
+    if (!puedeEditar) return
+    const svg = ev.currentTarget
+    const ctm = svg.getScreenCTM()
+    const marco = svg.querySelector<SVGRectElement>('[data-marco]')
+    if (!ctm || !marco) return
+    const aLienzo = (cx: number, cy: number) => ({ x: (cx - ctm.e) / ctm.a, y: (cy - ctm.f) / ctm.d })
+    const inicio = aLienzo(ev.clientX, ev.clientY)
+    let area = { x: inicio.x, y: inicio.y, w: 0, h: 0 }
+
+    const mover = (e: PointerEvent) => {
+      const p = aLienzo(e.clientX, e.clientY)
+      area = { x: Math.min(inicio.x, p.x), y: Math.min(inicio.y, p.y), w: Math.abs(p.x - inicio.x), h: Math.abs(p.y - inicio.y) }
+      marco.setAttribute('display', 'inline')
+      marco.setAttribute('x', String(area.x))
+      marco.setAttribute('y', String(area.y))
+      marco.setAttribute('width', String(area.w))
+      marco.setAttribute('height', String(area.h))
+    }
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover)
+      window.removeEventListener('pointerup', soltar)
+      marco.setAttribute('display', 'none')
+      if (area.w < 4 && area.h < 4) return
+      // Entra lo que toca el rectángulo, aunque sea en parte.
+      const toca = (x: number, y: number, a: number, h: number) =>
+        x + a / 2 >= area.x && x - a / 2 <= area.x + area.w && y + h / 2 >= area.y && y - h / 2 <= area.y + area.h
+      const dentro: Pieza[] = [
+        ...mesas.filter((m) => m.x != null && toca(m.x, m.y!, m.ancho, m.alto)).map((m) => ({ id: m.id, tipo: 'mesa' as const })),
+        ...elementos.filter((e) => toca(e.x, e.y, e.ancho, e.alto)).map((e) => ({ id: e.id, tipo: 'elemento' as const })),
+      ]
+      setSel((s) => (sumar ? [...s, ...dentro.filter((d) => !s.some((p) => p.id === d.id))] : dentro))
+    }
+    window.addEventListener('pointermove', mover)
+    window.addEventListener('pointerup', soltar)
+  }
+
+  /** Copia lo seleccionado (con su forma, tamaño, giro y cubiertos). */
+  const copiar = () => {
+    portapapeles.current = {
+      mesas: sel.filter((p) => p.tipo === 'mesa').map((p) => mesasB[p.id]!).filter(Boolean),
+      elementos: sel.filter((p) => p.tipo === 'elemento').map((p) => elemsB[p.id]!).filter(Boolean),
+    }
+    const n = portapapeles.current.mesas.length + portapapeles.current.elementos.length
+    if (n) toast.success(`${n} ${n === 1 ? 'pieza copiada' : 'piezas copiadas'}`)
+  }
+
+  /**
+   * Pega lo copiado justo al lado (corrido hacia la derecha), en el sector que
+   * se está viendo. Las mesas toman los números que siguen al más alto.
+   */
+  const pegar = async () => {
+    const { mesas: ms, elementos: es } = portapapeles.current
+    if (!sector || ms.length + es.length === 0) return
+    const piezas = [...ms, ...es]
+    const ancho = Math.max(...piezas.map((p) => (p.x ?? 0) + p.ancho / 2)) - Math.min(...piezas.map((p) => (p.x ?? 0) - p.ancho / 2))
+    let desplazar = redondear(Math.max(50, ancho + 25))
+    // Si se va del lienzo hacia la derecha, se pega abajo.
+    const bajar = Math.max(...piezas.map((p) => (p.x ?? 0))) + desplazar > lienzo.ancho
+    const off = bajar ? { x: 0, y: redondear(Math.max(...piezas.map((p) => p.alto)) + 50) } : { x: desplazar, y: 0 }
+    if (bajar) desplazar = 0
+
+    let num = Math.max(0, ...Object.values(mesasB).map((m) => Number(m.nombre)).filter((n) => !isNaN(n)))
+    const nuevos: Pieza[] = []
+    try {
+      for (const m of [...ms].sort((a, b) => Number(a.nombre) - Number(b.nombre))) {
+        num += 1
+        const r = await fetch('/api/pos/salon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sucursalId: sucursal,
+            sectorId: sector,
+            nombre: String(num),
+            capacidad: m.capacidad,
+            forma: m.forma,
+            ancho: m.ancho,
+            alto: m.alto,
+            rotacion: m.rotacion,
+            cabeceras: m.cabeceras,
+            x: Math.min(lienzo.ancho, Math.max(0, (m.x ?? 120) + off.x)),
+            y: Math.min(lienzo.alto, Math.max(0, (m.y ?? 120) + off.y)),
+          }),
+        })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || 'No se pudo pegar')
+        nuevos.push({ id: j.id, tipo: 'mesa' })
+      }
+      for (const e of es) {
+        const r = await fetch('/api/pos/salon/elementos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sucursalId: sucursal,
+            sectorId: sector,
+            tipo: e.tipo,
+            etiqueta: e.etiqueta,
+            color: e.color,
+            ancho: e.ancho,
+            alto: e.alto,
+            rotacion: e.rotacion,
+            x: Math.min(lienzo.ancho, Math.max(0, e.x + off.x)),
+            y: Math.min(lienzo.alto, Math.max(0, e.y + off.y)),
+          }),
+        })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || 'No se pudo pegar')
+        nuevos.push({ id: j.id, tipo: 'elemento' })
+      }
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+    await salon.refetch()
+    setSel(nuevos)
+    // Pegar de nuevo deja la próxima copia al lado de esta.
+    portapapeles.current = {
+      mesas: ms.map((m) => ({ ...m, x: (m.x ?? 0) + off.x, y: (m.y ?? 0) + off.y })),
+      elementos: es.map((e) => ({ ...e, x: e.x + off.x, y: e.y + off.y })),
+    }
+  }
+
+  const duplicar = async () => {
+    copiar()
+    await pegar()
+  }
+
+  // Atajos del diseñador. No actúan mientras se escribe en un campo.
+  useEffect(() => {
+    const atajos = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable || !puedeEditar) return
+      const cmd = e.metaKey || e.ctrlKey
+      const k = e.key.toLowerCase()
+      if (cmd && k === 'c' && sel.length) {
+        e.preventDefault()
+        copiar()
+      } else if (cmd && k === 'v') {
+        e.preventDefault()
+        void pegar()
+      } else if (cmd && k === 'd' && sel.length) {
+        e.preventDefault()
+        void duplicar()
+      } else if (cmd && k === 'a') {
+        e.preventDefault()
+        setSel([
+          ...mesas.filter((m) => m.x != null).map((m) => ({ id: m.id, tipo: 'mesa' as const })),
+          ...elementos.map((el) => ({ id: el.id, tipo: 'elemento' as const })),
+        ])
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) {
+        e.preventDefault()
+        // Con el teclado se confirma siempre: un Backspace suelto no saca una mesa.
+        if (sel.length === 1 && !confirm('¿Sacar la pieza seleccionada del plano?')) return
+        void borrar()
+      } else if (e.key === 'Escape') {
+        setSel([])
+      } else if (e.key.startsWith('Arrow') && sel.length) {
+        e.preventDefault()
+        const paso = e.shiftKey ? PASO * 4 : PASO
+        const d = { ArrowLeft: [-paso, 0], ArrowRight: [paso, 0], ArrowUp: [0, -paso], ArrowDown: [0, paso] }[e.key] ?? [0, 0]
+        moverPiezas(
+          sel.flatMap((p) => {
+            const pz = p.tipo === 'mesa' ? mesasB[p.id] : elemsB[p.id]
+            const x = (pz as { x: number | null } | undefined)?.x
+            if (!pz || x == null) return []
+            return [{ ...p, x: Math.min(lienzo.ancho, Math.max(0, x + d[0]!)), y: Math.min(lienzo.alto, Math.max(0, (pz as { y: number }).y + d[1]!)) }]
+          })
+        )
+      }
+    }
+    window.addEventListener('keydown', atajos)
+    return () => window.removeEventListener('keydown', atajos)
+  })
 
   /** Acomoda en filas las que nunca se ubicaron, para arrancar de algo. */
   const acomodar = () => {
@@ -288,7 +495,7 @@ export default function PlanoPage() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'No se pudo crear')
       await salon.refetch()
-      setSel({ id: j.id, tipo: 'mesa' })
+      setSel([{ id: j.id, tipo: 'mesa' }])
     } catch (e) {
       toast.error((e as Error).message)
     }
@@ -313,29 +520,34 @@ export default function PlanoPage() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'No se pudo agregar')
       await salon.refetch()
-      setSel({ id: j.id, tipo: 'elemento' })
+      setSel([{ id: j.id, tipo: 'elemento' }])
     } catch (e) {
       toast.error((e as Error).message)
     }
   }
 
   const borrar = async () => {
-    if (!sel) return
-    const url = sel.tipo === 'mesa' ? `/api/pos/salon?id=${sel.id}` : `/api/pos/salon/elementos?id=${sel.id}`
-    const r = await fetch(url, { method: 'DELETE' })
-    const j = await r.json().catch(() => ({}))
-    if (!r.ok) {
-      toast.error(j.error || 'No se pudo sacar')
-      return
+    if (!sel.length) return
+    if (sel.length > 1 && !confirm(`¿Sacar ${sel.length} piezas del plano?`)) return
+    const errores: string[] = []
+    for (const p of sel) {
+      const url = p.tipo === 'mesa' ? `/api/pos/salon?id=${p.id}` : `/api/pos/salon/elementos?id=${p.id}`
+      const r = await fetch(url, { method: 'DELETE' })
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        errores.push(j.error || 'No se pudo sacar')
+      }
     }
-    setSel(null)
+    if (errores.length) toast.error(errores[0])
+    setSel([])
     salon.refetch()
   }
 
   if (isLoading) return null
 
-  const mesaSel = sel?.tipo === 'mesa' ? mesasB[sel.id] : undefined
-  const elemSel = sel?.tipo === 'elemento' ? elemsB[sel.id] : undefined
+  const una = sel.length === 1 ? sel[0]! : null
+  const mesaSel = una?.tipo === 'mesa' ? mesasB[una.id] : undefined
+  const elemSel = una?.tipo === 'elemento' ? elemsB[una.id] : undefined
 
   return (
     <DashboardLayout>
@@ -374,7 +586,7 @@ export default function PlanoPage() {
                 if (nCambios && !confirm('Hay cambios sin guardar en este plano. ¿Cambiar de sucursal igual?')) return
                 setSucursalId(e.target.value)
                 setSectorId(null)
-                setSel(null)
+                setSel([])
                 setTocados(new Set())
               }}
               className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm"
@@ -391,7 +603,7 @@ export default function PlanoPage() {
               key={s.id}
               onClick={() => {
                 setSectorId(s.id)
-                setSel(null)
+                setSel([])
               }}
               className={cn(
                 'h-10 rounded-lg px-3 text-sm font-semibold',
@@ -455,21 +667,48 @@ export default function PlanoPage() {
               <PlanoSalon
                 mesas={mesas.filter((m) => m.x != null)}
                 elementos={elementos}
-                seleccion={sel?.id ?? null}
+                seleccion={sel.map((p) => p.id)}
                 edicion
                 zoom={zoom}
                 onArrastrar={arrastrar}
-                onFondo={() => setSel(null)}
+                onFondo={iniciarMarco}
               />
             )}
           </div>
 
           <aside className="space-y-3">
-            {!sel && (
+            {sel.length > 1 && (
+              <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+                <p className="text-sm font-semibold">{sel.length} piezas seleccionadas</p>
+                <p className="text-xs text-slate-500">Arrastrá cualquiera para mover todas juntas, o usá las flechas del teclado.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1 gap-1.5" onClick={duplicar}>
+                    <Copy className="h-4 w-4" /> Duplicar
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-red-600" onClick={borrar} aria-label="Sacar las seleccionadas">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {sel.length === 0 && (
               <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
                 Tocá una mesa o un elemento para cambiarle el número, la forma, el tamaño o cuánta gente entra. Arrastrá para moverlo.
                 Los cambios se ven al instante; cuando termines, tocá <b>Guardar</b> (o Ctrl+S).
               </p>
+            )}
+            {sel.length === 0 && puedeEditar && (
+              <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-500">
+                <p className="mb-2 text-sm font-semibold text-slate-700">Atajos</p>
+                <ul className="space-y-1">
+                  <li>Arrastrá sobre el fondo para seleccionar varias</li>
+                  <li><b>Shift</b> o <b>⌘/Ctrl</b> + clic: sumar o sacar de la selección</li>
+                  <li><b>⌘/Ctrl + C</b> y <b>⌘/Ctrl + V</b>: copiar y pegar al lado</li>
+                  <li><b>⌘/Ctrl + D</b>: duplicar · <b>⌘/Ctrl + A</b>: todo</li>
+                  <li><b>Flechas</b>: mover (con Shift, más) · <b>Supr</b>: sacar</li>
+                </ul>
+              </div>
             )}
 
             {mesaSel && (
@@ -558,6 +797,9 @@ export default function PlanoPage() {
                   >
                     <RotateCw className="h-4 w-4" /> Girar
                   </Button>
+                  <Button size="sm" variant="outline" onClick={duplicar} aria-label="Duplicar mesa" title="Duplicar (⌘/Ctrl + D)">
+                    <Copy className="h-4 w-4" />
+                  </Button>
                   <Button size="sm" variant="ghost" className="text-red-600" onClick={borrar} aria-label="Sacar mesa">
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -587,6 +829,9 @@ export default function PlanoPage() {
                     onClick={() => editarElem(elemSel.id, { rotacion: (elemSel.rotacion + 45) % 360 })}
                   >
                     <RotateCw className="h-4 w-4" /> Girar
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={duplicar} aria-label="Duplicar elemento" title="Duplicar (⌘/Ctrl + D)">
+                    <Copy className="h-4 w-4" />
                   </Button>
                   <Button size="sm" variant="ghost" className="text-red-600" onClick={borrar} aria-label="Sacar elemento">
                     <Trash2 className="h-4 w-4" />

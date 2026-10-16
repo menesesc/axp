@@ -130,23 +130,26 @@ export function PlanoSalon({
   zoom?: number
   mesas: MesaEstado[]
   elementos: ElementoPlano[]
-  /** Id de la pieza seleccionada, sólo en el diseñador. */
-  seleccion?: string | null
+  /** Ids de las piezas seleccionadas (una o varias), sólo en el diseñador. */
+  seleccion?: string | string[] | null
   edicion?: boolean
   onTocarMesa?: (m: MesaEstado) => void
   onTocarElemento?: (e: ElementoPlano) => void
-  onFondo?: () => void
+  /** Toque en el fondo (sin pieza): en el diseñador arranca la selección por área. */
+  onFondo?: (ev: React.PointerEvent<SVGSVGElement>) => void
   /** Arranca el arrastre de una pieza. Sólo en el diseñador. */
   onArrastrar?: (id: string, tipo: 'mesa' | 'elemento', ev: React.PointerEvent<SVGGElement>) => void
 }) {
   const lienzo = lienzoDe(zoom)
+  const elegidos = new Set(Array.isArray(seleccion) ? seleccion : seleccion ? [seleccion] : [])
   return (
     <svg
       viewBox={`0 0 ${lienzo.ancho} ${lienzo.alto}`}
       preserveAspectRatio="xMidYMid meet"
       className={cn('h-full w-full touch-none select-none', edicion && 'cursor-default')}
       onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onFondo?.()
+        const t = e.target as Element
+        if (t === e.currentTarget || t.hasAttribute('data-fondo')) onFondo?.(e)
       }}
     >
       {edicion && (
@@ -156,17 +159,18 @@ export function PlanoSalon({
               <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#e2e8f0" strokeWidth="1" />
             </pattern>
           </defs>
-          <rect width={lienzo.ancho} height={lienzo.alto} fill="url(#grilla)" />
+          <rect data-fondo width={lienzo.ancho} height={lienzo.alto} fill="url(#grilla)" />
         </>
       )}
 
       {/* Primero lo fijo, que es el fondo del salón. */}
       {elementos.map((e) => {
         const d = ELEMENTO[e.tipo] ?? ELEMENTO.texto!
-        const sel = seleccion === e.id
+        const sel = elegidos.has(e.id)
         return (
           <g
             key={e.id}
+            data-pieza={e.id}
             transform={`translate(${e.x} ${e.y}) rotate(${e.rotacion})`}
             onPointerDown={(ev) => onArrastrar?.(e.id, 'elemento', ev)}
             onClick={() => onTocarElemento?.(e)}
@@ -221,12 +225,13 @@ export function PlanoSalon({
 
       {mesas.map((m) => {
         const c = COLOR[m.estado]
-        const sel = seleccion === m.id
+        const sel = elegidos.has(m.id)
         const demorada = (m.minutosCocina ?? 0) >= 15
         const geo = { capacidad: m.capacidad, forma: m.forma, ancho: m.ancho, alto: m.alto, cabeceras: m.cabeceras }
         return (
           <g
             key={m.id}
+            data-pieza={m.id}
             transform={`translate(${m.x ?? 0} ${m.y ?? 0}) rotate(${m.rotacion})`}
             onPointerDown={(ev) => onArrastrar?.(m.id, 'mesa', ev)}
             onClick={() => onTocarMesa?.(m)}
@@ -288,6 +293,11 @@ export function PlanoSalon({
           </g>
         )
       })}
+
+      {/* Rectángulo de selección por área: lo mueve el diseñador directo en el DOM. */}
+      {edicion && (
+        <rect data-marco display="none" fill="rgba(59,155,255,0.08)" stroke="#3b9bff" strokeWidth={1.5} strokeDasharray="5 4" pointerEvents="none" />
+      )}
     </svg>
   )
 }
