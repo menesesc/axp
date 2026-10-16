@@ -37,6 +37,8 @@ interface CuerpoProducto {
   icono?: string | null
   activo?: boolean
   motivoPrecio?: string | null
+  /** Grupos de opciones que pide este producto: la salsa, el punto, el sabor. */
+  grupoIds?: string[]
 }
 
 function validar(b: CuerpoProducto, nuevo: boolean): string | null {
@@ -111,6 +113,19 @@ export async function PATCH(request: NextRequest) {
         "updatedAt"    = now()
       WHERE id = ${b.id}::uuid AND "clienteId" = ${clienteId}::uuid
     `
+    // Los grupos de opciones se reescriben enteros: son dos o tres por
+    // producto y así no hay que averiguar cuál se sacó.
+    if (b.grupoIds) {
+      await prisma.$executeRaw`DELETE FROM pos_producto_grupos WHERE "productoId" = ${b.id}::uuid`
+      if (b.grupoIds.length > 0) {
+        await prisma.$executeRaw`
+          INSERT INTO pos_producto_grupos ("productoId", "grupoId", orden)
+          SELECT ${b.id}::uuid, g.id, g.orden FROM pos_opcion_grupos g
+           WHERE g.id = ANY(${b.grupoIds}::uuid[]) AND g."clienteId" = ${clienteId}::uuid
+        `
+      }
+    }
+
     // El cambio de precio deja rastro: un ticket viejo tiene que poder
     // explicarse, y "quién subió esto" es de las cosas que más se preguntan.
     if (b.precio !== undefined && b.precio !== antes.precio) {

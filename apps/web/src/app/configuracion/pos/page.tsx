@@ -8,10 +8,11 @@ import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CatalogoTab } from '@/components/pos/catalogo-tab'
+import { OpcionesTab } from '@/components/pos/opciones-tab'
 import { UsuariosTab } from '@/components/pos/usuarios-tab'
 import { EstructuraTab } from '@/components/pos/estructura-tab'
 import { cn } from '@/lib/utils'
-import { Building2, Package, Users } from 'lucide-react'
+import { Building2, ListChecks, Package, Users } from 'lucide-react'
 
 /**
  * Administración del punto de venta.
@@ -21,7 +22,7 @@ import { Building2, Package, Users } from 'lucide-react'
  * poner en marcha un local.
  */
 
-type Tab = 'catalogo' | 'usuarios' | 'estructura'
+type Tab = 'catalogo' | 'opciones' | 'usuarios' | 'estructura'
 
 export default function PosConfigPage() {
   const [tab, setTab] = useState<Tab>('catalogo')
@@ -63,6 +64,7 @@ export default function PosConfigPage() {
 
   const TABS = [
     ['catalogo', 'Catálogo', Package, data?.productos?.length ?? 0],
+    ['opciones', 'Opciones', ListChecks, null],
     ['usuarios', 'Usuarios', Users, null],
     ['estructura', 'Sucursales y cajas', Building2, null],
   ] as const
@@ -103,6 +105,7 @@ export default function PosConfigPage() {
       ) : (
         <>
           {tab === 'catalogo' && <CatalogoTab data={data} />}
+          {tab === 'opciones' && <OpcionesTab productos={data?.productos ?? []} />}
           {tab === 'usuarios' && <UsuariosTab />}
           {tab === 'estructura' && <EstructuraTab />}
         </>
