@@ -24,6 +24,10 @@ export function PanelTiempos({ lineas }: { lineas: Linea[] }) {
   const [abierto, setAbierto] = useState(true)
 
   const enviadas = lineas.filter((l) => l.enviado)
+  // Mesa recién abierta: no hay ningún tiempo que mirar y el panel sólo
+  // ocupa lugar.
+  if (enviadas.length === 0) return null
+
   const enCocina = enviadas.filter((l) => l.estadoKds === 'enviado' || l.estadoKds === 'marchado')
   const enPase = enviadas.filter((l) => l.estadoKds === 'entregado')
   const peor = enCocina.reduce<number>((m, l) => Math.max(m, l.minutosCocina ?? 0), 0)

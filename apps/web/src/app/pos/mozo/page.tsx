@@ -9,6 +9,7 @@ import { MapaMesas, LeyendaMesas, type MesaEstado } from '@/components/pos/mapa-
 import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
 import { Autorizacion } from '@/components/pos/autorizacion'
+import { BotoneraMesa, accionesMesa } from '@/components/pos/botonera-mesa'
 import { MesasAbiertas, Reloj, duracion } from '@/components/pos/resumen-salon'
 import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
@@ -83,6 +84,37 @@ export default function MozoPage() {
   }, [salon.data, sectorId])
 
   const pedido = usePedido({ sucursalId, mozoId: usuario?.id ?? null })
+
+  /** La precuenta la pide el mozo en la mesa: bloquea la carga y se imprime. */
+  const precuenta = useCallback(async () => {
+    try {
+      const r = await fetch('/api/pos/pedidos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pedido.pedidoId, accion: 'precuenta' }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'No se pudo imprimir')
+      pedido.setBloqueado(true)
+      toast.success('Precuenta impresa')
+      salon.refetch()
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido.pedidoId])
+
+  /** Manda a cocina lo que falte, sin salir de la mesa. */
+  const comandar = useCallback(async () => {
+    try {
+      const n = await pedido.enviar()
+      if (n > 0) toast.success(`${n} a cocina`)
+      salon.refetch()
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido.enviar])
 
   const salir = useCallback(async () => {
     await pedido.cerrar()
@@ -180,6 +212,7 @@ export default function MozoPage() {
             .filter(Boolean)
             .join(' · ')}
           lineas={pedido.lineas}
+          bloqueado={pedido.bloqueado}
           onCambiar={pedido.cambiar}
           onMarca={pedido.marcar}
           onAnular={(l) => setAnulando(l)}
@@ -187,17 +220,18 @@ export default function MozoPage() {
         >
           <button
             onClick={() => setVista('productos')}
-            className="mb-2 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 lg:hidden"
+            className="mb-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 lg:hidden"
           >
-            <ListPlus className="h-5 w-5" /> Agregar producto
+            <ListPlus className="h-4 w-4" /> Agregar producto
           </button>
-          <button
-            onClick={() => void salir()}
-            disabled={pedido.cerrando}
-            className="h-16 w-full rounded-xl bg-slate-900 text-lg font-semibold text-white disabled:opacity-40 active:scale-[0.99]"
-          >
-            {pedido.sinEnviar > 0 ? `Comandar · ${pedido.sinEnviar}` : 'Salir de la mesa'}
-          </button>
+          <BotoneraMesa
+            acciones={accionesMesa({
+              sinEnviar: pedido.sinEnviar,
+              bloqueado: pedido.bloqueado || pedido.lineas.length === 0,
+              onComandar: () => void comandar(),
+              onPrecuenta: () => void precuenta(),
+            })}
+          />
         </Carrito>
 
         {anulando && (

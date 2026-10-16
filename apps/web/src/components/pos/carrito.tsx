@@ -91,23 +91,25 @@ export function Carrito({
   const demora = espera >= 15
 
   return (
-    <aside className={cn('flex min-h-0 w-full flex-col bg-white lg:w-[25rem] lg:shrink-0 lg:border-l lg:border-slate-200', className)}>
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
+    <aside className={cn('flex min-h-0 w-full flex-col bg-white lg:w-[27rem] lg:shrink-0 lg:border-l lg:border-slate-200', className)}>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
         <div className="min-w-0">
-          <p className="truncate text-lg font-bold leading-tight">{titulo}</p>
-          {subtitulo && <p className="truncate text-xs text-slate-500">{subtitulo}</p>}
+          <p className="truncate text-base font-bold leading-tight">{titulo}</p>
+          {subtitulo && <p className="truncate text-[11px] text-slate-500">{subtitulo}</p>}
         </div>
+        {/* Salir manda a cocina lo que falte: no hace falta otro botón. */}
         <button
           onClick={onCerrar}
-          aria-label="Cerrar"
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-slate-100"
+          aria-label="Salir de la mesa"
+          title="Salir (manda a cocina lo que falte)"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
       {comandas.length > 0 && (
-        <div className={cn('flex items-center gap-3 border-b px-3 py-2 text-sm', demora ? 'border-red-100 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 text-slate-600')}>
+        <div className={cn('flex items-center gap-2 border-b px-3 py-1.5 text-xs', demora ? 'border-red-100 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 text-slate-600')}>
           <Clock className="h-4 w-4 shrink-0" />
           <span className="min-w-0 flex-1">
             {comandas.length} {comandas.length === 1 ? 'comanda' : 'comandas'}
@@ -172,15 +174,15 @@ export function Carrito({
         )}
       </div>
 
-      <div className={cn('border-t border-slate-200 p-3', bloqueado && 'bg-amber-50')}>
+      <div className={cn('border-t border-slate-200 px-3 pb-2 pt-2', bloqueado && 'bg-amber-50')}>
         {bloqueado && (
-          <p className="mb-2 text-center text-sm font-medium text-amber-800">
+          <p className="mb-1.5 text-center text-xs font-medium text-amber-800">
             Precuenta impresa: la mesa no admite más cargas
           </p>
         )}
-        <div className="mb-3 flex items-baseline justify-between">
-          <span className="text-slate-500">Total</span>
-          <span className="text-3xl font-bold tabular-nums [font-family:var(--font-display),system-ui]">{pesos(total)}</span>
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-xs text-slate-500">Total</span>
+          <span className="text-2xl font-bold tabular-nums [font-family:var(--font-display),system-ui]">{pesos(total)}</span>
         </div>
         {children}
       </div>
@@ -203,21 +205,41 @@ function Fila({
 }) {
   const demorado = !!l.minutosCocina && l.minutosCocina >= 15 && l.estadoKds !== 'despachado'
   return (
-    <li className="px-3 py-2">
-      <div className="flex items-center gap-2">
+    <li className="px-2.5 py-1">
+      <div className="flex items-center gap-1.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-medium">{l.nombre}</p>
-          <p className="flex flex-wrap items-center gap-x-2 text-sm text-slate-400">
+          <p className="truncate text-sm font-medium leading-tight">{l.nombre}</p>
+          <p className="flex items-center gap-1.5 text-[11px] leading-tight text-slate-400">
             <span>{pesos(l.precioUnitario)}</span>
-            {l.marca && (
-              <span className="rounded bg-orange-100 px-1 text-[11px] font-bold text-orange-700">{l.marca}</span>
-            )}
-            {l.enviado && (
-              <span className={cn('flex items-center gap-1 text-xs', demorado ? 'font-semibold text-red-600' : 'text-emerald-600')}>
+            {l.enviado ? (
+              <span className={cn('flex items-center gap-0.5', demorado ? 'font-semibold text-red-600' : 'text-emerald-600')}>
                 <Clock className="h-3 w-3" />
                 {ESTADO_KDS[l.estadoKds ?? 'enviado'] ?? 'en cocina'}
-                {l.minutosCocina != null && ` · ${l.minutosCocina}′`}
+                {l.minutosCocina != null && ` ${l.minutosCocina}′`}
               </span>
+            ) : (
+              /* Las marcas van acá, en chiquito y en la misma línea: antes se
+                 comían un renglón por plato y entraban tres platos en
+                 pantalla. */
+              onMarca &&
+              !bloqueado &&
+              MARCAS.map((m) => (
+                <button
+                  key={m.valor}
+                  onClick={() => onMarca(l.id, l.marca === m.valor ? null : m.valor)}
+                  title={m.nombre}
+                  className={cn(
+                    'flex h-5 items-center gap-0.5 rounded px-1 text-[10px] font-bold',
+                    l.marca === m.valor ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400'
+                  )}
+                >
+                  {m.valor === 'PAR' && <Flame className="h-2.5 w-2.5" />}
+                  {m.valor}
+                </button>
+              ))
+            )}
+            {l.enviado && l.marca && (
+              <span className="rounded bg-orange-100 px-1 text-[10px] font-bold text-orange-700">{l.marca}</span>
             )}
           </p>
         </div>
@@ -226,62 +248,43 @@ function Fila({
           <button
             onClick={() => onAnular?.(l)}
             disabled={!onAnular}
-            className="grid h-12 w-12 place-items-center rounded-lg bg-slate-100 text-slate-500 disabled:opacity-30"
+            className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500 disabled:opacity-30"
             aria-label="Anular, pide autorización"
           >
-            <Trash2 className="h-5 w-5" />
+            <Trash2 className="h-4 w-4" />
           </button>
         ) : (
           <button
             onClick={() => onCambiar(l.id, -1)}
             disabled={bloqueado}
-            className="grid h-12 w-12 place-items-center rounded-lg bg-slate-100 disabled:opacity-30"
+            className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 disabled:opacity-30"
             aria-label="Quitar uno"
           >
-            {l.cantidad === 1 ? <Trash2 className="h-5 w-5" /> : <Minus className="h-5 w-5" />}
+            {l.cantidad === 1 ? <Trash2 className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
           </button>
         )}
-        <span className="w-7 text-center text-lg font-bold tabular-nums">{l.cantidad}</span>
+        <span className="w-6 text-center text-base font-bold tabular-nums">{l.cantidad}</span>
         <button
           onClick={() => onCambiar(l.id, 1)}
           disabled={bloqueado || l.enviado}
-          className="grid h-12 w-12 place-items-center rounded-lg bg-slate-100 disabled:opacity-30"
+          className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 disabled:opacity-30"
           aria-label="Agregar uno"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
         </button>
-        <span className="w-20 text-right text-base font-semibold tabular-nums">
+        <span className="w-16 text-right text-sm font-semibold tabular-nums">
           {pesos(l.cantidad * l.precioUnitario)}
         </span>
       </div>
 
       {(l.opciones.length > 0 || l.nota) && (
-        <p className="mt-0.5 pr-24 text-xs leading-tight text-slate-500">
+        <p className="pr-24 text-[11px] leading-tight text-slate-500">
           {l.opciones.map((o) => o.nombre).join(' · ')}
           {l.opciones.length > 0 && l.nota ? ' — ' : ''}
           {l.nota && <span className="italic">{l.nota}</span>}
         </p>
       )}
 
-      {/* Las marcas se ponen antes de comandar: después ya viajaron. */}
-      {!l.enviado && onMarca && !bloqueado && (
-        <div className="mt-1 flex gap-1">
-          {MARCAS.map((m) => (
-            <button
-              key={m.valor}
-              onClick={() => onMarca(l.id, l.marca === m.valor ? null : m.valor)}
-              title={m.nombre}
-              className={cn(
-                'flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-bold',
-                l.marca === m.valor ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'
-              )}
-            >
-              {m.valor === 'PAR' && <Flame className="h-3 w-3" />}
-              {m.valor}
-            </button>
-          ))}
-        </div>
-      )}
     </li>
   )
 }

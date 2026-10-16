@@ -134,11 +134,11 @@ export function GrillaProductos({
         }}
         style={activa && color ? { backgroundColor: color, color: '#fff' } : undefined}
         className={cn(
-          'flex h-12 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors active:scale-[0.97]',
+          'flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold uppercase tracking-wide transition-colors active:scale-[0.97]',
           activa ? (color ? '' : 'bg-slate-900 text-white') : 'bg-white text-slate-700 ring-1 ring-slate-200'
         )}
       >
-        {emoji && <span className="text-lg leading-none">{emoji}</span>}
+        {emoji && <span className="text-sm leading-none">{emoji}</span>}
         {!emoji && color && <span className="h-3 w-3 rounded-full" style={{ backgroundColor: activa ? '#fff' : color }} />}
         {texto}
         {n != null && <span className={cn('text-xs font-normal', activa ? 'opacity-80' : 'text-slate-400')}>{n}</span>}
@@ -150,19 +150,19 @@ export function GrillaProductos({
     // min-w-0: sin esto, la tira de categorías (que scrollea sola) estira la
     // columna hasta su ancho natural y empuja toda la pantalla a la derecha.
     <div className="flex h-full min-w-0 flex-col">
-      <div className="relative mb-3">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar producto (por cualquier palabra)"
-          className="h-14 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-28 text-lg outline-none focus:border-[#3b9bff] focus:ring-4 focus:ring-[#3b9bff]/15"
+          className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-24 text-base outline-none focus:border-[#3b9bff] focus:ring-4 focus:ring-[#3b9bff]/15"
         />
         {q && (
           <button
             onClick={() => setQ('')}
             aria-label="Limpiar"
-            className="absolute right-16 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-lg text-slate-400"
+            className="absolute right-14 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-slate-400"
           >
             <X className="h-5 w-5" />
           </button>
@@ -172,7 +172,7 @@ export function GrillaProductos({
         <button
           onClick={() => setVista((v) => (v === 'grilla' ? 'lista' : 'grilla'))}
           aria-label={vista === 'grilla' ? 'Ver como lista' : 'Ver como grilla'}
-          className="absolute right-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-xl bg-slate-100 text-slate-600"
+          className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg bg-slate-100 text-slate-600"
         >
           {vista === 'grilla' ? <List className="h-5 w-5" /> : <LayoutGrid className="h-5 w-5" />}
         </button>
@@ -190,7 +190,7 @@ export function GrillaProductos({
             <div className="-mx-1 mb-2 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
               <button
                 onClick={() => setCategoria(madre!.id)}
-                className={cn('h-10 shrink-0 rounded-lg px-3 text-sm', categoria === madre!.id ? 'bg-slate-200 font-semibold text-slate-900' : 'bg-white text-slate-600 ring-1 ring-slate-200')}
+                className={cn('h-9 shrink-0 rounded-lg px-3 text-xs', categoria === madre!.id ? 'bg-slate-200 font-semibold text-slate-900' : 'bg-white text-slate-600 ring-1 ring-slate-200')}
               >
                 Todo {madre!.nombre}
               </button>
@@ -198,7 +198,7 @@ export function GrillaProductos({
                 <button
                   key={c.id}
                   onClick={() => setCategoria(c.id)}
-                  className={cn('h-10 shrink-0 rounded-lg px-3 text-sm', categoria === c.id ? 'bg-slate-200 font-semibold text-slate-900' : 'bg-white text-slate-600 ring-1 ring-slate-200')}
+                  className={cn('h-9 shrink-0 rounded-lg px-3 text-xs', categoria === c.id ? 'bg-slate-200 font-semibold text-slate-900' : 'bg-white text-slate-600 ring-1 ring-slate-200')}
                 >
                   {c.nombre} <span className="text-xs text-slate-400">{conteo.get(c.id) ?? 0}</span>
                 </button>
@@ -212,7 +212,7 @@ export function GrillaProductos({
         {visibles.length === 0 ? (
           <p className="py-16 text-center text-slate-400">{q ? 'Ningún producto coincide' : 'No hay productos en esta categoría'}</p>
         ) : vista === 'grilla' ? (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {visibles.map((p) => {
               const n = enPedido[p.id] ?? 0
               return (
@@ -221,7 +221,7 @@ export function GrillaProductos({
                   onClick={() => elegir(p)}
                   style={p.color ? { backgroundColor: p.color } : undefined}
                   className={cn(
-                    'relative flex h-28 flex-col justify-between overflow-hidden rounded-2xl border p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-transform active:scale-[0.97]',
+                    'relative flex h-20 flex-col justify-between overflow-hidden rounded-xl border p-2 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-transform active:scale-[0.97]',
                     p.color ? 'border-transparent text-white' : 'border-slate-200 bg-white',
                     n > 0 && !p.color && 'border-[#3b9bff] ring-2 ring-[#3b9bff]/30',
                     tocado === p.id && 'scale-[0.97]'
@@ -232,15 +232,24 @@ export function GrillaProductos({
                     <img src={`/api/recetas/foto?key=${encodeURIComponent(p.fotoKey)}`} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
                   )}
                   {n > 0 && (
-                    <span className="absolute right-2 top-2 grid h-7 min-w-7 place-items-center rounded-full bg-[#1f7fe6] px-1.5 text-sm font-bold text-white shadow">
+                    <span className="absolute right-1.5 top-1.5 grid h-6 min-w-6 place-items-center rounded-full bg-[#1f7fe6] px-1 text-xs font-bold text-white shadow">
                       {n}
                     </span>
                   )}
-                  <span className="relative flex items-start gap-1.5 pr-8">
-                    {p.icono && <span className="text-xl leading-none">{p.icono}</span>}
-                    <span className="line-clamp-2 text-[15px] font-semibold leading-tight">{p.nombre}</span>
+                  <span className="relative flex items-start gap-1">
+                    {p.icono && <span className="text-base leading-none">{p.icono}</span>}
+                    <span className="line-clamp-2 pr-6 text-xs font-semibold leading-tight">{p.nombre}</span>
                   </span>
-                  <span className="relative text-lg font-bold tabular-nums">{pesos(p.precio)}</span>
+                  {/* El precio en chico: el que carga busca el plato por el
+                      nombre, no por lo que sale. */}
+                  <span
+                    className={cn(
+                      'relative self-start rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                      p.color ? 'bg-white/20' : 'bg-slate-100 text-slate-600'
+                    )}
+                  >
+                    {pesos(p.precio)}
+                  </span>
                 </button>
               )
             })}
@@ -251,15 +260,15 @@ export function GrillaProductos({
               const n = enPedido[p.id] ?? 0
               return (
                 <li key={p.id}>
-                  <button onClick={() => elegir(p)} className="flex min-h-[4rem] w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                  <button onClick={() => elegir(p)} className="flex min-h-[3rem] w-full items-center gap-3 px-3 py-2 text-left active:bg-slate-50">
                     {p.icono ? (
-                      <span className="w-7 text-center text-xl leading-none">{p.icono}</span>
+                      <span className="w-6 text-center text-base leading-none">{p.icono}</span>
                     ) : (
-                      <span className="h-7 w-7 shrink-0 rounded" style={{ backgroundColor: p.color ?? '#e2e8f0' }} />
+                      <span className="h-6 w-6 shrink-0 rounded" style={{ backgroundColor: p.color ?? '#e2e8f0' }} />
                     )}
-                    <span className="min-w-0 flex-1 truncate text-base">{p.nombre}</span>
-                    {n > 0 && <span className="grid h-7 min-w-7 place-items-center rounded-full bg-[#1f7fe6] px-1.5 text-sm font-bold text-white">{n}</span>}
-                    <span className="text-base font-bold tabular-nums">{pesos(p.precio)}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm">{p.nombre}</span>
+                    {n > 0 && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-[#1f7fe6] px-1 text-xs font-bold text-white">{n}</span>}
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">{pesos(p.precio)}</span>
                   </button>
                 </li>
               )
