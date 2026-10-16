@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic'
 interface Cuerpo {
   id?: string
   nombre?: string
+  /** Dentro de qué categoría va. Null es de primer nivel. */
+  padreId?: string | null
   orden?: number
   color?: string | null
   emoji?: string | null
@@ -22,8 +24,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const [c] = await prisma.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO pos_categorias ("clienteId", nombre, orden, color, emoji)
-      VALUES (${clienteId}::uuid, ${b.nombre.trim()}, ${b.orden ?? 0}, ${b.color || null}, ${b.emoji || null})
+      INSERT INTO pos_categorias ("clienteId", nombre, orden, color, emoji, "padreId")
+      VALUES (${clienteId}::uuid, ${b.nombre.trim()}, ${b.orden ?? 0}, ${b.color || null}, ${b.emoji || null},
+              -- Sólo dos niveles: una subcategoría no puede tener hijas. En
+              -- una pantalla táctil, tres toques para llegar al producto ya
+              -- es demasiado.
+              (SELECT p.id FROM pos_categorias p
+                WHERE p.id = ${b.padreId || null}::uuid AND p."clienteId" = ${clienteId}::uuid
+                  AND p."padreId" IS NULL))
       RETURNING id
     `
     return NextResponse.json({ id: c!.id })
@@ -46,6 +54,12 @@ export async function PATCH(request: NextRequest) {
         color  = COALESCE(${b.color ?? null}, color),
         emoji  = COALESCE(${b.emoji ?? null}, emoji),
         activa = COALESCE(${b.activa ?? null}, activa),
+        "padreId" = CASE
+          WHEN ${b.padreId === undefined} THEN "padreId"
+          ELSE (SELECT p.id FROM pos_categorias p
+                 WHERE p.id = ${b.padreId || null}::uuid AND p."clienteId" = ${clienteId}::uuid
+                   AND p."padreId" IS NULL AND p.id <> ${b.id}::uuid)
+        END,
         "updatedAt" = now()
       WHERE id = ${b.id}::uuid AND "clienteId" = ${clienteId}::uuid
     `

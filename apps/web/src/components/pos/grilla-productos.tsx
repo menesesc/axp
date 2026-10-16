@@ -32,6 +32,8 @@ export interface CategoriaPos {
   nombre: string
   color: string | null
   emoji: string | null
+  /** "Vinos → Catena Zapata": ochenta etiquetas en un nivel no se navegan. */
+  padreId?: string | null
 }
 
 const pesos = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
@@ -50,6 +52,13 @@ export function GrillaProductos({
   const [categoria, setCategoria] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [vista, setVista] = useState<'grilla' | 'lista'>('grilla')
+
+  // Las de primer nivel, o las hijas de la que está abierta.
+  const padre = categorias.find((c) => c.id === categoria)?.padreId ?? null
+  const mostradas = useMemo(
+    () => categorias.filter((c) => (c.padreId ?? null) === (categoria ?? null)),
+    [categorias, categoria]
+  )
 
   const visibles = useMemo(() => {
     // Por palabras sueltas y en cualquier orden, sin acentos: "mal alamos"
@@ -71,8 +80,13 @@ export function GrillaProductos({
   const conteo = useMemo(() => {
     const m = new Map<string, number>()
     for (const p of productos) if (p.categoriaId) m.set(p.categoriaId, (m.get(p.categoriaId) ?? 0) + 1)
+    // La categoría madre muestra todo lo que cuelga de ella: "Vinos 84", no
+    // "Vinos 0" porque están repartidos entre las bodegas.
+    for (const c of categorias) {
+      if (c.padreId) m.set(c.padreId, (m.get(c.padreId) ?? 0) + (m.get(c.id) ?? 0))
+    }
     return m
-  }, [productos])
+  }, [productos, categorias])
 
   return (
     <div className="flex h-full flex-col">
@@ -108,14 +122,13 @@ export function GrillaProductos({
         <div className="mb-3 flex flex-wrap gap-2">
           {categoria && (
             <button
-              onClick={() => setCategoria(null)}
+              onClick={() => setCategoria(padre)}
               className="h-16 rounded-xl bg-slate-900 px-5 text-base font-semibold text-white"
             >
-              ← Categorías
+              ← {padre ? categorias.find((c) => c.id === padre)?.nombre : 'Categorías'}
             </button>
           )}
-          {!categoria &&
-            categorias.map((c) => (
+          {mostradas.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setCategoria(c.id)}
@@ -136,7 +149,11 @@ export function GrillaProductos({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visibles.length === 0 ? (
           <p className="py-16 text-center text-slate-400">
-            {q ? 'Ningún producto coincide' : 'Elegí una categoría'}
+            {q
+              ? 'Ningún producto coincide'
+              : mostradas.length > 0
+                ? categoria ? 'Elegí una subcategoría' : 'Elegí una categoría'
+                : 'No hay productos en esta categoría'}
           </p>
         ) : (
           vista === 'grilla' ? (

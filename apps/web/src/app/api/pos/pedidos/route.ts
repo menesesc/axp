@@ -26,6 +26,8 @@ interface ItemEntrada {
   precioUnitario: number
   alicuotaIva?: number
   nota?: string | null
+  /** MS (marcha y sale) o PAR (parrilla). Va pegada al plato, no al pedido. */
+  marca?: string | null
   /** Lo elegido en los grupos de opciones, congelado en la línea. */
   opciones?: Array<{ opcionId?: string | null; grupo?: string | null; nombre: string; precioExtra?: number }>
 }
@@ -54,7 +56,10 @@ export async function GET(request: NextRequest) {
     const items = await prisma.$queryRaw<Array<Record<string, unknown>>>`
       SELECT i.id, i."productoId", i.nombre, i.cantidad::float8 AS cantidad,
              i."precioUnitario"::float8 AS "precioUnitario", i."alicuotaIva"::float8 AS "alicuotaIva",
-             i.nota, i."estadoKds", i."enviadoAt" IS NOT NULL AS enviado, i."anuladoAt" IS NOT NULL AS anulado,
+             i.nota, i.marca, i.comanda, i."estadoKds",
+             i."enviadoAt" IS NOT NULL AS enviado, i."anuladoAt" IS NOT NULL AS anulado,
+             to_char(i."enviadoAt", 'HH24:MI') AS "enviadoHora",
+             round(extract(epoch FROM (now() - i."enviadoAt")) / 60)::int AS "minutosCocina",
              COALESCE((
                SELECT json_agg(json_build_object(
                         'opcionId', o."opcionId", 'grupo', o.grupo,
@@ -136,11 +141,12 @@ export async function POST(request: NextRequest) {
 
     for (const i of items) {
       await tx.$executeRaw`
-        INSERT INTO pos_pedido_items (id, "pedidoId", "productoId", nombre, cantidad, "precioUnitario", "alicuotaIva", nota)
+        INSERT INTO pos_pedido_items (id, "pedidoId", "productoId", nombre, cantidad, "precioUnitario", "alicuotaIva", nota, marca)
         VALUES (${i.id}::uuid, ${b.id}::uuid, ${i.productoId || null}::uuid, ${i.nombre},
-                ${i.cantidad}, ${i.precioUnitario}, ${i.alicuotaIva ?? 21}, ${i.nota?.trim() || null})
+                ${i.cantidad}, ${i.precioUnitario}, ${i.alicuotaIva ?? 21}, ${i.nota?.trim() || null},
+                ${i.marca || null})
         ON CONFLICT (id) DO UPDATE
-          SET cantidad = EXCLUDED.cantidad, nota = EXCLUDED.nota
+          SET cantidad = EXCLUDED.cantidad, nota = EXCLUDED.nota, marca = EXCLUDED.marca
         -- Un ítem ya enviado a cocina no se toca por acá: se anula con permiso.
         WHERE pos_pedido_items."enviadoAt" IS NULL
       `
@@ -194,18 +200,65 @@ export async function PATCH(request: NextRequest) {
   if (error) return error
 
   const b = (await request.json().catch(() => null)) as
-    | { id?: string; accion?: 'enviar' | 'precuenta' | 'reabrir' | 'anular'; usuarioId?: string | null }
+    | {
+        id?: string
+        accion?: 'enviar' | 'precuenta' | 'reabrir' | 'anular' | 'anular_item'
+        usuarioId?: string | null
+        itemId?: string
+        motivo?: string
+        /** Quién puso la llave: queda en la auditoría. */
+        autorizadoPor?: string | null
+      }
     | null
   if (!b?.id || !b.accion) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
 
   const dueño = { id: b.id, clienteId }
 
   if (b.accion === 'enviar') {
+    // Cada envío es una comanda distinta: el postre que se pide media hora
+    // después sale impreso aparte y en el KDS entra como pedido nuevo, no
+    // mezclado con los principales.
+    const [ult] = await prisma.$queryRaw<Array<{ n: number | null }>>`
+      SELECT max(comanda) AS n FROM pos_pedido_items WHERE "pedidoId" = ${dueño.id}::uuid
+    `
+    const comanda = (ult?.n ?? 0) + 1
     const n = await prisma.$executeRaw`
-      UPDATE pos_pedido_items SET "enviadoAt" = now(), "estadoKds" = 'enviado'
+      UPDATE pos_pedido_items
+         SET "enviadoAt" = now(), "estadoKds" = 'enviado', comanda = ${comanda}
        WHERE "pedidoId" = ${dueño.id}::uuid AND "enviadoAt" IS NULL AND "anuladoAt" IS NULL
     `
-    return NextResponse.json({ enviados: n })
+    return NextResponse.json({ enviados: n, comanda })
+  }
+
+  /**
+   * Anula un plato que ya salió a cocina.
+   *
+   * No se borra la línea: queda anulada, con quién lo autorizó y por qué. La
+   * mercadería se usó, y el que mira el arqueo tiene que poder ver qué pasó.
+   */
+  if (b.accion === 'anular_item') {
+    if (!b.itemId) return NextResponse.json({ error: 'Falta el ítem' }, { status: 400 })
+    const n = await prisma.$executeRaw`
+      UPDATE pos_pedido_items i
+         SET "anuladoAt" = now(), "anuladoPor" = ${b.autorizadoPor || null}::uuid,
+             "motivoAnulacion" = ${b.motivo?.trim()?.slice(0, 200) || null}
+       WHERE i.id = ${b.itemId}::uuid AND i."pedidoId" = ${dueño.id}::uuid AND i."anuladoAt" IS NULL
+    `
+    if (n === 0) return NextResponse.json({ error: 'El ítem ya estaba anulado' }, { status: 409 })
+
+    await prisma.$executeRaw`
+      UPDATE pos_pedidos SET total = COALESCE((
+        SELECT sum(i.cantidad * i."precioUnitario" * (1 - i."descuentoPct" / 100) - i."descuentoImporte")
+          FROM pos_pedido_items i WHERE i."pedidoId" = ${dueño.id}::uuid AND i."anuladoAt" IS NULL
+      ), 0) * (1 - "descuentoPct" / 100) - "descuentoImporte"
+      WHERE id = ${dueño.id}::uuid
+    `
+    await prisma.$executeRaw`
+      INSERT INTO pos_auditoria ("clienteId", "usuarioId", accion, entidad, "entidadId", detalle)
+      VALUES (${clienteId}::uuid, ${b.autorizadoPor || null}::uuid, 'anular_item', 'pedido_item',
+              ${b.itemId}::uuid, ${b.motivo?.trim()?.slice(0, 200) || 'Sin motivo'})
+    `
+    return NextResponse.json({ ok: true })
   }
 
   if (b.accion === 'precuenta') {

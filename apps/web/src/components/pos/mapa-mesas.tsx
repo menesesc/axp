@@ -21,6 +21,14 @@ export interface MesaEstado {
   sectorId: string | null
   nombre: string
   capacidad: number
+  /** Geometría en el plano. Si x es null, la mesa todavía no se ubicó. */
+  x: number | null
+  y: number | null
+  forma: 'rect' | 'redonda' | 'cuadrada'
+  ancho: number
+  alto: number
+  rotacion: number
+  cabeceras: number
   pedidoId: string | null
   pedidoNumero: number | null
   comensales: number | null

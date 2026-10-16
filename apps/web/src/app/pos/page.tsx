@@ -7,12 +7,15 @@ import { Carrito } from '@/components/pos/carrito'
 import { CrearMesas } from '@/components/pos/crear-mesas'
 import { Cubiertos } from '@/components/pos/cubiertos'
 import { MapaMesas, LeyendaMesas, type MesaEstado } from '@/components/pos/mapa-mesas'
+import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
+import { Autorizacion } from '@/components/pos/autorizacion'
+import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
 import type { GrupoPos } from '@/components/pos/opciones-producto'
 import { usePedido } from '@/lib/pos/usar-pedido'
 import { cn } from '@/lib/utils'
-import { Loader2, Receipt, ReceiptText } from 'lucide-react'
+import { ListPlus, Loader2, Receipt, ReceiptText } from 'lucide-react'
 
 /**
  * Pantalla del cajero.
@@ -36,6 +39,10 @@ export default function PosPage() {
   const [modo, setModo] = useState<'salon' | 'rapida'>('salon')
   const [sectorId, setSectorId] = useState<string | null>(null)
   const [abriendo, setAbriendo] = useState<MesaEstado | null>(null)
+  // En pantalla chica sólo entra una cosa: el consumo o la carta. Se arranca
+  // por el consumo, que es lo que se mira al llegar a la mesa.
+  const [vista, setVista] = useState<'detalle' | 'productos'>('detalle')
+  const [anulando, setAnulando] = useState<Linea | null>(null)
 
   const { data: cat } = useQuery({
     queryKey: ['pos-catalogo'],
@@ -75,6 +82,7 @@ export default function PosPage() {
       return r.json() as Promise<{
         sectores: Array<{ id: string; nombre: string; mesas: number }>
         mesas: MesaEstado[]
+        elementos: ElementoPlano[]
       }>
     },
     // Quince segundos: el mapa tiene que envejecer poco, y son dos consultas
@@ -124,6 +132,7 @@ export default function PosPage() {
   })
 
   const tocarMesa = (m: MesaEstado) => {
+    setVista('detalle')
     if (m.estado === 'libre' || !m.pedidoId) setAbriendo(m)
     else void pedido.abrirPedido(m.pedidoId)
   }
@@ -149,6 +158,13 @@ export default function PosPage() {
     () => (salon.data?.mesas ?? []).filter((m) => !sectorId || m.sectorId === sectorId),
     [salon.data, sectorId]
   )
+  const elementos = useMemo(
+    () => (salon.data?.elementos ?? []).filter((e) => !sectorId || e.sectorId === sectorId),
+    [salon.data, sectorId]
+  )
+  // Si el salón está dibujado se muestra el plano; si todavía nadie lo dibujó,
+  // la grilla, que sirve igual para vender.
+  const ubicadas = mesas.filter((m) => m.x != null)
 
   // ---- caja cerrada -------------------------------------------------------
   if (!ses) {
@@ -191,10 +207,7 @@ export default function PosPage() {
       {/* El mapa. Se achica cuando hay una mesa abierta, pero no se va: en
           pantalla grande el cajero sigue viendo el resto del salón. */}
       <section
-        className={cn(
-          'flex min-h-0 flex-col p-3',
-          enMesa ? 'hidden xl:flex xl:w-[23rem] xl:shrink-0' : 'flex-1'
-        )}
+        className={cn('flex min-h-0 flex-col p-3', enMesa ? 'hidden' : 'flex-1')}
       >
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {(['salon', 'rapida'] as const).map((m) => (
@@ -212,6 +225,12 @@ export default function PosPage() {
           <span className="ml-auto text-xs text-slate-400">
             Caja {ses.cajas.find((c) => c.id === cajaId)?.nombre} · turno {ses.sesion.numero}
           </span>
+          <a
+            href="/configuracion/pos/plano"
+            className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
+          >
+            Plano
+          </a>
         </div>
 
         {modo === 'rapida' ? (
@@ -251,6 +270,10 @@ export default function PosPage() {
                 </div>
               ) : mesas.length === 0 && sector && sucursalId ? (
                 <CrearMesas sucursalId={sucursalId} sectorId={sector.id} onListo={() => salon.refetch()} />
+              ) : ubicadas.length > 0 ? (
+                <div className="h-full min-h-[18rem]">
+                  <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} />
+                </div>
               ) : (
                 <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
               )}
@@ -264,27 +287,45 @@ export default function PosPage() {
 
       {enMesa && (
         <>
-          <div className="min-h-0 flex-1 p-3">
-            <SelectorProductos
-              categorias={cat?.categorias ?? []}
-              productos={cat?.productos ?? []}
-              grupos={cat?.grupos ?? []}
-              onAgregar={(p, opciones, nota) =>
-                pedido.bloqueado
-                  ? toast.error('La mesa tiene la precuenta impresa')
-                  : pedido.agregar(p, opciones, nota)
-              }
-            />
+          <div className={cn('min-h-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
+            <div className="min-h-0 flex-1">
+              <SelectorProductos
+                categorias={cat?.categorias ?? []}
+                productos={cat?.productos ?? []}
+                grupos={cat?.grupos ?? []}
+                onAgregar={(p, opciones, nota) =>
+                  pedido.bloqueado
+                    ? toast.error('La mesa tiene la precuenta impresa')
+                    : pedido.agregar(p, opciones, nota)
+                }
+              />
+            </div>
+            <button
+              onClick={() => setVista('detalle')}
+              className="mt-2 flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 text-base font-semibold text-white lg:hidden"
+            >
+              Ver el consumo
+              {pedido.lineas.length > 0 && ` · ${pedido.lineas.length}`}
+            </button>
           </div>
 
           <Carrito
+            className={cn('flex-1 lg:flex-none', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
             titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Venta rápida'}
             subtitulo={pedido.comensales ? `${pedido.comensales} cubiertos` : null}
             lineas={pedido.lineas}
             bloqueado={pedido.bloqueado}
             onCambiar={pedido.cambiar}
+            onMarca={pedido.marcar}
+            onAnular={(l) => setAnulando(l)}
             onCerrar={() => void salir()}
           >
+            <button
+              onClick={() => setVista('productos')}
+              className="mb-2 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 lg:hidden"
+            >
+              <ListPlus className="h-5 w-5" /> Agregar producto
+            </button>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => precuenta.mutate()}
@@ -312,9 +353,23 @@ export default function PosPage() {
         </>
       )}
 
+      {anulando && (
+        <Autorizacion
+          titulo="Sacar un plato comandado"
+          detalle={`${anulando.cantidad} × ${anulando.nombre}. La cocina ya lo tiene.`}
+          accion="anular_item_enviado"
+          onCancelar={() => setAnulando(null)}
+          onAutorizado={(usuarioId, motivo) => {
+            void pedido.anularItem(anulando.id, motivo, usuarioId)
+            setAnulando(null)
+          }}
+        />
+      )}
+
       {abriendo && (
         <Cubiertos
           mesa={abriendo.nombre}
+          sugerido={abriendo.capacidad}
           onCancelar={() => setAbriendo(null)}
           onElegir={(n) => {
             pedido.abrirMesaLibre({ id: abriendo.id, nombre: abriendo.nombre }, n)

@@ -66,6 +66,7 @@ export function usePedido(opts: {
               precioUnitario: l.precioUnitario,
               alicuotaIva: l.alicuotaIva,
               nota: l.nota,
+              marca: l.marca,
               opciones: l.opciones,
             })),
           }),
@@ -127,6 +128,11 @@ export function usePedido(opts: {
             enviado: Boolean(i.enviado),
             nota: (i.nota as string | null) ?? null,
             opciones: (i.opciones as OpcionElegida[]) ?? [],
+            marca: (i.marca as string | null) ?? null,
+            comanda: (i.comanda as number | null) ?? null,
+            enviadoHora: (i.enviadoHora as string | null) ?? null,
+            minutosCocina: (i.minutosCocina as number | null) ?? null,
+            estadoKds: (i.estadoKds as string | null) ?? null,
           }))
       )
       return p
@@ -180,6 +186,11 @@ export function usePedido(opts: {
                   enviado: false,
                   nota,
                   opciones,
+                  marca: null,
+                  comanda: null,
+                  enviadoHora: null,
+                  minutosCocina: null,
+                  estadoKds: 'pendiente',
                 },
               ]
         void guardar(out)
@@ -192,6 +203,9 @@ export function usePedido(opts: {
   const cambiar = useCallback(
     (id: string, delta: number) => {
       setLineas((ls) => {
+        // Lo que ya salió a cocina no se toca por acá: se anula, que pide
+        // llave y deja rastro.
+        if (ls.find((l) => l.id === id)?.enviado) return ls
         const out = ls
           .map((l) => (l.id === id ? { ...l, cantidad: l.cantidad + delta } : l))
           .filter((l) => l.cantidad > 0 || l.enviado)
@@ -200,6 +214,44 @@ export function usePedido(opts: {
       })
     },
     [guardar]
+  )
+
+  /** MS o PAR. Sólo mientras el plato no salió. */
+  const marcar = useCallback(
+    (id: string, marca: string | null) => {
+      setLineas((ls) => {
+        const out = ls.map((l) => (l.id === id && !l.enviado ? { ...l, marca } : l))
+        void guardar(out)
+        return out
+      })
+    },
+    [guardar]
+  )
+
+  /**
+   * Anula un plato que la cocina ya tiene.
+   *
+   * Lo autoriza alguien con llave y queda registrado con el motivo: la
+   * mercadería se usó igual y eso tiene que poder explicarse después.
+   */
+  const anularItem = useCallback(
+    async (itemId: string, motivo: string, autorizadoPor: string) => {
+      if (!pedidoId) return
+      try {
+        const r = await fetch('/api/pos/pedidos', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: pedidoId, accion: 'anular_item', itemId, motivo, autorizadoPor }),
+        })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || 'No se pudo anular')
+        setLineas((ls) => ls.filter((l) => l.id !== itemId))
+        toast.success('Plato anulado')
+      } catch (e) {
+        toast.error((e as Error).message)
+      }
+    },
+    [pedidoId]
   )
 
   const enviar = useCallback(async () => {
@@ -260,6 +312,8 @@ export function usePedido(opts: {
     nuevoMostrador,
     agregar,
     cambiar,
+    marcar,
+    anularItem,
     enviar,
     cerrar,
     limpiar,

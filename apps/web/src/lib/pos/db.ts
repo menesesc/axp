@@ -14,6 +14,8 @@ import { prisma } from '@/lib/prisma'
 export interface Categoria {
   id: string
   nombre: string
+  /** Subcategorías: "Vinos → Catena Zapata". Null es categoría de primer nivel. */
+  padreId: string | null
   orden: number
   color: string | null
   emoji: string | null
@@ -45,7 +47,7 @@ export interface Producto {
 
 export async function categoriasDe(clienteId: string): Promise<Categoria[]> {
   return prisma.$queryRaw<Categoria[]>`
-    SELECT c.id, c.nombre, c.orden, c.color, c.emoji, c.activa,
+    SELECT c.id, c.nombre, c."padreId", c.orden, c.color, c.emoji, c.activa,
            (SELECT count(*)::int FROM pos_productos p WHERE p."categoriaId" = c.id) AS productos
       FROM pos_categorias c
      WHERE c."clienteId" = ${clienteId}::uuid
@@ -148,6 +150,8 @@ export interface GrupoOpciones {
   nombre: string
   minimo: number
   maximo: number
+  /** Admite escribir algo que no está en la lista. */
+  permiteTexto: boolean
   opciones: Array<{ id: string; nombre: string; precioExtra: number }>
   /** Productos que piden este grupo. */
   productos: string[]
@@ -162,7 +166,7 @@ export interface GrupoOpciones {
  */
 export async function gruposDe(clienteId: string): Promise<GrupoOpciones[]> {
   const grupos = await prisma.$queryRaw<Array<Omit<GrupoOpciones, 'opciones' | 'productos'>>>`
-    SELECT g.id, g.nombre, g.minimo, g.maximo
+    SELECT g.id, g.nombre, g.minimo, g.maximo, g."permiteTexto"
       FROM pos_opcion_grupos g
      WHERE g."clienteId" = ${clienteId}::uuid AND g.activo
      ORDER BY g.orden, g.nombre

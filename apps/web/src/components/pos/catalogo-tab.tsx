@@ -32,6 +32,7 @@ interface Producto {
 interface Categoria {
   id: string
   nombre: string
+  padreId: string | null
   orden: number
   color: string | null
   emoji: string | null
@@ -52,6 +53,8 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
   const [editando, setEditando] = useState<string | null>(null)
   const [borrador, setBorrador] = useState<Partial<Producto> & { motivoPrecio?: string }>({})
   const [nuevaCat, setNuevaCat] = useState('')
+  const [nuevaCatPadre, setNuevaCatPadre] = useState('')
+  const [verCats, setVerCats] = useState(false)
 
   const categorias = data?.categorias ?? []
   const productos = useMemo(() => {
@@ -88,7 +91,11 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
       const res = await fetch('/api/pos/categorias', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nuevaCat, orden: (categorias.at(-1)?.orden ?? 0) + 10 }),
+        body: JSON.stringify({
+          nombre: nuevaCat,
+          padreId: nuevaCatPadre || null,
+          orden: (categorias.at(-1)?.orden ?? 0) + 10,
+        }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'No se pudo crear')
@@ -100,6 +107,25 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  const guardarCategoria = useMutation({
+    mutationFn: async (c: { id: string; nombre?: string; padreId?: string | null }) => {
+      const res = await fetch('/api/pos/categorias', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(c),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'No se pudo guardar')
+    },
+    onSuccess: refrescar,
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Para el desplegable: "Vinos" y abajo "Vinos → Catena Zapata".
+  const madres = categorias.filter((c) => !c.padreId)
+  const etiqueta = (c: Categoria) =>
+    c.padreId ? `${categorias.find((m) => m.id === c.padreId)?.nombre ?? ''} → ${c.nombre}` : c.nombre
 
   const sinStock = productos.filter((p) => !p.descuentaStock).length
 
@@ -117,7 +143,7 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
         >
           <option value="">Todas las categorías</option>
           {categorias.map((c) => (
-            <option key={c.id} value={c.id}>{c.nombre} ({c.productos})</option>
+            <option key={c.id} value={c.id}>{etiqueta(c)} ({c.productos})</option>
           ))}
         </select>
         <span className="text-xs text-slate-400">{productos.length} productos</span>
@@ -130,6 +156,18 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
             className="h-10 w-40 text-sm"
             onKeyDown={(e) => e.key === 'Enter' && nuevaCat.trim() && crearCategoria.mutate()}
           />
+          {/* Dentro de qué va: así se arma "Vinos → Catena Zapata" sin un
+              paso aparte. */}
+          <select
+            value={nuevaCatPadre}
+            onChange={(e) => setNuevaCatPadre(e.target.value)}
+            className="h-10 rounded-md border border-slate-200 bg-white px-2 text-sm"
+          >
+            <option value="">Categoría principal</option>
+            {madres.map((c) => (
+              <option key={c.id} value={c.id}>dentro de {c.nombre}</option>
+            ))}
+          </select>
           <Button
             size="sm"
             variant="outline"
@@ -139,8 +177,48 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
           >
             <Plus className="h-4 w-4" />
           </Button>
+          <button
+            onClick={() => setVerCats((v) => !v)}
+            className="h-10 rounded-md px-2 text-sm text-slate-500 underline"
+          >
+            {verCats ? 'Ocultar categorías' : 'Ordenar categorías'}
+          </button>
         </div>
       </div>
+
+      {/* Mover una categoría adentro de otra: "Catena Zapata" pasa a colgar
+          de "Vinos" y la carta se navega en dos toques en vez de uno largo. */}
+      {verCats && (
+        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          {categorias.map((c) => (
+            <div key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <span className="w-6 text-center">{c.emoji}</span>
+              <Input
+                key={`n-${c.id}`}
+                defaultValue={c.nombre}
+                onBlur={(e) => {
+                  const v = e.target.value.trim()
+                  if (v && v !== c.nombre) guardarCategoria.mutate({ id: c.id, nombre: v })
+                }}
+                className="h-9 w-48 text-sm"
+              />
+              <select
+                value={c.padreId ?? ''}
+                onChange={(e) => guardarCategoria.mutate({ id: c.id, padreId: e.target.value || null })}
+                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm"
+              >
+                <option value="">Categoría principal</option>
+                {madres
+                  .filter((m) => m.id !== c.id)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>dentro de {m.nombre}</option>
+                  ))}
+              </select>
+              <span className="text-xs text-slate-400">{c.productos} productos</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Un producto que no descuenta stock se vende contra nada: ni receta ni
           insumo de venta directa. Vale saberlo antes de que el inventario no
@@ -201,7 +279,7 @@ export function CatalogoTab({ data }: { data: { categorias: Categoria[]; product
                         className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm"
                       >
                         <option value="">Sin categoría</option>
-                        {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        {categorias.map((c) => <option key={c.id} value={c.id}>{etiqueta(c)}</option>)}
                       </select>
                     ) : (
                       p.categoriaNombre ?? '—'

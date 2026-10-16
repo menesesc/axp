@@ -21,6 +21,7 @@ export interface GrupoPos {
   nombre: string
   minimo: number
   maximo: number
+  permiteTexto?: boolean
   opciones: Array<{ id: string; nombre: string; precioExtra: number }>
   productos: string[]
 }
@@ -33,6 +34,34 @@ export interface OpcionElegida {
 }
 
 const pesos = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+
+function OtroTexto({ grupo, onAgregar }: { grupo: GrupoPos; onAgregar: (e: OpcionElegida) => void }) {
+  const [texto, setTexto] = useState('')
+  const sumar = () => {
+    const t = texto.trim()
+    if (!t) return
+    onAgregar({ opcionId: `libre:${t}`, grupo: grupo.nombre, nombre: t, precioExtra: 0 })
+    setTexto('')
+  }
+  return (
+    <div className="mt-2 flex gap-2">
+      <input
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && sumar()}
+        placeholder="Otro…"
+        className="h-12 flex-1 rounded-xl border border-slate-200 px-3 text-base outline-none focus:border-slate-900"
+      />
+      <button
+        onClick={sumar}
+        disabled={!texto.trim()}
+        className="h-12 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-700 disabled:opacity-30"
+      >
+        Sumar
+      </button>
+    </div>
+  )
+}
 
 export function OpcionesProducto({
   nombre,
@@ -96,7 +125,10 @@ export function OpcionesProducto({
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {g.opciones.map((o) => {
+                {[...g.opciones, ...elegidas
+                  .filter((e) => e.grupo === g.nombre && e.opcionId.startsWith('libre:'))
+                  .map((e) => ({ id: e.opcionId, nombre: e.nombre, precioExtra: e.precioExtra }))
+                ].map((o) => {
                   const activa = elegidas.some((e) => e.opcionId === o.id)
                   return (
                     <button
@@ -115,6 +147,9 @@ export function OpcionesProducto({
                   )
                 })}
               </div>
+              {/* Siempre aparece el que pide algo que no está en la lista: el
+                  punto raro, el sabor que se acabó, la media porción. */}
+              {g.permiteTexto && <OtroTexto grupo={g} onAgregar={(e) => setElegidas((p) => [...p, e])} />}
             </div>
           ))}
 

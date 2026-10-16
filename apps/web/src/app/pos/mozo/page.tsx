@@ -6,12 +6,15 @@ import { toast } from 'sonner'
 import { Carrito } from '@/components/pos/carrito'
 import { Cubiertos } from '@/components/pos/cubiertos'
 import { MapaMesas, LeyendaMesas, type MesaEstado } from '@/components/pos/mapa-mesas'
+import { PlanoSalon, type ElementoPlano } from '@/components/pos/plano-salon'
 import { SelectorProductos } from '@/components/pos/selector-productos'
+import { Autorizacion } from '@/components/pos/autorizacion'
+import type { Linea } from '@/components/pos/carrito'
 import type { CategoriaPos, ProductoPos } from '@/components/pos/grilla-productos'
 import type { GrupoPos } from '@/components/pos/opciones-producto'
 import { usePedido } from '@/lib/pos/usar-pedido'
 import { cn } from '@/lib/utils'
-import { Delete, Loader2, LogOut } from 'lucide-react'
+import { Delete, ListPlus, Loader2, LogOut } from 'lucide-react'
 
 /**
  * Pantalla de mozos.
@@ -32,6 +35,9 @@ export default function MozoPage() {
   const [usuario, setUsuario] = useState<{ id: string; nombre: string; rol: string } | null>(null)
   const [abriendo, setAbriendo] = useState<MesaEstado | null>(null)
   const [numero, setNumero] = useState('')
+  // El celular muestra el consumo y un botón para agregar. Nada más entra.
+  const [vista, setVista] = useState<'detalle' | 'productos'>('detalle')
+  const [anulando, setAnulando] = useState<Linea | null>(null)
 
   const { data: cat } = useQuery({
     queryKey: ['pos-catalogo'],
@@ -64,6 +70,7 @@ export default function MozoPage() {
       return r.json() as Promise<{
         sectores: Array<{ id: string; nombre: string; mesas: number }>
         mesas: MesaEstado[]
+        elementos: ElementoPlano[]
       }>
     },
     refetchInterval: 15_000,
@@ -104,8 +111,14 @@ export default function MozoPage() {
     () => (salon.data?.mesas ?? []).filter((m) => !sectorId || m.sectorId === sectorId),
     [salon.data, sectorId]
   )
+  const elementos = useMemo(
+    () => (salon.data?.elementos ?? []).filter((e) => !sectorId || e.sectorId === sectorId),
+    [salon.data, sectorId]
+  )
+  const ubicadas = mesas.filter((m) => m.x != null)
 
   const tocarMesa = (m: MesaEstado) => {
+    setVista('detalle')
     if (m.estado === 'libre' || !m.pedidoId) {
       setAbriendo(m)
     } else if (m.estado === 'cuenta' || m.estado === 'facturada') {
@@ -132,21 +145,39 @@ export default function MozoPage() {
   if (pedido.pedidoId) {
     return (
       <div className="flex h-dvh flex-col bg-slate-50 lg:flex-row">
-        <div className="min-h-0 flex-1 p-3">
-          <SelectorProductos
-            categorias={cat?.categorias ?? []}
-            productos={cat?.productos ?? []}
-            grupos={cat?.grupos ?? []}
-            onAgregar={(p, opciones, nota) => pedido.agregar(p, opciones, nota)}
-          />
+        <div className={cn('min-h-0 flex-1 flex-col p-3', vista === 'productos' ? 'flex' : 'hidden lg:flex')}>
+          <div className="min-h-0 flex-1">
+            <SelectorProductos
+              categorias={cat?.categorias ?? []}
+              productos={cat?.productos ?? []}
+              grupos={cat?.grupos ?? []}
+              onAgregar={(p, opciones, nota) => pedido.agregar(p, opciones, nota)}
+            />
+          </div>
+          <button
+            onClick={() => setVista('detalle')}
+            className="mt-2 flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 text-base font-semibold text-white lg:hidden"
+          >
+            Ver el consumo
+            {pedido.lineas.length > 0 && ` · ${pedido.lineas.length}`}
+          </button>
         </div>
         <Carrito
+          className={cn('flex-1 lg:flex-none', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
           titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Pedido'}
           subtitulo={`${pedido.comensales ?? 1} cubiertos · ${usuario.nombre}`}
           lineas={pedido.lineas}
           onCambiar={pedido.cambiar}
+          onMarca={pedido.marcar}
+          onAnular={(l) => setAnulando(l)}
           onCerrar={() => void salir()}
         >
+          <button
+            onClick={() => setVista('productos')}
+            className="mb-2 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-slate-100 text-base font-semibold text-slate-700 lg:hidden"
+          >
+            <ListPlus className="h-5 w-5" /> Agregar producto
+          </button>
           <button
             onClick={() => void salir()}
             disabled={pedido.cerrando}
@@ -155,6 +186,19 @@ export default function MozoPage() {
             {pedido.sinEnviar > 0 ? `Comandar · ${pedido.sinEnviar}` : 'Salir de la mesa'}
           </button>
         </Carrito>
+
+        {anulando && (
+          <Autorizacion
+            titulo="Sacar un plato comandado"
+            detalle={`${anulando.cantidad} × ${anulando.nombre}. La cocina ya lo tiene.`}
+            accion="anular_item_enviado"
+            onCancelar={() => setAnulando(null)}
+            onAutorizado={(usuarioId, motivo) => {
+              void pedido.anularItem(anulando.id, motivo, usuarioId)
+              setAnulando(null)
+            }}
+          />
+        )}
       </div>
     )
   }
@@ -212,6 +256,8 @@ export default function MozoPage() {
               <div className="grid place-items-center py-16">
                 <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
               </div>
+            ) : ubicadas.length > 0 ? (
+              <PlanoSalon mesas={ubicadas} elementos={elementos} onTocarMesa={tocarMesa} />
             ) : (
               <MapaMesas mesas={mesas} onAbrir={tocarMesa} />
             )}
@@ -225,6 +271,7 @@ export default function MozoPage() {
       {abriendo && (
         <Cubiertos
           mesa={abriendo.nombre}
+          sugerido={abriendo.capacidad}
           onCancelar={() => setAbriendo(null)}
           onElegir={(n) => {
             pedido.abrirMesaLibre({ id: abriendo.id, nombre: abriendo.nombre }, n)
