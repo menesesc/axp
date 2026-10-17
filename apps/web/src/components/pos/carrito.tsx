@@ -88,6 +88,7 @@ export function Carrito({
   titulo,
   subtitulo,
   cliente,
+  sincronizado,
   lineas,
   bloqueado,
   onCambiar,
@@ -102,6 +103,8 @@ export function Carrito({
   subtitulo?: string | null
   /** Nombre del cliente de la mesa, si se cargó. */
   cliente?: string | null
+  /** Última lectura del pedido: la mesa la puede estar cargando otro. */
+  sincronizado?: Date | null
   lineas: Linea[]
   bloqueado?: boolean
   onCambiar: (id: string, delta: number) => void
@@ -141,7 +144,17 @@ export function Carrito({
             {titulo}
             {cliente && <span className="ml-2 text-sm font-normal text-slate-500">· {cliente}</span>}
           </p>
-          {subtitulo && <p className="truncate text-[11px] text-slate-500">{subtitulo}</p>}
+          <p className="flex items-center gap-1.5 truncate text-[11px] text-slate-500">
+            {subtitulo}
+            {/* La mesa la puede estar cargando el mozo desde el celular: lo
+                que se ve acá se relee solo cada pocos segundos. */}
+            {sincronizado && (
+              <span className="flex items-center gap-1 text-emerald-600" title={`Actualizado ${sincronizado.toLocaleTimeString('es-AR')}`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                en vivo
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {/* Agrupado para cobrar, por comandas para reclamarle a la cocina. */}

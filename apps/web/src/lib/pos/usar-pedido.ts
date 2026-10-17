@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { Linea } from '@/components/pos/carrito'
 import type { OpcionElegida } from '@/components/pos/opciones-producto'
@@ -38,18 +38,29 @@ export function usePedido(opts: {
   const [abiertoAt, setAbiertoAt] = useState<string | null>(null)
   const [cliente, setCliente] = useState<string | null>(null)
   const [descuento, setDescuento] = useState({ pct: 0, importe: 0 })
+  // Cuándo se leyó el pedido por última vez: la mesa la pueden estar
+  // cargando desde otro lado.
+  const [sincronizado, setSincronizado] = useState<Date | null>(null)
   const [cargando, setCargando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
   // Lo último que se mandó, para no pisar un guardado nuevo con la respuesta
   // de uno viejo cuando el mozo toca tres productos seguidos.
   const envio = useRef(0)
+  // Guardados en curso y cuándo fue el último: mientras la pantalla está
+  // escribiendo, el refresco automático no pisa nada.
+  const enVuelo = useRef(0)
+  const ultimoCambio = useRef(0)
 
   const guardar = useCallback(
-    async (ls: Linea[], datos?: { mesaId?: string | null; comensales?: number | null; id?: string }) => {
+    async (
+      ls: Linea[],
+      datos?: { mesaId?: string | null; comensales?: number | null; id?: string; quitar?: string[] }
+    ) => {
       const id = datos?.id ?? pedidoId
       if (!opts.sucursalId || !id) return
       const turno = ++envio.current
+      enVuelo.current += 1
       try {
         const r = await fetch('/api/pos/pedidos', {
           method: 'POST',
@@ -63,6 +74,7 @@ export function usePedido(opts: {
             mozoId: opts.mozoId ?? null,
             tipo: (datos?.mesaId !== undefined ? datos.mesaId : mesa?.id) ? 'mesa' : 'mostrador',
             comensales: (datos?.comensales !== undefined ? datos.comensales : comensales) ?? 1,
+            quitar: datos?.quitar ?? [],
             items: ls.map((l) => ({
               id: l.id,
               productoId: l.productoId,
@@ -80,6 +92,9 @@ export function usePedido(opts: {
         if (!r.ok) throw new Error(j.error || 'No se pudo guardar')
       } catch (e) {
         if (turno === envio.current) toast.error((e as Error).message)
+      } finally {
+        enVuelo.current -= 1
+        ultimoCambio.current = Date.now()
       }
     },
     [opts.sucursalId, opts.sesionId, opts.mozoId, pedidoId, mesa, comensales, cliente]
@@ -102,6 +117,28 @@ export function usePedido(opts: {
     },
     [guardar]
   )
+
+  /** Las líneas como las devuelve el servidor. */
+  const mapear = (items: Array<Record<string, unknown>>): Linea[] =>
+    items
+      .filter((i) => !i.anulado)
+      .map((i) => ({
+        id: String(i.id),
+        productoId: String(i.productoId ?? ''),
+        nombre: String(i.nombre),
+        cantidad: Number(i.cantidad),
+        precioUnitario: Number(i.precioUnitario),
+        alicuotaIva: Number(i.alicuotaIva),
+        enviado: Boolean(i.enviado),
+        nota: (i.nota as string | null) ?? null,
+        opciones: (i.opciones as OpcionElegida[]) ?? [],
+        marca: (i.marca as string | null) ?? null,
+        comanda: (i.comanda as number | null) ?? null,
+        enviadoHora: (i.enviadoHora as string | null) ?? null,
+        minutosCocina: (i.minutosCocina as number | null) ?? null,
+        minutosPase: (i.minutosPase as number | null) ?? null,
+        estadoKds: (i.estadoKds as string | null) ?? null,
+      }))
 
   /** Vuelve a abrir un pedido que ya existe, con lo que la cocina ya tiene. */
   const abrirPedido = useCallback(async (id: string) => {
@@ -128,27 +165,8 @@ export function usePedido(opts: {
       setAbiertoAt(p.abiertoAt ?? null)
       setCliente(p.cliente ?? null)
       setDescuento({ pct: Number(p.descuentoPct ?? 0), importe: Number(p.descuentoImporte ?? 0) })
-      setLineas(
-        (j.items as Array<Record<string, unknown>>)
-          .filter((i) => !i.anulado)
-          .map((i) => ({
-            id: String(i.id),
-            productoId: String(i.productoId ?? ''),
-            nombre: String(i.nombre),
-            cantidad: Number(i.cantidad),
-            precioUnitario: Number(i.precioUnitario),
-            alicuotaIva: Number(i.alicuotaIva),
-            enviado: Boolean(i.enviado),
-            nota: (i.nota as string | null) ?? null,
-            opciones: (i.opciones as OpcionElegida[]) ?? [],
-            marca: (i.marca as string | null) ?? null,
-            comanda: (i.comanda as number | null) ?? null,
-            enviadoHora: (i.enviadoHora as string | null) ?? null,
-            minutosCocina: (i.minutosCocina as number | null) ?? null,
-            minutosPase: (i.minutosPase as number | null) ?? null,
-            estadoKds: (i.estadoKds as string | null) ?? null,
-          }))
-      )
+      setLineas(mapear(j.items as Array<Record<string, unknown>>))
+      setSincronizado(new Date())
       return p
     } catch (e) {
       toast.error((e as Error).message)
@@ -225,7 +243,10 @@ export function usePedido(opts: {
         const out = ls
           .map((l) => (l.id === id ? { ...l, cantidad: l.cantidad + delta } : l))
           .filter((l) => l.cantidad > 0 || l.enviado)
-        void guardar(out)
+        // Lo que desapareció se manda explícito: el servidor no borra por
+        // omisión, justamente para no pisar lo que cargó otra pantalla.
+        const quitar = ls.filter((l) => !out.some((o) => o.id === l.id)).map((l) => l.id)
+        void guardar(out, { quitar })
         return out
       })
     },
@@ -338,6 +359,37 @@ export function usePedido(opts: {
     return (j.enviados as number) ?? 0
   }, [pedidoId])
 
+  /**
+   * Refresco en vivo de la mesa abierta.
+   *
+   * La misma mesa la puede estar cargando el mozo desde el celular mientras
+   * el cajero la tiene abierta. No se bloquea a nadie: cada cambio se guarda
+   * en el momento, así que alcanza con releer el pedido cada pocos segundos
+   * y mostrar lo que hay.
+   *
+   * No se refresca mientras hay un guardado en curso ni justo después: la
+   * respuesta del servidor puede no incluir todavía lo que se acaba de
+   * tocar, y el plato parpadearía.
+   */
+  useEffect(() => {
+    if (!pedidoId) return
+    const t = setInterval(async () => {
+      if (enVuelo.current > 0 || Date.now() - ultimoCambio.current < 2500) return
+      try {
+        const r = await fetch(`/api/pos/pedidos?pedidoId=${pedidoId}`)
+        if (!r.ok) return
+        const j = await r.json()
+        const remotas = mapear(j.items as Array<Record<string, unknown>>)
+        setLineas((actuales) => (igual(actuales, remotas) ? actuales : remotas))
+        setBloqueado((j.pedido as { estado: string }).estado === 'bloqueado')
+        setSincronizado(new Date())
+      } catch {
+        // Sin internet se sigue trabajando con lo que hay en pantalla.
+      }
+    }, 6000)
+    return () => clearInterval(t)
+  }, [pedidoId])
+
   const limpiar = useCallback(() => {
     setPedidoId(null)
     setMesa(null)
@@ -377,6 +429,7 @@ export function usePedido(opts: {
     mesa,
     comensales,
     abiertoAt,
+    sincronizado,
     cliente,
     descuento,
     ponerCliente,
@@ -398,4 +451,15 @@ export function usePedido(opts: {
     limpiar,
     setBloqueado,
   }
+}
+
+
+/** Dos listas de líneas que dicen lo mismo: evita redibujar de gusto. */
+function igual(a: Linea[], b: Linea[]): boolean {
+  if (a.length !== b.length) return false
+  const clave = (l: Linea) =>
+    [l.id, l.cantidad, l.enviado ? 1 : 0, l.estadoKds, l.minutosCocina, l.minutosPase, l.marca].join('|')
+  const sa = a.map(clave).sort()
+  const sb = b.map(clave).sort()
+  return sa.every((x, i) => x === sb[i])
 }

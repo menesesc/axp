@@ -116,6 +116,8 @@ export async function POST(request: NextRequest) {
     cliente?: string | null
     nota?: string | null
     items?: ItemEntrada[]
+    /** Ítems que esta pantalla sacó. Lo único que se borra. */
+    quitar?: string[]
   } | null
 
   if (!b?.id || !b.sucursalId) return NextResponse.json({ error: 'Faltan datos del pedido' }, { status: 400 })
@@ -179,13 +181,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Los que la pantalla ya no manda y nunca salieron a cocina, se van.
-    const ids = items.map((i) => i.id)
-    await tx.$executeRaw`
-      DELETE FROM pos_pedido_items
-       WHERE "pedidoId" = ${b.id}::uuid AND "enviadoAt" IS NULL
-         AND NOT (id = ANY(${ids}::uuid[]))
-    `
+    /*
+     * Se borra sólo lo que la pantalla pidió borrar, nunca por omisión.
+     *
+     * Antes se borraba todo ítem sin enviar que no viniera en la lista, y
+     * eso rompía cuando dos personas tienen la misma mesa abierta: el mozo
+     * carga desde el celular, el cajero guarda con su copia vieja y le borra
+     * lo que el otro acababa de cargar. Con el borrado explícito, dos
+     * pantallas pueden trabajar sobre la misma mesa sin pisarse.
+     */
+    const quitar = (b.quitar ?? []).filter(Boolean)
+    if (quitar.length > 0) {
+      await tx.$executeRaw`
+        DELETE FROM pos_pedido_items
+         WHERE "pedidoId" = ${b.id}::uuid AND "enviadoAt" IS NULL
+           AND id = ANY(${quitar}::uuid[])
+      `
+    }
 
     await tx.$executeRaw`
       UPDATE pos_pedidos SET total = COALESCE((

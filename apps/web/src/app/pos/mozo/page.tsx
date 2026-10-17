@@ -211,6 +211,7 @@ export default function MozoPage() {
           ]
             .filter(Boolean)
             .join(' · ')}
+          sincronizado={pedido.sincronizado}
           lineas={pedido.lineas}
           bloqueado={pedido.bloqueado}
           onCambiar={pedido.cambiar}

@@ -409,6 +409,7 @@ export default function PosPage() {
               className={cn('flex-1 lg:flex-none lg:border-r', vista === 'detalle' ? 'flex' : 'hidden lg:flex')}
               titulo={pedido.mesa ? `Mesa ${pedido.mesa.nombre}` : 'Venta rápida'}
               cliente={pedido.cliente}
+              sincronizado={pedido.sincronizado}
               onCliente={() => setEditandoCliente(true)}
               onRepetir={(l) =>
                 pedido.agregar(
