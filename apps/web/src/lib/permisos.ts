@@ -383,7 +383,7 @@ export const SECCIONES: SeccionDef[] = [
     // Las obligaciones periódicas son lo que alimenta el calendario con los
     // vencimientos estimados, así que van con el mismo permiso.
     paginas: ['/finanzas'],
-    apis: ['/api/pagos/calendario', '/api/obligaciones'],
+    apis: ['/api/pagos/calendario', '/api/obligaciones', '/api/finanzas/flujo'],
     importes: true,
   },
   {

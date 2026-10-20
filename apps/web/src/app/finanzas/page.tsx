@@ -9,6 +9,7 @@ import { Kpi } from '@/components/dashboard/inicio'
 import { DetalleDia, PaymentCalendar, claveDia, type CalendarEvent } from '@/components/payments/payment-calendar'
 import { ChequesPorDebitar, type ChequePendiente } from '@/components/payments/cheques-por-debitar'
 import { ObligacionesDialog } from '@/components/payments/obligaciones-dialog'
+import { FlujoCaja } from '@/components/finanzas/flujo-caja'
 import { useUser } from '@/hooks/use-user'
 import { hoyAR } from '@/lib/fechas'
 import { formatCurrency } from '@/lib/utils'
@@ -85,8 +86,8 @@ export default function CalendarioPagos() {
   return (
     <DashboardLayout>
       <Header
-        title="Calendario de pagos"
-        description="Qué salió y qué sale de la cuenta cada día: transferencias, cheques y eCheq."
+        title="Finanzas"
+        description="Lo que entra y lo que sale: ventas del salón, pagos, cheques y vencimientos."
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-xl border border-slate-900/[0.12] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
@@ -122,6 +123,11 @@ export default function CalendarioPagos() {
         }
       />
 
+      {/* Lo que entra, antes que lo que sale: sin las ventas al lado, los
+          pagos del mes no dicen si el mes estuvo bien o mal. */}
+      <FlujoCaja desde={desde} hasta={hasta} prefijoMes={prefijo} />
+
+      <h2 className="mb-3 text-sm font-semibold text-slate-500">Pagos del mes</h2>
       <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Kpi etiqueta="Movimientos del mes" valor={formatCurrency(total)} nota={`${items.length} pagos`} icono={Wallet} cargando={isLoading} />
         <Kpi etiqueta="Ya pagado" valor={formatCurrency(suma(pagados))} nota={`${pagados.length} órdenes hechas`} tono="verde" icono={CheckCircle2} cargando={isLoading} />
