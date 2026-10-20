@@ -25,6 +25,7 @@ import { VistaCompras } from '@/components/dashboard/vista-compras'
 import { RubrosBreakdownCard } from '@/components/dashboard/rubros-breakdown-card'
 import { AvisosHoy, Kpi, KpiFacturasMes, UltimosComprobantes, VencimientosSemana, millones, pesos, type Aviso } from '@/components/dashboard/inicio'
 import { SelectorPeriodo, periodoDe, type Periodo } from '@/components/ui/periodo'
+import { FlujoCaja } from '@/components/finanzas/flujo-caja'
 
 type Vista = 'hoy' | 'finanzas' | 'compras'
 
@@ -263,6 +264,12 @@ export default function Inicio() {
 
       {vista === 'finanzas' && (
         <>
+          {/* Lo que entra, antes que lo que sale: con sólo los pagos no se
+              sabe si el mes estuvo bien o mal. */}
+          {ve.calendario && importes.calendario && (
+            <FlujoCaja desde={periodo.desde} hasta={periodo.hasta} etiqueta={periodo.etiqueta} />
+          )}
+
           <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {ve.pagos && (
               <Kpi

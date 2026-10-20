@@ -58,7 +58,18 @@ const corto = (n: number) =>
       ? `${Math.round(n / 1000)}k`
       : String(Math.round(n))
 
-export function FlujoCaja({ desde, hasta, prefijoMes }: { desde: string; hasta: string; prefijoMes: string }) {
+export function FlujoCaja({
+  desde,
+  hasta,
+  prefijoMes,
+  etiqueta,
+}: {
+  desde: string
+  hasta: string
+  /** Para el calendario, que pide una semana de más de cada lado. */
+  prefijoMes?: string
+  etiqueta?: string
+}) {
   const { data, isLoading } = useQuery<{ dias: DiaFlujo[]; resumen: Resumen }>({
     queryKey: ['finanzas-flujo', desde, hasta],
     queryFn: async () => {
@@ -68,9 +79,9 @@ export function FlujoCaja({ desde, hasta, prefijoMes }: { desde: string; hasta: 
     },
   })
 
-  // El gráfico muestra el mes que se está mirando, no la grilla completa del
-  // calendario, que se estira a la semana anterior y la siguiente.
-  const dias = (data?.dias ?? []).filter((d) => d.fecha.startsWith(prefijoMes))
+  // Cuando viene de un calendario, se muestra el mes que se está mirando y
+  // no la grilla entera, que se estira a la semana anterior y la siguiente.
+  const dias = (data?.dias ?? []).filter((d) => !prefijoMes || d.fecha.startsWith(prefijoMes))
   const r = data?.resumen
 
   const delMes = dias.reduce(
@@ -87,11 +98,13 @@ export function FlujoCaja({ desde, hasta, prefijoMes }: { desde: string; hasta: 
   const resultado = delMes.ingresos - delMes.pagado
   const conVenta = dias.filter((d) => d.ventas + d.pos > 0).length
 
+  const variosMeses = new Set(dias.map((d) => d.fecha.slice(0, 7))).size > 1
   let acumulado = 0
   const serie = dias.map((d) => {
     acumulado += d.ventas + d.pos - d.pagado
     return {
-      dia: Number(d.fecha.slice(8)),
+      // Si el período cruza meses, el número de día solo no alcanza.
+      dia: variosMeses ? `${d.fecha.slice(8)}/${d.fecha.slice(5, 7)}` : String(Number(d.fecha.slice(8))),
       ingresos: Math.round(d.ventas + d.pos),
       egresos: Math.round(d.pagado),
       saldo: Math.round(acumulado),
@@ -102,15 +115,19 @@ export function FlujoCaja({ desde, hasta, prefijoMes }: { desde: string; hasta: 
     <section className="mb-5">
       <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
-          etiqueta="Entró en el mes"
+          etiqueta={etiqueta ? `Entró · ${etiqueta}` : 'Entró en el mes'}
           valor={formatCurrency(delMes.ingresos)}
-          nota={conVenta ? `${conVenta} días con servicio · ${formatCurrency(delMes.ingresos / conVenta)} por día` : 'sin ventas cargadas'}
+          nota={
+            conVenta
+              ? `${conVenta} días con servicio · ${formatCurrency(delMes.ingresos / conVenta)} por día`
+              : 'sin ventas cargadas'
+          }
           tono="verde"
           icono={ArrowUpRight}
           cargando={isLoading}
         />
         <Kpi
-          etiqueta="Salió en el mes"
+          etiqueta={etiqueta ? `Salió · ${etiqueta}` : 'Salió en el mes'}
           valor={formatCurrency(delMes.pagado)}
           nota="pagos hechos y cheques debitados"
           tono="rojo"
@@ -126,7 +143,7 @@ export function FlujoCaja({ desde, hasta, prefijoMes }: { desde: string; hasta: 
           cargando={isLoading}
         />
         <Kpi
-          etiqueta="Falta pagar del mes"
+          etiqueta="Falta pagar"
           valor={formatCurrency(delMes.comprometido)}
           nota="órdenes emitidas y borradores"
           tono="ambar"
@@ -137,7 +154,7 @@ export function FlujoCaja({ desde, hasta, prefijoMes }: { desde: string; hasta: 
 
       <div className="rounded-2xl border border-slate-900/[0.08] bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <p className="font-semibold">Entra y sale, día por día</p>
+          <p className="font-semibold">Entra y sale, día por día{etiqueta ? ` · ${etiqueta}` : ''}</p>
           <p className="text-xs text-slate-500">
             Cobrado: {formatCurrency(delMes.efectivo)} en efectivo · {formatCurrency(delMes.tarjetas)} con tarjeta
             {delMes.ctaCte > 0 && ` · ${formatCurrency(delMes.ctaCte)} en cuenta corriente`}
