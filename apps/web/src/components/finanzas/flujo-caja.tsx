@@ -36,6 +36,7 @@ interface DiaFlujo {
   ctaCte: number
   pagado: number
   comprometido: number
+  sueldos: number
 }
 
 interface Resumen {
@@ -47,6 +48,7 @@ interface Resumen {
   ctaCte: number
   pagado: number
   comprometido: number
+  sueldos: number
   diasConVenta: number
   promedioDia: number
 }
@@ -87,13 +89,14 @@ export function FlujoCaja({
   const delMes = dias.reduce(
     (a, d) => ({
       ingresos: a.ingresos + d.ventas + d.pos,
-      pagado: a.pagado + d.pagado,
+      pagado: a.pagado + d.pagado + d.sueldos,
+      sueldos: a.sueldos + d.sueldos,
       comprometido: a.comprometido + d.comprometido,
       efectivo: a.efectivo + d.efectivo,
       tarjetas: a.tarjetas + d.tarjetas,
       ctaCte: a.ctaCte + d.ctaCte,
     }),
-    { ingresos: 0, pagado: 0, comprometido: 0, efectivo: 0, tarjetas: 0, ctaCte: 0 }
+    { ingresos: 0, pagado: 0, sueldos: 0, comprometido: 0, efectivo: 0, tarjetas: 0, ctaCte: 0 }
   )
   const resultado = delMes.ingresos - delMes.pagado
   const conVenta = dias.filter((d) => d.ventas + d.pos > 0).length
@@ -129,7 +132,11 @@ export function FlujoCaja({
         <Kpi
           etiqueta={etiqueta ? `Salió · ${etiqueta}` : 'Salió en el mes'}
           valor={formatCurrency(delMes.pagado)}
-          nota="pagos hechos y cheques debitados"
+          nota={
+            delMes.sueldos > 0
+              ? `incluye ${formatCurrency(delMes.sueldos)} de sueldos`
+              : 'pagos hechos y cheques debitados'
+          }
           tono="rojo"
           icono={ArrowDownRight}
           cargando={isLoading}
@@ -176,13 +183,16 @@ export function FlujoCaja({
                 <Tooltip
                   formatter={((v: number, k: string) => [
                     formatCurrency(v),
-                    k === 'ingresos' ? 'Entró' : k === 'egresos' ? 'Salió' : 'Saldo acumulado',
+                    k === 'ingresos' ? 'Entró' : k === 'egresos' ? 'Salió' : k === 'sueldos' ? 'Sueldos' : 'Saldo acumulado',
                   ]) as never}
                   labelFormatter={(d) => `Día ${d}`}
                   contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
                 />
                 <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={18} />
-                <Bar dataKey="egresos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={18} />
+                {/* Los sueldos apilados sobre el resto de los egresos: el
+                    día 5 el salto tiene que verse y entenderse. */}
+                <Bar dataKey="egresos" stackId="sale" fill="#f43f5e" radius={[0, 0, 0, 0]} maxBarSize={18} />
+                <Bar dataKey="sueldos" stackId="sale" fill="#fb923c" radius={[4, 4, 0, 0]} maxBarSize={18} />
                 <Line type="monotone" dataKey="saldo" stroke="#0f172a" strokeWidth={2} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>

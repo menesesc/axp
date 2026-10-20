@@ -31,6 +31,7 @@ interface Dia {
   ctaCte: number
   pagado: number
   comprometido: number
+  sueldos: number
 }
 
 export async function GET(request: NextRequest) {
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
 
   const clienteId = user.clienteId
 
-  const [ventas, pos, egresos] = await Promise.all([
+  const [ventas, pos, egresos, sueldos] = await Promise.all([
     prisma.$queryRaw<Array<{ fecha: string; ventas: number; efectivo: number; tarjetas: number; ctaCte: number }>>`
       SELECT to_char(fecha, 'YYYY-MM-DD') AS fecha,
              COALESCE(sum("totalVentas"), 0)::float8 AS ventas,
@@ -88,13 +89,26 @@ export async function GET(request: NextRequest) {
              END BETWEEN ${desde}::date AND ${hasta}::date
        GROUP BY 1
     `,
+    /*
+     * Los sueldos, por el día en que salen y no por el mes trabajado: que el
+     * sueldo de octubre se pague el 5 de noviembre no es un detalle
+     * contable, es la diferencia entre tener plata ese día o no tenerla.
+     */
+    prisma.$queryRaw<Array<{ fecha: string; sueldos: number }>>`
+      SELECT to_char("fechaPago", 'YYYY-MM-DD') AS fecha,
+             COALESCE(sum(importe), 0)::float8 AS sueldos
+        FROM costos_personal
+       WHERE "clienteId" = ${clienteId}::uuid
+         AND "fechaPago" BETWEEN ${desde}::date AND ${hasta}::date
+       GROUP BY 1
+    `,
   ])
 
   const dias = new Map<string, Dia>()
   const dia = (f: string) => {
     let d = dias.get(f)
     if (!d) {
-      d = { fecha: f, ventas: 0, pos: 0, efectivo: 0, tarjetas: 0, ctaCte: 0, pagado: 0, comprometido: 0 }
+      d = { fecha: f, ventas: 0, pos: 0, efectivo: 0, tarjetas: 0, ctaCte: 0, pagado: 0, comprometido: 0, sueldos: 0 }
       dias.set(f, d)
     }
     return d
@@ -102,6 +116,7 @@ export async function GET(request: NextRequest) {
   for (const v of ventas) Object.assign(dia(v.fecha), { ventas: v.ventas, efectivo: v.efectivo, tarjetas: v.tarjetas, ctaCte: v.ctaCte })
   for (const p of pos) dia(p.fecha).pos = p.pos
   for (const e of egresos) Object.assign(dia(e.fecha), { pagado: e.pagado, comprometido: e.comprometido })
+  for (const x of sueldos) dia(x.fecha).sueldos = x.sueldos
 
   const lista = [...dias.values()].sort((a, b) => a.fecha.localeCompare(b.fecha))
   const suma = (f: (d: Dia) => number) => lista.reduce((s, d) => s + f(d), 0)
@@ -118,6 +133,7 @@ export async function GET(request: NextRequest) {
       ctaCte: suma((d) => d.ctaCte),
       pagado: suma((d) => d.pagado),
       comprometido: suma((d) => d.comprometido),
+      sueldos: suma((d) => d.sueldos),
       // El promedio se calcula sobre los días que hubo servicio: dividir por
       // 30 cuando se abre 22 miente hacia abajo.
       diasConVenta: conVenta.length,

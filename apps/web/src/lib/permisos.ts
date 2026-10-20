@@ -383,7 +383,7 @@ export const SECCIONES: SeccionDef[] = [
     // Las obligaciones periódicas son lo que alimenta el calendario con los
     // vencimientos estimados, así que van con el mismo permiso.
     paginas: ['/finanzas'],
-    apis: ['/api/pagos/calendario', '/api/obligaciones', '/api/finanzas/flujo'],
+    apis: ['/api/pagos/calendario', '/api/obligaciones', '/api/finanzas/flujo', '/api/finanzas/costos-personal'],
     importes: true,
   },
   {
@@ -487,7 +487,7 @@ export const SECCIONES: SeccionDef[] = [
     label: 'Configuración',
     paginas: ['/configuracion'],
     // El catálogo del punto de venta es configuración: precios y carta.
-    apis: ['/api/configuracion', '/api/suscripciones'],
+    apis: ['/api/configuracion', '/api/suscripciones', '/api/integraciones'],
     soloAdmin: true,
   },
 ]
