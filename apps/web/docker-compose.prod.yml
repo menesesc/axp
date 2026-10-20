@@ -22,6 +22,9 @@ services:
       # y el resto del recetario funciona igual.
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_IMAGE_MODEL=${OPENAI_IMAGE_MODEL}
+      # Con esto se cifran las claves de API de los sistemas conectados
+      # (Presentia). Sin esto, la pantalla de integraciones avisa y no guarda.
+      - APP_SECRET=${APP_SECRET}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_WEBHOOK_SECRET=${RESEND_WEBHOOK_SECRET}
       - R2_UNRESOLVED_BUCKET=${R2_UNRESOLVED_BUCKET}
