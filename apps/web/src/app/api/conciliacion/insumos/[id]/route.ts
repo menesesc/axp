@@ -7,7 +7,8 @@ import { UNIDADES } from '@/lib/conciliacion/units'
 export const dynamic = 'force-dynamic'
 
 /** Edita un insumo. Solo admin. */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
@@ -89,7 +90,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 /** Borra un insumo (alias en cascade; recipe_items quedan con insumoId=null). Solo admin. */
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })

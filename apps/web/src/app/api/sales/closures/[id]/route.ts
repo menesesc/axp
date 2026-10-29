@@ -6,7 +6,8 @@ import { importesJson } from '@/lib/importes'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, verImportes, error } = await requireSeccion(SECCION.VENTAS_CIERRES)
   if (error) return error
   const json = importesJson(verImportes)
@@ -40,7 +41,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   return json({ closure })
 }
 
-export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { user, clienteId, error } = await requireSeccion(SECCION.VENTAS_CIERRES, 'edit')
   if (error) return error
   if (user?.tipo_acceso !== 'ADMIN') {

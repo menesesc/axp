@@ -6,7 +6,8 @@ import { SECCION } from '@/lib/permisos'
 export const dynamic = 'force-dynamic'
 
 /** Cambia el estado de un pedido a proveedor. Body: { estado: 'recibido' | 'cancelado' | 'enviado' } */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_COMPRAS, 'edit')
   if (error) return error
   const body = await request.json().catch(() => null)

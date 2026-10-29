@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Legend } from 'recharts'
 import { defaultRange, fmtAR, fmtNumAR } from '@/components/sales/shared'
@@ -65,17 +66,12 @@ const thr = 'text-right px-2 py-1 font-medium text-slate-500 border-b border-sla
 const td = 'px-2 py-1 text-slate-700 border-b border-slate-100'
 const tdr = 'px-2 py-1 text-right text-slate-700 border-b border-slate-100'
 
-export default function InsumoPrintPage({
-  params,
-  searchParams,
-}: {
-  params: { id: string }
-  searchParams: { from?: string; to?: string }
-}) {
-  const id = params.id
+export default function InsumoPrintPage() {
+  const { id } = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const def = defaultRange()
-  const from = searchParams.from || def.from
-  const to = searchParams.to || def.to
+  const from = searchParams.get('from') || def.from
+  const to = searchParams.get('to') || def.to
   const q = `from=${from}&to=${to}`
 
   const detalle = useQuery({

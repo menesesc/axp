@@ -15,7 +15,8 @@ const bodySchema = z
   .optional()
   .default({})
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { user, error } = await requireAdmin()
   if (error) return error
   if (!user?.clienteId) {

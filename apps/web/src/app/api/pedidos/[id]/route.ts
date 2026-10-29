@@ -6,7 +6,8 @@ import { cargarPedido, serializarPedido } from '@/lib/stock/pedidos'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_PEDIDOS)
   if (error) return error
   const pedido = await cargarPedido(params.id, clienteId!)
@@ -22,7 +23,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
  *   estado?: 'cancelado' | 'pendiente',       // cancelar / reabrir un cancelado
  * }
  */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_PEDIDOS, 'edit')
   if (error) return error
   const pedido = await cargarPedido(params.id, clienteId!)

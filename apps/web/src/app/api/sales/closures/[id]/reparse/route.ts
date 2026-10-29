@@ -13,7 +13,8 @@ export const maxDuration = 60
  * Re-parsea un cierre usando su rawText guardado y reemplaza todas las hijas.
  * Útil para aplicar mejoras del parser a cierres viejos sin reenviar PDFs.
  */
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.VENTAS_CIERRES, 'edit')
   if (error) return error
 

@@ -6,7 +6,8 @@ import { SECCION } from '@/lib/permisos'
 export const dynamic = 'force-dynamic'
 
 /** Edita un depósito. Body: { nombre?, esCentral?: true, activo? } */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONFIGURACION, 'edit')
   if (error) return error
   const dep = await prisma.depositos.findFirst({ where: { id: params.id, clienteId: clienteId! } })

@@ -7,7 +7,8 @@ import { guardarItemsPlantilla, validarPlantilla } from '@/lib/stock/plantillas'
 export const dynamic = 'force-dynamic'
 
 /** Reemplaza una plantilla. Body: { nombre, destinoId?, items: [{ insumoId, cantidad }] } */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_PEDIDOS, 'edit')
   if (error) return error
   const existe = await prisma.pedido_plantillas.findFirst({ where: { id: params.id, clienteId: clienteId! } })
@@ -25,7 +26,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_PEDIDOS, 'edit')
   if (error) return error
   await prisma.pedido_plantillas.deleteMany({ where: { id: params.id, clienteId: clienteId! } })

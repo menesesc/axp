@@ -18,7 +18,8 @@ async function ensureOwned(id: string, clienteId: string) {
   return !!sub
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { user, error } = await requireAdmin()
   if (error) return error
   if (!user?.clienteId) {
@@ -83,7 +84,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   return NextResponse.json({ ok: true })
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { user, error } = await requireAdmin()
   if (error) return error
   if (!user?.clienteId) {

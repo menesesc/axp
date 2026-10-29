@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic'
  *
  * Query: ?from=&to=
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS)
   if (error) return error
 

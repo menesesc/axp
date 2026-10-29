@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic'
  * Desde `fechaEnvio` esas cantidades salen del central y entran al destino.
  * Body: { items: [{ insumoId, cantidadEnviada }], fechaEnvio?: 'YYYY-MM-DD' }
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { user, clienteId, error } = await requireSeccion(SECCION.CONCILIACION_DESPACHO, 'edit')
   if (error) return error
   const pedido = await cargarPedido(params.id, clienteId!)
@@ -66,7 +67,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 /** Anula el envío: el pedido vuelve a pendiente y deja de mover stock. */
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_DESPACHO, 'edit')
   if (error) return error
   const pedido = await cargarPedido(params.id, clienteId!)

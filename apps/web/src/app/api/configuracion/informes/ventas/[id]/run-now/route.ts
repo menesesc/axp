@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic'
  * forzar el envío del día al activar una subscripción nueva o cuando se
  * detecta una falla.
  */
-export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { user, error } = await requireAdmin()
   if (error) return error
   if (!user?.clienteId) {

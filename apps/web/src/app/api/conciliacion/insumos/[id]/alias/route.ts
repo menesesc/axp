@@ -10,7 +10,8 @@ async function ownsInsumo(insumoId: string, clienteId: string) {
 }
 
 /** Lista los alias de un insumo. */
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS)
   if (error) return error
 
@@ -33,7 +34,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 }
 
 /** Crea un alias para el insumo. Solo admin. */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })
@@ -68,7 +70,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 /** Borra un alias (?aliasId=). Solo admin. */
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })

@@ -6,7 +6,8 @@ import { SECCION } from '@/lib/permisos'
 export const dynamic = 'force-dynamic'
 
 /** Borra una receta (y sus ingredientes en cascade). Solo admin. */
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_RECETAS, 'edit')
   if (error) return error
   if (!clienteId) return NextResponse.json({ error: 'No tienes una empresa asignada' }, { status: 403 })

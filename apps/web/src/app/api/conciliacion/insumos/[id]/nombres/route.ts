@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic'
  * Nada se aplica solo: "ALAMBRADO MALBEC" encuentra "GRAN ALAMBRADO MALBEC",
  * que es otro vino. Son candidatos para que elija alguien que los conoce.
  */
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   const { clienteId, error } = await requireSeccion(SECCION.CONCILIACION_INSUMOS, 'edit')
   if (error) return error
 
