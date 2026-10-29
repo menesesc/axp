@@ -1,8 +1,9 @@
 # Dockerfile para Next.js Web App (Monorepo)
 # Build desde el ROOT del monorepo: docker build -f apps/web/Dockerfile .
 
-FROM node:20-alpine AS base
-# pnpm fijado a v10.x: v11+ requiere Node 22 (usa node:sqlite built-in)
+FROM node:22.23.4-alpine AS base
+# Node 22.23.4+: trae el parche de CVE-2026-111497 (Brotli). Tag fijo, no flotante.
+# pnpm fijado a v10.x a propósito: subirlo no es parte del parche.
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
 # ------- Dependencies -------
