@@ -23,7 +23,7 @@ export const statusIngestQueueSchema = z.enum(['PENDING', 'PROCESSING', 'DONE', 
 // ============================================================================
 
 export const clienteSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   razonSocial: z.string().min(1, 'Razón social requerida').max(255),
   cuit: z.string().regex(/^\d{11}$/, 'CUIT debe tener 11 dígitos'),
   r2Prefix: z.string().min(1),
@@ -45,11 +45,11 @@ export const actualizarClienteSchema = crearClienteSchema.partial();
 // ============================================================================
 
 export const usuarioSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   email: z.string().email(),
   nombre: z.string().min(1).max(255),
   rol: rolUsuarioSchema,
-  clienteId: z.string().uuid().nullable(),
+  clienteId: z.string().guid().nullable(),
   activo: z.boolean(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -60,7 +60,7 @@ export const crearUsuarioSchema = z
     email: z.string().email('Email inválido'),
     nombre: z.string().min(2, 'Nombre debe tener al menos 2 caracteres'),
     rol: rolUsuarioSchema,
-    clienteId: z.string().uuid().optional(),
+    clienteId: z.string().guid().optional(),
   })
   .refine(
     (data) => {
@@ -83,8 +83,8 @@ export const actualizarUsuarioSchema = z.object({
 // ============================================================================
 
 export const proveedorSchema = z.object({
-  id: z.string().uuid(),
-  clienteId: z.string().uuid(),
+  id: z.string().guid(),
+  clienteId: z.string().guid(),
   razonSocial: z.string().min(1).max(255),
   cuit: z.string().regex(/^\d{11}$/).nullable(),
   alias: z.array(z.string()),
@@ -94,7 +94,7 @@ export const proveedorSchema = z.object({
 });
 
 export const crearProveedorSchema = z.object({
-  clienteId: z.string().uuid(),
+  clienteId: z.string().guid(),
   razonSocial: z.string().min(1, 'Razón social requerida').max(255),
   cuit: z.string().regex(/^\d{11}$/, 'CUIT debe tener 11 dígitos').optional(),
   alias: z.array(z.string()).default([]),
@@ -109,9 +109,9 @@ export const actualizarProveedorSchema = crearProveedorSchema
 // ============================================================================
 
 export const documentoSchema = z.object({
-  id: z.string().uuid(),
-  clienteId: z.string().uuid(),
-  proveedorId: z.string().uuid().nullable(),
+  id: z.string().guid(),
+  clienteId: z.string().guid(),
+  proveedorId: z.string().guid().nullable(),
   tipo: tipoDocumentoSchema,
   letra: letraFacturaSchema.nullable(),
   puntoVenta: z.string().max(10).nullable(),
@@ -126,7 +126,7 @@ export const documentoSchema = z.object({
   confidenceScore: z.number().int().min(0).max(100).nullable(),
   estadoRevision: estadoRevisionSchema,
   missingFields: z.array(z.string()),
-  jsonNormalizado: z.record(z.unknown()),
+  jsonNormalizado: z.record(z.string(), z.unknown()),
   source: sourceDocumentoSchema,
   hashSha256: z.string().length(64),
   pdfRawKey: z.string().max(500),
@@ -137,16 +137,16 @@ export const documentoSchema = z.object({
 });
 
 export const crearDocumentoSchema = z.object({
-  clienteId: z.string().uuid(),
+  clienteId: z.string().guid(),
   tipo: tipoDocumentoSchema,
   source: sourceDocumentoSchema,
   hashSha256: z.string().length(64, 'Hash SHA256 debe tener 64 caracteres'),
   pdfRawKey: z.string().min(1, 'Key de R2 requerida'),
-  jsonNormalizado: z.record(z.unknown()).optional(),
+  jsonNormalizado: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const actualizarDocumentoSchema = z.object({
-  proveedorId: z.string().uuid().optional(),
+  proveedorId: z.string().guid().optional(),
   letra: letraFacturaSchema.optional(),
   puntoVenta: z.string().max(10).optional(),
   numero: z.string().max(20).optional(),
@@ -163,8 +163,8 @@ export const actualizarDocumentoSchema = z.object({
 // ============================================================================
 
 export const documentoItemSchema = z.object({
-  id: z.string().uuid(),
-  documentoId: z.string().uuid(),
+  id: z.string().guid(),
+  documentoId: z.string().guid(),
   linea: z.number().int().positive(),
   descripcion: z.string().min(1),
   codigo: z.string().max(100).nullable(),
@@ -177,7 +177,7 @@ export const documentoItemSchema = z.object({
 export const crearDocumentoItemSchema = documentoItemSchema
   .omit({ id: true, documentoId: true })
   .extend({
-    documentoId: z.string().uuid(),
+    documentoId: z.string().guid(),
   });
 
 // ============================================================================
@@ -185,9 +185,9 @@ export const crearDocumentoItemSchema = documentoItemSchema
 // ============================================================================
 
 export const pagoSchema = z.object({
-  id: z.string().uuid(),
-  clienteId: z.string().uuid(),
-  proveedorId: z.string().uuid(),
+  id: z.string().guid(),
+  clienteId: z.string().guid(),
+  proveedorId: z.string().guid(),
   fecha: z.date(),
   estado: estadoPagoSchema,
   moneda: z.string().length(3),
@@ -199,8 +199,8 @@ export const pagoSchema = z.object({
 });
 
 export const crearPagoSchema = z.object({
-  clienteId: z.string().uuid(),
-  proveedorId: z.string().uuid(),
+  clienteId: z.string().guid(),
+  proveedorId: z.string().guid(),
   fecha: z.date(),
   montoTotal: z.number().positive('Monto debe ser positivo'),
   moneda: z.string().length(3).default('ARS'),
@@ -210,14 +210,14 @@ export const crearPagoSchema = z.object({
       z.object({
         tipo: tipoPagoMetodoSchema,
         monto: z.number().positive(),
-        meta: z.record(z.unknown()).optional(),
+        meta: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .min(1, 'Debe tener al menos un método de pago'),
   documentos: z
     .array(
       z.object({
-        documentoId: z.string().uuid(),
+        documentoId: z.string().guid(),
         montoAplicado: z.number().positive(),
       })
     )
@@ -229,8 +229,8 @@ export const crearPagoSchema = z.object({
 // ============================================================================
 
 export const ingestQueueSchema = z.object({
-  id: z.string().uuid(),
-  clienteId: z.string().uuid(),
+  id: z.string().guid(),
+  clienteId: z.string().guid(),
   source: z.enum(['SFTP', 'DRIVE']),
   sourceRef: z.string().max(500),
   sha256: z.string().length(64).nullable(),
@@ -243,7 +243,7 @@ export const ingestQueueSchema = z.object({
 });
 
 export const crearIngestQueueSchema = z.object({
-  clienteId: z.string().uuid(),
+  clienteId: z.string().guid(),
   source: z.enum(['SFTP', 'DRIVE']),
   sourceRef: z.string().min(1, 'Referencia de source requerida'),
   sha256: z.string().length(64).optional(),
@@ -259,24 +259,24 @@ export const paginationSchema = z.object({
 });
 
 export const documentoQuerySchema = paginationSchema.extend({
-  clienteId: z.string().uuid(),
+  clienteId: z.string().guid(),
   tipo: tipoDocumentoSchema.optional(),
   estadoRevision: estadoRevisionSchema.optional(),
-  proveedorId: z.string().uuid().optional(),
+  proveedorId: z.string().guid().optional(),
   fechaDesde: z.date().optional(),
   fechaHasta: z.date().optional(),
   search: z.string().optional(), // Búsqueda full-text
 });
 
 export const proveedorQuerySchema = paginationSchema.extend({
-  clienteId: z.string().uuid(),
+  clienteId: z.string().guid(),
   search: z.string().optional(),
   activo: z.boolean().optional(),
 });
 
 export const pagoQuerySchema = paginationSchema.extend({
-  clienteId: z.string().uuid(),
-  proveedorId: z.string().uuid().optional(),
+  clienteId: z.string().guid(),
+  proveedorId: z.string().guid().optional(),
   estado: estadoPagoSchema.optional(),
   fechaDesde: z.date().optional(),
   fechaHasta: z.date().optional(),

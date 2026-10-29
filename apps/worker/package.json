@@ -24,8 +24,8 @@
     "database": "workspace:*",
     "pdf-lib": "^1.17.1",
     "shared": "workspace:*",
-    "sharp": "^0.34.5",
-    "zod": "^3.22.4"
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bun": "latest",

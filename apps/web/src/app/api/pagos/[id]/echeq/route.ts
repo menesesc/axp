@@ -117,7 +117,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 const asignacionesSchema = z.array(
-  z.object({ archivo: z.number().int().min(0), pagina: z.number().int().min(0), metodoId: z.string().uuid() })
+  z.object({ archivo: z.number().int().min(0), pagina: z.number().int().min(0), metodoId: z.string().guid() })
 )
 
 /**

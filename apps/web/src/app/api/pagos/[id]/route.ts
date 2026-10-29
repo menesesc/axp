@@ -14,11 +14,11 @@ const paymentAttachmentSchema = z.object({
 const updatePagoSchema = z.object({
   estado: z.enum(['BORRADOR', 'EMITIDA', 'PAGADO']).optional(),
   nota: z.string().optional().nullable(),
-  proveedorId: z.string().uuid().optional(),
+  proveedorId: z.string().guid().optional(),
   fecha: z.string().transform((s) => new Date(s)).optional(),
   emitir: z.boolean().optional(),
   documentos: z.array(z.object({
-    documentoId: z.string().uuid(),
+    documentoId: z.string().guid(),
     montoAplicado: z.number(),
   })).optional(),
   metodos: z.array(z.object({
@@ -301,7 +301,7 @@ export async function PATCH(
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Datos inválidos', details: err.errors },
+        { error: 'Datos inválidos', details: err.issues },
         { status: 400 }
       )
     }

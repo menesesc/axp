@@ -12,12 +12,12 @@ const paymentAttachmentSchema = z.object({
 })
 
 const createPagoSchema = z.object({
-  proveedorId: z.string().uuid(),
+  proveedorId: z.string().guid(),
   fecha: z.string().transform((s) => new Date(s)),
   nota: z.string().optional().nullable(),
   emitir: z.boolean().optional().default(false),
   documentos: z.array(z.object({
-    documentoId: z.string().uuid(),
+    documentoId: z.string().guid(),
     montoAplicado: z.number(),
   })).optional().default([]),
   metodos: z.array(z.object({
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Datos inválidos', details: err.errors },
+        { error: 'Datos inválidos', details: err.issues },
         { status: 400 }
       )
     }

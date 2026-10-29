@@ -17,7 +17,7 @@ export async function GET() {
   return NextResponse.json({ lotes: await listarLotes(user.clienteId) })
 }
 
-const schema = z.object({ pagoIds: z.array(z.string().uuid()).min(1).max(200) })
+const schema = z.object({ pagoIds: z.array(z.string().guid()).min(1).max(200) })
 
 /**
  * Arma un lote con borradores seleccionados: los emite (documentos → PAGADO,

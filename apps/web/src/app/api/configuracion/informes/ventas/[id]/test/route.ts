@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     body = bodySchema.parse(await request.json().catch(() => ({})))
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Datos inválidos', details: err.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Datos inválidos', details: err.issues }, { status: 400 })
     }
     throw err
   }

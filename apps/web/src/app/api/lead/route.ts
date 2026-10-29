@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ ok: false, errors: error.errors }, { status: 400 });
+      return NextResponse.json({ ok: false, errors: error.issues }, { status: 400 });
     }
 
     console.error('[lead] Error procesando lead', error);

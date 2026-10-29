@@ -20,7 +20,7 @@ const MAX_BYTES = 25 * 1024 * 1024
  *    orden y la marca PAGADO.
  */
 const asignacionesSchema = z.array(
-  z.object({ archivo: z.number().int().min(0), pagina: z.number().int().min(0), pagoId: z.string().uuid() })
+  z.object({ archivo: z.number().int().min(0), pagina: z.number().int().min(0), pagoId: z.string().guid() })
 )
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

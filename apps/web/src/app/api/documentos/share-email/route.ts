@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { hoyAR } from '@/lib/fechas'
 
 const shareSchema = z.object({
-  documentoIds: z.array(z.string().uuid()).min(1),
+  documentoIds: z.array(z.string().guid()).min(1),
   to: z.string().email(),
   message: z.string().optional(),
 })
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, count: documentos.length })
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Datos inválidos', details: err.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Datos inválidos', details: err.issues }, { status: 400 })
     }
     console.error('Error sharing documents via email:', err)
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })

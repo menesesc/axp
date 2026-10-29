@@ -92,8 +92,8 @@ const loteSchema = z.object({
   items: z
     .array(
       z.object({
-        proveedorId: z.string().uuid(),
-        documentoIds: z.array(z.string().uuid()).min(1),
+        proveedorId: z.string().guid(),
+        documentoIds: z.array(z.string().guid()).min(1),
       })
     )
     .min(1)
