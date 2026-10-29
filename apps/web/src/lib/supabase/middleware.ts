@@ -53,7 +53,9 @@ export async function updateSession(request: NextRequest) {
     pathname === '/api/lead' ||
     // Webhooks y jobs server-to-server (validan su propio token, no sesión)
     pathname === '/api/email/inbound' ||
-    pathname === '/api/jobs/sales-reports/tick'
+    pathname === '/api/jobs/sales-reports/tick' ||
+    // Prototipo de rediseño con datos de ejemplo: solo en desarrollo local.
+    (process.env.NODE_ENV === 'development' && (pathname === '/prototipo' || pathname.startsWith('/prototipo/')))
 
   // Si no hay usuario y no es una ruta pública, redirigir a login
   if (!user && !isPublicPath) {
