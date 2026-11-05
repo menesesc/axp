@@ -6,6 +6,11 @@
  * mes, que es el gasto más grande después de la mercadería; sin eso el
  * resultado que muestra finanzas miente por mucho.
  *
+ * El importe que trae es lo que cobra el empleado. Las cargas sociales no
+ * están en Presentia, que no lleva impuestos: entran a AXP como
+ * obligaciones, igual que ARCA o Rentas. Sumarlas acá las contaría dos
+ * veces.
+ *
  * Lo que cambia entre instalaciones —la ruta y cómo se llaman los campos—
  * está en la config de la integración y no acá, para no tocar código cuando
  * la API cambie de forma.
@@ -25,11 +30,12 @@ export interface ConfigPresentia {
 export interface CostoPeriodo {
   /** Mes trabajado, YYYY-MM. */
   periodo: string
+  /** Lo que se le paga al empleado, sin cargas sociales. */
   importe: number
   empleados: number | null
 }
 
-export const RUTA_POR_DEFECTO = '/api/costos/mensual'
+export const RUTA_POR_DEFECTO = '/api/v1/data/payroll/monthly'
 
 /**
  * Trae el costo de personal por mes.
@@ -72,17 +78,22 @@ export async function costosDePresentia(
         : null
   if (!lista) throw new Error('La respuesta no trae una lista de períodos')
 
-  const cPeriodo = config.campos?.periodo || 'periodo'
-  const cImporte = config.campos?.importe || 'total'
-  const cEmpleados = config.campos?.empleados || 'empleados'
+  // Presentia responde en inglés (period, total, employees); se aceptan
+  // también los nombres en castellano por si la ruta apunta a otro lado.
+  const cPeriodo = config.campos?.periodo
+  const cImporte = config.campos?.importe
+  const cEmpleados = config.campos?.empleados
 
   return lista
     .map((x) => {
       const o = x as Record<string, unknown>
       return {
-        periodo: String(o[cPeriodo] ?? '').slice(0, 7),
-        importe: Number(o[cImporte] ?? 0),
-        empleados: o[cEmpleados] != null ? Number(o[cEmpleados]) : null,
+        periodo: String((cPeriodo ? o[cPeriodo] : o.period ?? o.periodo) ?? '').slice(0, 7),
+        importe: Number((cImporte ? o[cImporte] : o.total) ?? 0),
+        empleados: (() => {
+          const v = cEmpleados ? o[cEmpleados] : o.employees ?? o.empleados
+          return v != null ? Number(v) : null
+        })(),
       }
     })
     .filter((c) => /^\d{4}-\d{2}$/.test(c.periodo) && isFinite(c.importe) && c.importe > 0)

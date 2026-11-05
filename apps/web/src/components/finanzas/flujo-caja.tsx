@@ -134,7 +134,7 @@ export function FlujoCaja({
           valor={formatCurrency(delMes.pagado)}
           nota={
             delMes.sueldos > 0
-              ? `incluye ${formatCurrency(delMes.sueldos)} de sueldos`
+              ? `incluye ${formatCurrency(delMes.sueldos)} de sueldos (sin cargas)`
               : 'pagos hechos y cheques debitados'
           }
           tono="rojo"

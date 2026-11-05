@@ -138,7 +138,8 @@ export default function IntegracionesPage() {
           <div className="flex-1">
             <p className="font-semibold">Presentia · sueldos y horas</p>
             <p className="text-sm text-slate-500">
-              Trae el costo de personal de cada mes. Entra en el flujo de caja el día que se paga, no el mes trabajado.
+              Trae lo que se le paga a cada empleado, mes a mes. Entra en el flujo de caja el día que se paga, no el
+              mes trabajado.
             </p>
           </div>
           {presentia?.ultimaSync && (
@@ -179,7 +180,7 @@ export default function IntegracionesPage() {
           </label>
           <label className="text-xs text-slate-500">
             Ruta del endpoint de costos
-            <Input value={ruta} onChange={(e) => setRuta(e.target.value)} placeholder="/api/costos/mensual" />
+            <Input value={ruta} onChange={(e) => setRuta(e.target.value)} placeholder="/api/v1/data/payroll/monthly" />
           </label>
           <label className="text-xs text-slate-500">
             Día de pago de sueldos
@@ -258,9 +259,18 @@ function CostosPersonal({ costos }: { costos: Costo[] }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5">
       <p className="font-semibold">Costo de personal</p>
-      <p className="mb-4 text-sm text-slate-500">
+      <p className="mb-1 text-sm text-slate-500">
         Lo que trae Presentia, o lo que cargues a mano mientras tanto. Un número por mes ya hace que el resultado de
         caja deje de mentir.
+      </p>
+      {/* Dónde termina Presentia y dónde empieza AXP: si las cargas se
+          cargaran acá también, se contarían dos veces. */}
+      <p className="mb-4 text-xs text-slate-400">
+        Es lo que cobra el empleado. Las cargas sociales no están acá: van como impuestos, en{' '}
+        <a href="/finanzas" className="underline">
+          Finanzas → Vencimientos fijos
+        </a>
+        .
       </p>
 
       <div className="mb-4 flex flex-wrap items-end gap-2">
