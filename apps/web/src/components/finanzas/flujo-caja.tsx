@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { ArrowDownRight, ArrowUpRight, Scale, Wallet } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Scale, Users, Wallet } from 'lucide-react'
 import { Kpi } from '@/components/dashboard/inicio'
 import { formatCurrency } from '@/lib/utils'
 
@@ -102,6 +102,27 @@ export function FlujoCaja({
   const conVenta = dias.filter((d) => d.ventas + d.pos > 0).length
 
   const variosMeses = new Set(dias.map((d) => d.fecha.slice(0, 7))).size > 1
+  /*
+   * Qué mes se está pagando. El sueldo que sale este mes es el del mes
+   * anterior, y la tarjeta tiene que decirlo: si no, parece que falta plata
+   * o que sobra, según el día del mes en que se mire.
+   */
+  const mesesPagados = [
+    ...new Set(
+      (data?.dias ?? [])
+        .filter((d) => d.sueldos > 0 && (!prefijoMes || d.fecha.startsWith(prefijoMes)))
+        .map((d) => {
+          const [a, m] = d.fecha.slice(0, 7).split('-').map(Number) as [number, number]
+          const previo = m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`
+          return previo
+        })
+    ),
+  ]
+  const notaSueldos =
+    delMes.sueldos > 0
+      ? `trabajado en ${mesesPagados.join(', ')} · lo que cobra el personal`
+      : 'sin sueldos con pago en este período'
+
   let acumulado = 0
   const serie = dias.map((d) => {
     acumulado += d.ventas + d.pos - d.pagado
@@ -116,7 +137,7 @@ export function FlujoCaja({
 
   return (
     <section className="mb-5">
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi
           etiqueta={etiqueta ? `Entró · ${etiqueta}` : 'Entró en el mes'}
           valor={formatCurrency(delMes.ingresos)}
@@ -149,6 +170,17 @@ export function FlujoCaja({
           icono={Scale}
           cargando={isLoading}
         />
+        {/* Los sueldos tienen tarjeta propia: es el gasto más grande después
+            de la mercadería y adentro de "Salió" no se veía. */}
+        <Kpi
+          etiqueta="Sueldos"
+          valor={formatCurrency(delMes.sueldos)}
+          nota={notaSueldos}
+          tono="ambar"
+          icono={Users}
+          href="/configuracion/integraciones"
+          cargando={isLoading}
+        />
         <Kpi
           etiqueta="Falta pagar"
           valor={formatCurrency(delMes.comprometido)}
@@ -166,6 +198,9 @@ export function FlujoCaja({
             Cobrado: {formatCurrency(delMes.efectivo)} en efectivo · {formatCurrency(delMes.tarjetas)} con tarjeta
             {delMes.ctaCte > 0 && ` · ${formatCurrency(delMes.ctaCte)} en cuenta corriente`}
             {(r?.pos ?? 0) > 0 && ` · ${formatCurrency(r!.pos)} por el POS`}
+            {delMes.sueldos > 0 && (
+              <span className="ml-1 text-[#fb923c]">· en naranja, los sueldos</span>
+            )}
           </p>
         </div>
 
