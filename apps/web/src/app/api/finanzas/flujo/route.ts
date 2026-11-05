@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { prisma } from '@/lib/prisma'
+import { sincronizarSiHaceFalta } from '@/lib/integraciones/sincronizar-presentia'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,8 @@ interface Dia {
   pagado: number
   comprometido: number
   sueldos: number
+  /** Parte de `sueldos` que fueron adelantos (el resto, saldos de recibos). */
+  adelantos: number
 }
 
 export async function GET(request: NextRequest) {
@@ -47,7 +50,11 @@ export async function GET(request: NextRequest) {
 
   const clienteId = user.clienteId
 
-  const [ventas, pos, egresos, sueldos] = await Promise.all([
+  // Si los sueldos tienen más de seis horas, se traen de nuevo en segundo
+  // plano: nadie tiene que acordarse de apretar "Sincronizar".
+  void sincronizarSiHaceFalta(clienteId)
+
+  const [ventas, pos, egresos, sueldos, porMetodo] = await Promise.all([
     prisma.$queryRaw<Array<{ fecha: string; ventas: number; efectivo: number; tarjetas: number; ctaCte: number }>>`
       SELECT to_char(fecha, 'YYYY-MM-DD') AS fecha,
              COALESCE(sum("totalVentas"), 0)::float8 AS ventas,
@@ -90,17 +97,39 @@ export async function GET(request: NextRequest) {
        GROUP BY 1
     `,
     /*
-     * Los sueldos, por el día en que salen y no por el mes trabajado: que el
-     * sueldo de octubre se pague el 5 de noviembre no es un detalle
-     * contable, es la diferencia entre tener plata ese día o no tenerla.
+     * Los sueldos, por el día en que sale la plata.
+     *
+     * Con Presentia conectada son los movimientos reales: cada adelanto el
+     * día que se dio y el saldo de cada recibo el día que se pagó. Lo que se
+     * paga en especie (mercadería, consumo) se descuenta del sueldo pero no
+     * es plata, y no entra.
+     *
+     * Lo cargado a mano sigue entrando por su fecha de pago. El costo por mes
+     * que trae Presentia no se suma acá: es el mismo dinero que los
+     * movimientos, contado de otra forma.
      */
-    prisma.$queryRaw<Array<{ fecha: string; sueldos: number }>>`
-      SELECT to_char("fechaPago", 'YYYY-MM-DD') AS fecha,
-             COALESCE(sum(importe), 0)::float8 AS sueldos
-        FROM costos_personal
+    prisma.$queryRaw<Array<{ fecha: string; sueldos: number; adelantos: number }>>`
+      SELECT fecha, sum(sueldos)::float8 AS sueldos, sum(adelantos)::float8 AS adelantos FROM (
+        SELECT to_char(fecha, 'YYYY-MM-DD') AS fecha, importe AS sueldos,
+               CASE WHEN tipo = 'advance' THEN importe ELSE 0 END AS adelantos
+          FROM pagos_personal
+         WHERE "clienteId" = ${clienteId}::uuid AND metodo <> 'in_kind'
+           AND fecha BETWEEN ${desde}::date AND ${hasta}::date
+        UNION ALL
+        SELECT to_char("fechaPago", 'YYYY-MM-DD'), importe, 0
+          FROM costos_personal
+         WHERE "clienteId" = ${clienteId}::uuid AND origen = 'manual'
+           AND "fechaPago" BETWEEN ${desde}::date AND ${hasta}::date
+      ) x
+      GROUP BY fecha
+    `,
+    // Cómo salió esa plata: banco, efectivo u otros (préstamos sin medio).
+    prisma.$queryRaw<Array<{ metodo: string; importe: number }>>`
+      SELECT metodo, COALESCE(sum(importe), 0)::float8 AS importe
+        FROM pagos_personal
        WHERE "clienteId" = ${clienteId}::uuid
-         AND "fechaPago" BETWEEN ${desde}::date AND ${hasta}::date
-       GROUP BY 1
+         AND fecha BETWEEN ${desde}::date AND ${hasta}::date
+       GROUP BY metodo
     `,
   ])
 
@@ -108,7 +137,7 @@ export async function GET(request: NextRequest) {
   const dia = (f: string) => {
     let d = dias.get(f)
     if (!d) {
-      d = { fecha: f, ventas: 0, pos: 0, efectivo: 0, tarjetas: 0, ctaCte: 0, pagado: 0, comprometido: 0, sueldos: 0 }
+      d = { fecha: f, ventas: 0, pos: 0, efectivo: 0, tarjetas: 0, ctaCte: 0, pagado: 0, comprometido: 0, sueldos: 0, adelantos: 0 }
       dias.set(f, d)
     }
     return d
@@ -116,7 +145,8 @@ export async function GET(request: NextRequest) {
   for (const v of ventas) Object.assign(dia(v.fecha), { ventas: v.ventas, efectivo: v.efectivo, tarjetas: v.tarjetas, ctaCte: v.ctaCte })
   for (const p of pos) dia(p.fecha).pos = p.pos
   for (const e of egresos) Object.assign(dia(e.fecha), { pagado: e.pagado, comprometido: e.comprometido })
-  for (const x of sueldos) dia(x.fecha).sueldos = x.sueldos
+  for (const x of sueldos) Object.assign(dia(x.fecha), { sueldos: x.sueldos, adelantos: x.adelantos })
+  const metodo = (m: string) => porMetodo.find((x) => x.metodo === m)?.importe ?? 0
 
   const lista = [...dias.values()].sort((a, b) => a.fecha.localeCompare(b.fecha))
   const suma = (f: (d: Dia) => number) => lista.reduce((s, d) => s + f(d), 0)
@@ -134,6 +164,12 @@ export async function GET(request: NextRequest) {
       pagado: suma((d) => d.pagado),
       comprometido: suma((d) => d.comprometido),
       sueldos: suma((d) => d.sueldos),
+      adelantos: suma((d) => d.adelantos),
+      sueldosBanco: metodo('bank'),
+      sueldosEfectivo: metodo('cash'),
+      sueldosOtros: metodo('unspecified'),
+      // Se descuenta del sueldo pero no es plata: se informa, no se suma.
+      sueldosEspecie: metodo('in_kind'),
       // El promedio se calcula sobre los días que hubo servicio: dividir por
       // 30 cuando se abre 22 miente hacia abajo.
       diasConVenta: conVenta.length,

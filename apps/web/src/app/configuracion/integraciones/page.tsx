@@ -103,13 +103,17 @@ export default function IntegracionesPage() {
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'No se pudo conectar')
-      return j as { periodos: number }
+      return j as { periodos: number; movimientos: number }
     },
     onSuccess: (r, probar) => {
       qc.invalidateQueries({ queryKey: ['integraciones'] })
       qc.invalidateQueries({ queryKey: ['costos-personal'] })
       qc.invalidateQueries({ queryKey: ['finanzas-flujo'] })
-      toast.success(probar ? `Conecta bien: ${r.periodos} períodos` : `${r.periodos} períodos sincronizados`)
+      toast.success(
+        probar
+          ? `Conecta bien: ${r.periodos} meses y ${r.movimientos} pagos`
+          : `${r.periodos} meses y ${r.movimientos} pagos sincronizados`
+      )
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -138,8 +142,8 @@ export default function IntegracionesPage() {
           <div className="flex-1">
             <p className="font-semibold">Presentia · sueldos y horas</p>
             <p className="text-sm text-slate-500">
-              Trae lo que se le paga a cada empleado, mes a mes. Entra en el flujo de caja el día que se paga, no el
-              mes trabajado.
+              Trae lo que cobra el personal: cada adelanto y cada saldo de recibo, el día que se pagó. Así entra en
+              el flujo de caja. Se actualiza solo cada seis horas.
             </p>
           </div>
           {presentia?.ultimaSync && (
