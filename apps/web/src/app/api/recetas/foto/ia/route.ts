@@ -8,11 +8,27 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const BUCKET = process.env.R2_BUCKET_NAME || ''
-const MODELO = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
-// gpt-image-1 pide organización verificada en OpenAI. Si todavía no lo está,
-// la foto sale igual con el modelo anterior en vez de dejar al usuario con un
-// error que no puede resolver desde la pantalla.
-const MODELO_ALTERNATIVO = 'dall-e-3'
+/*
+ * Los modelos a probar, en orden.
+ *
+ * OpenAI da de baja modelos de imagen sin mucho aviso: gpt-image-1 y
+ * dall-e-3 ya no existen y con ellos esta función dejaba de andar. Por eso
+ * no hay un solo modelo fijo sino una lista: si uno no existe o la cuenta no
+ * lo tiene habilitado, se pasa al siguiente en vez de dejar al usuario con
+ * un error que no puede resolver desde la pantalla. OPENAI_IMAGE_MODEL, si
+ * está, va primero.
+ */
+const MODELOS = [process.env.OPENAI_IMAGE_MODEL, 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1-mini'].filter(
+  (m, i, xs): m is string => !!m && xs.indexOf(m) === i
+)
+
+/** El error es del modelo (no existe, no habilitado), no del pedido: probar otro. */
+function esDeModelo(status: number, j: { error?: { message?: string; param?: string } }) {
+  if (status === 403 || status === 404) return true
+  return status === 400 && (j.error?.param === 'model' || /model/i.test(j.error?.message ?? ''))
+}
+
+type RespuestaImagen = { data?: Array<{ b64_json?: string }>; error?: { message?: string; param?: string } }
 
 /**
  * Foto del plato generada por IA.
@@ -151,48 +167,42 @@ function armarPrompt(d: {
 }
 
 async function generar(apiKey: string, prompt: string): Promise<string | undefined> {
-  const pedir = (cuerpo: Record<string, unknown>) =>
-    fetch('https://api.openai.com/v1/images/generations', {
+  let ultimo = ''
+  for (const model of MODELOS) {
+    const r = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(cuerpo),
+      body: JSON.stringify({ model, prompt, n: 1, size: '1536x1024', quality: 'medium' }),
     })
-
-  let r = await pedir({ model: MODELO, prompt, n: 1, size: '1536x1024', quality: 'medium' })
-  let j = (await r.json()) as { data?: Array<{ b64_json?: string }>; error?: { message?: string } }
-
-  if (!r.ok && MODELO === 'gpt-image-1' && (r.status === 403 || r.status === 404)) {
-    r = await pedir({
-      model: MODELO_ALTERNATIVO,
-      prompt,
-      n: 1,
-      size: '1792x1024',
-      quality: 'hd',
-      response_format: 'b64_json',
-    })
-    j = (await r.json()) as typeof j
+    const j = (await r.json()) as RespuestaImagen
+    if (r.ok) return j.data?.[0]?.b64_json
+    ultimo = j.error?.message || `El modelo de imagen respondió ${r.status}`
+    if (!esDeModelo(r.status, j)) break
   }
-
-  if (!r.ok) throw new Error(j.error?.message || `El modelo de imagen respondió ${r.status}`)
-  return j.data?.[0]?.b64_json
+  throw new Error(ultimo || 'No hay ningún modelo de imagen disponible')
 }
 
 async function retocar(apiKey: string, prompt: string, imagen: Blob): Promise<string | undefined> {
-  const fd = new FormData()
-  fd.append('model', MODELO)
-  fd.append('prompt', prompt)
-  fd.append('size', '1536x1024')
-  fd.append('quality', 'medium')
-  fd.append('image', imagen, 'actual.png')
+  let ultimo = ''
+  for (const model of MODELOS) {
+    const fd = new FormData()
+    fd.append('model', model)
+    fd.append('prompt', prompt)
+    fd.append('size', '1536x1024')
+    fd.append('quality', 'medium')
+    fd.append('image', imagen, 'actual.png')
 
-  const r = await fetch('https://api.openai.com/v1/images/edits', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: fd,
-  })
-  const j = (await r.json()) as { data?: Array<{ b64_json?: string }>; error?: { message?: string } }
-  if (!r.ok) throw new Error(j.error?.message || `El modelo de imagen respondió ${r.status}`)
-  return j.data?.[0]?.b64_json
+    const r = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: fd,
+    })
+    const j = (await r.json()) as RespuestaImagen
+    if (r.ok) return j.data?.[0]?.b64_json
+    ultimo = j.error?.message || `El modelo de imagen respondió ${r.status}`
+    if (!esDeModelo(r.status, j)) break
+  }
+  throw new Error(ultimo || 'No hay ningún modelo de imagen disponible')
 }
 
 /** La foto actual, validando que la key sea del prefijo de esta empresa. */
