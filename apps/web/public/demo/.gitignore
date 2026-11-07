@@ -1,0 +1,9 @@
+# Lo de trabajo de la demo no se publica: capturas de prueba, versiones
+# anteriores, los PNG originales de las capas (las que se sirven son los
+# WEBP) y las fotos generadas que se reemplazaron por las reales.
+*.png
+!img/**/*.png
+img/capas-png/
+wurger-v1.html
+wurger-v2.html
+img/productos/*-ia.webp

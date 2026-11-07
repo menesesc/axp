@@ -15,7 +15,9 @@ export const config = {
      * - public files (images, etc.)
      * - build.txt: el sello del build, que tiene que poder leerse sin sesión
      *   para saber desde afuera qué versión está corriendo
+     * - demo/: páginas de muestra para clientes (el kiosco de Weiss), que
+     *   se abren sin usuario
      */
-    '/((?!_next/static|_next/image|favicon.ico|build.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|build.txt|demo/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }

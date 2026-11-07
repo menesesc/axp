@@ -1,0 +1,2 @@
+/* Lista de fotos de producto disponibles en img/productos/<id>.webp (la reescribe productos.py). */
+window.PRODUCTOS_FOTOS = ["7up", "agua", "agua-gas", "bites-aros", "bites-espinaca", "bites-provolone", "boniatos", "corona", "crosstrax", "ens-bacon-salad", "ens-guacamole-salad", "ens-veggie-guacamole", "fernet", "franui", "h2oh", "mirinda", "onion-rings", "paletas", "papas", "patagonia", "pepsi", "pepsi-black", "vino"];
