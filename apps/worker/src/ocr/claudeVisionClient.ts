@@ -243,6 +243,8 @@ function validateNumeroCompleto(numero: string | null): string | null {
   }
   // Rechazar si parece un CAE (14 dígitos continuos)
   if (digits.length === 14) return null
+  // Impuestos (F.931, DDJJ): el número es el período AAAAMM
+  if (/^20\d{2}(0[1-9]|1[0-2])$/.test(digits)) return digits
   // Aceptar 12-13 dígitos como válido
   if (digits.length < 8 || digits.length > 13) return null
   return digits

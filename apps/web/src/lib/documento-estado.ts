@@ -12,6 +12,8 @@ export interface DocumentoParaEvaluar {
   subtotal: number | string | { toNumber(): number } | null;
   iva: number | string | { toNumber(): number } | null;
   pdfRawKey?: string | null;
+  /** El proveedor es un impuesto (ARCA, rentas, sindicato): sus formularios no llevan letra. */
+  sinLetra?: boolean;
 }
 
 export type EstadoRevision = 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO';
@@ -40,6 +42,7 @@ function hasNumericValue(val: number | string | { toNumber(): number } | null | 
  *    - iva (0 es válido - ej: facturas exentas)
  *
  * Si falta CUALQUIERA de estos campos → PENDIENTE
+ * (la letra no se pide si `sinLetra`: un F.931 o una DDJJ no tienen)
  * Si no tiene PDF (pdfRawKey vacío) → PENDIENTE
  */
 export function determineEstadoRevision(doc: DocumentoParaEvaluar & { missingFields?: unknown }): EstadoRevision {
@@ -68,7 +71,7 @@ export function determineEstadoRevision(doc: DocumentoParaEvaluar & { missingFie
   // Campos opcionales pero importantes
   // subtotal e iva pueden ser 0 (facturas exentas, monotributo, etc.)
   const hasOptionalFields =
-    !!doc.letra &&
+    (!!doc.letra || !!doc.sinLetra) &&
     !!doc.numeroCompleto &&
     hasNumericValue(doc.subtotal) &&
     hasNumericValue(doc.iva);
@@ -98,7 +101,7 @@ export function calculateMissingFields(doc: DocumentoParaEvaluar & { missingFiel
   if (!hasNumericValue(doc.total)) missing.push('total');
 
   // Campos opcionales importantes (0 es valor válido para numéricos)
-  if (!doc.letra) missing.push('letra');
+  if (!doc.letra && !doc.sinLetra) missing.push('letra');
   if (!doc.numeroCompleto) missing.push('numeroCompleto');
   if (!hasNumericValue(doc.subtotal)) missing.push('subtotal');
   if (!hasNumericValue(doc.iva)) missing.push('iva');

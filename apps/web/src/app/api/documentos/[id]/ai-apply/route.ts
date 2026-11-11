@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
+import { proveedoresImpuesto } from '@/lib/proveedor-impuesto'
 
 /**
  * Parsea fecha con timezone de Argentina (GMT-3).
@@ -104,10 +105,11 @@ export async function POST(
     })
 
     // Recalculate missingFields y estado usando lógica centralizada
-    const missingFields = calculateMissingFields(documento)
+    const evaluar = { ...documento, sinLetra: (await proveedoresImpuesto([documento.proveedorId])).size > 0 }
+    const missingFields = calculateMissingFields(evaluar)
     let newEstado = documento.estadoRevision
     if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO') {
-      newEstado = determineEstadoRevision(documento)
+      newEstado = determineEstadoRevision(evaluar)
     }
 
     // Update missingFields and estado if changed

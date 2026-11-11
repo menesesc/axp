@@ -5,6 +5,7 @@ import { importesJson } from '@/lib/importes'
 import { contactosDesde } from '@/lib/proveedores/contactos'
 import { cbusDelCliente, guardarCbu, parseCbuInput } from '@/lib/proveedores/cbu'
 import { prisma } from '@/lib/prisma'
+import { recalcularEstadosDeProveedor } from '@/lib/proveedor-impuesto'
 import { z } from 'zod'
 
 const updateProveedorSchema = z.object({
@@ -162,6 +163,8 @@ export async function PATCH(
         UPDATE proveedores SET rubro = ${data.rubro}
          WHERE id = ${id}::uuid AND "clienteId" = ${user.clienteId}::uuid
       `
+      // Los impuestos no llevan letra: sus documentos cambian de estado.
+      await recalcularEstadosDeProveedor(user.clienteId, id)
     }
 
     if (cbuIn.cbu !== undefined) await guardarCbu(user.clienteId, id, cbuIn.cbu)

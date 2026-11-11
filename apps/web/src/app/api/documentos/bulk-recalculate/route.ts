@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { determineEstadoRevision, calculateMissingFields } from '@/lib/documento-estado'
+import { proveedoresImpuesto } from '@/lib/proveedor-impuesto'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 
@@ -48,6 +49,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const impuestos = await proveedoresImpuesto(documentos.map((d) => d.proveedorId))
+
     let updated = 0
     let unchanged = 0
 
@@ -58,8 +61,9 @@ export async function POST(request: NextRequest) {
         return
       }
 
-      const correctEstado = determineEstadoRevision(doc)
-      const missingFields = calculateMissingFields(doc)
+      const evaluar = { ...doc, sinLetra: !!doc.proveedorId && impuestos.has(doc.proveedorId) }
+      const correctEstado = determineEstadoRevision(evaluar)
+      const missingFields = calculateMissingFields(evaluar)
 
       if (correctEstado !== doc.estadoRevision) {
         await prisma.documentos.update({

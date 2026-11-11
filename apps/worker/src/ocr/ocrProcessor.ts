@@ -126,7 +126,7 @@ interface InboxFile {
  * @param proveedorId - ID del proveedor (si se encontró)
  * @param finalLetra - Letra final (OCR o default del proveedor)
  */
-function determineEstadoRevision(parsed: any, proveedorId: string | null, finalLetra: string | null): EstadoRevision {
+function determineEstadoRevision(parsed: any, proveedorId: string | null, finalLetra: string | null, sinLetra = false): EstadoRevision {
   // Helper: 0 es un valor numérico válido, solo null/undefined/'' es "faltante"
   const hasNum = (v: any) => v != null && v !== '';
 
@@ -142,8 +142,9 @@ function determineEstadoRevision(parsed: any, proveedorId: string | null, finalL
 
   // Campos opcionales importantes: letra (OCR o proveedor), numeroCompleto, subtotal, iva
   // subtotal e iva pueden ser 0 (facturas exentas, monotributo, etc.)
+  // Los impuestos (F.931, DDJJ) no tienen letra.
   const hasOptionalFields =
-    !!finalLetra &&
+    (!!finalLetra || sinLetra) &&
     !!parsed.numeroCompleto &&
     hasNum(parsed.subtotal) &&
     hasNum(parsed.iva);
@@ -553,6 +554,10 @@ async function processOCRFile(file: InboxFile): Promise<void> {
             proveedorId: proveedorId,
             fechaEmision: fechaEmisionDate,
             numeroCompleto: parsed.numeroCompleto,
+            // En los impuestos el número es el período (AAAAMM): el F.931 y la
+            // DDJJ de IVA del mismo mes, presentados el mismo día, comparten
+            // proveedor, fecha y número. Los distingue el importe.
+            ...(/^\d{6}$/.test(parsed.numeroCompleto) ? { total: parsed.total } : {}),
           },
           select: { id: true },
         });
@@ -578,9 +583,19 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       logger.info(`📝 Using default letra from proveedor: ${proveedorLetra}`);
     }
 
+    // ¿El proveedor es un impuesto? Sus formularios no llevan letra. Por SQL
+    // crudo: `rubro` es columna nueva y el cliente Prisma no la conoce.
+    let sinLetra = false;
+    if (proveedorId) {
+      const rubro = await prisma.$queryRaw<Array<{ rubro: string }>>`
+        SELECT rubro FROM proveedores WHERE id = ${proveedorId}::uuid
+      `;
+      sinLetra = rubro[0]?.rubro === 'IMPUESTO';
+    }
+
     // Ajustar missingFields: si tenemos letra del proveedor, no es campo faltante
     let adjustedMissingFields = [...(parsed.missingFields || [])];
-    if (finalLetra && adjustedMissingFields.includes('letra')) {
+    if ((finalLetra || sinLetra) && adjustedMissingFields.includes('letra')) {
       adjustedMissingFields = adjustedMissingFields.filter(f => f !== 'letra');
       logger.info(`📝 Removed 'letra' from missing fields (using proveedor default)`);
     }
@@ -593,7 +608,7 @@ async function processOCRFile(file: InboxFile): Promise<void> {
     
     // 9. Crear documento en BD
     logger.info(`💾 Creating Documento record...`);
-    let estadoRevision = determineEstadoRevision(parsed, proveedorId, finalLetra);
+    let estadoRevision = determineEstadoRevision(parsed, proveedorId, finalLetra, sinLetra);
 
     // Si el CUIT receptor no coincide con el cliente, forzar PENDIENTE
     if (receptorMismatch) {

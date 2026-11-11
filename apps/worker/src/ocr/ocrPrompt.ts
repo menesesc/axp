@@ -123,15 +123,12 @@ ni IVA, ni un "Total" como el de una factura, y el único CUIT impreso suele ser
 - subtotal = total, iva = 0, ivaDesglose = null, letra = null.
 - items: una línea por concepto con importe mayor a cero (cantidad 1, precioUnitario = subtotal = importe),
   con el código adelante, ej: "301 - APORTES DE SEGURIDAD SOCIAL".
-- numeroCompleto:
-  - VEP: el "Nro. de VEP".
-  - F.931: "931" + período AAAAMM + número de rectificativa (0 si es original). Ej: período 10/2026
-    original → "9312026100". El "Nro. Verificador" NO es el número.
-  - DDJJ de IVA: "51" + período AAAAMM + rectificativa (secuencia "Original" = 0).
-    Ej: período 202601 original → "512026010". Siempre 9 dígitos: con "2051" adelante
-    se confundiría con un CUIT y se descarta.
-    El "Nro. de Transacción" y el código MD5 NO son el número.
-  - DDJJ de Ingresos Brutos: el "Comprobante de Presentación". El "Nro. Inscripción" NO es el número.
+- numeroCompleto: el PERÍODO declarado, AAAAMM (6 dígitos). Ej: F.931 de 10/2026 → "202610",
+  DDJJ de IVA del período 202601 → "202601", Ingresos Brutos 2026/07 → "202607".
+  puntoVenta = null y numero = null. El "Nro. Verificador", el "Nro. de Transacción", el
+  "Comprobante de Presentación", el código MD5 y el "Nro. Inscripción" NO son el número.
+  Si es una rectificativa, aclaralo en "notas" con su número.
+  VEP o comprobante de pago: el período que figura (ej: "Período 202608" → "202608").
 - fechaEmision: la fecha de presentación, de generación o de pago que figure en el documento.
 - fechaVencimiento: sólo si está impresa; si no, null. El período declarado (ej: 10/2026) NO es una fecha.
 - En "notas" poné qué formulario es y el período.

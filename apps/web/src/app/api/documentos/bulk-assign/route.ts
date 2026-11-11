@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { determineEstadoRevision, calculateMissingFields } from '@/lib/documento-estado'
+import { proveedoresImpuesto } from '@/lib/proveedor-impuesto'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
 
@@ -84,6 +85,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const sinLetra = (await proveedoresImpuesto([proveedorId])).size > 0
+
     // Actualizar cada documento evaluando su estado completo
     const updatePromises = documentos.map(async (doc) => {
       // El documento con el nuevo proveedorId
@@ -97,6 +100,7 @@ export async function POST(request: NextRequest) {
         subtotal: doc.subtotal ? Number(doc.subtotal) : null,
         iva: doc.iva ? Number(doc.iva) : null,
         pdfRawKey: doc.pdfRawKey,
+        sinLetra,
       }
 
       // Evaluar estado y calcular campos faltantes

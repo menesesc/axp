@@ -5,6 +5,7 @@ import { SECCION } from '@/lib/permisos'
 import { importesJson } from '@/lib/importes'
 import { getCategorias, normDesc } from '@/lib/compras/categorias'
 import { calculateMissingFields, determineEstadoRevision } from '@/lib/documento-estado'
+import { proveedoresImpuesto } from '@/lib/proveedor-impuesto'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 // Configurar cliente R2 para eliminar archivos
@@ -85,8 +86,9 @@ export async function GET(
     }
 
     // Recalcular missingFields y estadoRevision basado en datos actuales
-    const actualMissing = calculateMissingFields(documento)
-    const correctEstado = determineEstadoRevision(documento)
+    const evaluar = { ...documento, sinLetra: (await proveedoresImpuesto([documento.proveedorId])).size > 0 }
+    const actualMissing = calculateMissingFields(evaluar)
+    const correctEstado = determineEstadoRevision(evaluar)
 
     // Auto-healing: si el estado en BD está desactualizado, corregirlo
     // No tocar ERROR, DUPLICADO ni PAGADO (estados manuales/de pago)
@@ -289,12 +291,13 @@ export async function PATCH(
     }
 
     // Recalcular campos faltantes y estado usando lógica centralizada
-    const missingFields = calculateMissingFields(documento)
+    const evaluar = { ...documento, sinLetra: (await proveedoresImpuesto([documento.proveedorId])).size > 0 }
+    const missingFields = calculateMissingFields(evaluar)
     let newEstado = documento.estadoRevision as 'PENDIENTE' | 'CONFIRMADO' | 'ERROR' | 'DUPLICADO'
 
     // Solo cambiar estado si no es ERROR, DUPLICADO o PAGADO (estados manuales/de pago)
     if (documento.estadoRevision !== 'ERROR' && documento.estadoRevision !== 'DUPLICADO' && documento.estadoRevision !== 'PAGADO') {
-      newEstado = determineEstadoRevision(documento)
+      newEstado = determineEstadoRevision(evaluar)
     }
 
     // Actualizar missingFields y estado si cambió
