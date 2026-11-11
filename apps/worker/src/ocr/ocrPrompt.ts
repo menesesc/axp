@@ -111,6 +111,14 @@ ni IVA, ni un "Total" como el de una factura, y el único CUIT impreso suele ser
   - F.931: la SUMA de todos los importes de "VIII - MONTOS QUE SE INGRESAN"
     (301 + 302 + 351 + 352 + 360 + 312 + 028 + 270 + 935). NO uses "Suma de Rem."
     ni "Total de aportes" sueltos: las remuneraciones no se pagan.
+  - DDJJ de IVA (F.2051 "IVA Simple", F.731/2002): el "Saldo de impuesto a favor de ARCA" de la
+    posición mensual, que ya descuenta retenciones y percepciones. NO el débito fiscal, ni el
+    crédito, ni el "Saldo técnico". Si el saldo es a favor del contribuyente, total = 0.
+  - DDJJ de Ingresos Brutos (rentas provinciales): el "Saldo a Pagar". NO el "Impuesto
+    Determinado" ni el "Total Impuesto", que todavía no restan retenciones, percepciones ni el
+    saldo a favor anterior. Si sólo hay "Saldo a Favor Contribuyente", total = 0 y anotá ese
+    saldo en "notas". El emisor es el organismo provincial con su nombre completo
+    (ej: "AGENCIA DE RECAUDACION TRIBUTARIA RIO NEGRO").
   - VEP / comprobante de pago: el "Monto" o "Importe total a pagar".
 - subtotal = total, iva = 0, ivaDesglose = null, letra = null.
 - items: una línea por concepto con importe mayor a cero (cantidad 1, precioUnitario = subtotal = importe),
@@ -119,6 +127,11 @@ ni IVA, ni un "Total" como el de una factura, y el único CUIT impreso suele ser
   - VEP: el "Nro. de VEP".
   - F.931: "931" + período AAAAMM + número de rectificativa (0 si es original). Ej: período 10/2026
     original → "9312026100". El "Nro. Verificador" NO es el número.
+  - DDJJ de IVA: "51" + período AAAAMM + rectificativa (secuencia "Original" = 0).
+    Ej: período 202601 original → "512026010". Siempre 9 dígitos: con "2051" adelante
+    se confundiría con un CUIT y se descarta.
+    El "Nro. de Transacción" y el código MD5 NO son el número.
+  - DDJJ de Ingresos Brutos: el "Comprobante de Presentación". El "Nro. Inscripción" NO es el número.
 - fechaEmision: la fecha de presentación, de generación o de pago que figure en el documento.
 - fechaVencimiento: sólo si está impresa; si no, null. El período declarado (ej: 10/2026) NO es una fecha.
 - En "notas" poné qué formulario es y el período.
