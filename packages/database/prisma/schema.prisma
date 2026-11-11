@@ -45,6 +45,14 @@ model clientes {
   pedidos_internos      pedidos_internos[]
   pedido_plantillas     pedido_plantillas[]
   pedidos_proveedor     pedidos_proveedor[]
+  eventoConfiguracion   evento_configuracion?
+  eventoCatalogos       evento_catalogos[]
+  eventoClientes        evento_clientes[]
+  eventos               eventos[]
+  reservas              reservas[]
+  reservaPagos          reserva_pagos[]
+  eventoAuditoria       evento_auditoria[]
+  eventoAgenda          evento_agenda[]
 }
 
 model documento_items {
@@ -1196,4 +1204,309 @@ model receta_favoritas {
 
   @@id([recetaId, usuarioId])
   @@map("receta_favoritas")
+}
+
+// =====================================================
+// EVENTOS Y RESERVAS (etapa 1)
+// Migración: migrations/manual_eventos.sql
+//
+// EVENTO = función con condiciones compartidas (fin de año 31/12 noche).
+// RESERVA = grupo de personas; cuelga de un evento o va sola.
+// El estado de cobro y la sigla (PRE/ASC/ACP/ACT/FCP/FCT/CAN) no se guardan:
+// salen de la vista `reserva_totales`, que no se modela acá. Las tablas del
+// POS (pos_sectores, pos_mesas) tampoco están en este schema, así que
+// "sectorId" y "mesaId" van como columnas sueltas (en la base sí tienen FK).
+// La app lee y escribe todo esto con SQL crudo (ver lib/eventos/db.ts).
+// =====================================================
+
+/// Umbrales de las alertas de eventos. Una fila por empresa.
+model evento_configuracion {
+  clienteId            String   @id @db.Uuid
+  diasPresupuesto      Int      @default(7) @db.SmallInt
+  diasAvisoVencimiento Int      @default(3) @db.SmallInt
+  avisoCupoPct         Int      @default(90) @db.SmallInt
+  updatedAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes clientes @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@map("evento_configuracion")
+}
+
+/// Listas configurables. lista: "ORIGEN" | "TIPO_EVENTO".
+model evento_catalogos {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String  @db.Uuid
+  lista     String  @db.VarChar(20)
+  clave     String  @db.VarChar(40)
+  nombre    String  @db.VarChar(80)
+  color     String? @db.VarChar(9)
+  orden     Int     @default(0)
+  activo    Boolean @default(true)
+
+  clientes clientes @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, lista, clave], map: "evento_catalogos_unico")
+  @@map("evento_catalogos")
+}
+
+/// Quien contrata (particular o agencia). Las facturas salen a su nombre.
+model evento_clientes {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId    String   @db.Uuid
+  /// "PARTICULAR" | "AGENCIA"
+  tipo         String   @default("PARTICULAR") @db.VarChar(12)
+  nombre       String   @db.VarChar(160)
+  cuit         String?  @db.VarChar(13)
+  /// "CF" | "RI" | "MT" | "EX"
+  condicionIva String   @default("CF") @db.VarChar(4)
+  telefono     String?  @db.VarChar(40)
+  email        String?  @db.VarChar(160)
+  comisionPct  Decimal  @default(0) @db.Decimal(5, 2)
+  notas        String?
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes clientes   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  reservas reservas[]
+
+  @@index([clienteId, activo, nombre], map: "evento_clientes_cliente_idx")
+  @@map("evento_clientes")
+}
+
+model eventos {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId     String    @db.Uuid
+  nombre        String    @db.VarChar(160)
+  /// Clave de evento_catalogos (TIPO_EVENTO).
+  tipo          String    @default("OTRO") @db.VarChar(40)
+  fecha         DateTime  @db.Date
+  horaInicio    DateTime? @db.Time(6)
+  horaFin       DateTime? @db.Time(6)
+  /// Personas. NULL = sin tope.
+  cupo          Int?
+  precioAdulto  Decimal   @default(0) @db.Decimal(14, 2)
+  precioMenor   Decimal   @default(0) @db.Decimal(14, 2)
+  /// "FINAL" | "MAS_IVA" | "INCLUIDO"
+  ivaModo       String    @default("FINAL") @db.VarChar(10)
+  ivaAlicuota   Decimal   @default(21) @db.Decimal(5, 2)
+  /// "SENA_PCT" | "SENA_MONTO" | "TOTAL" | "NINGUNA"
+  pagoModo      String    @default("NINGUNA") @db.VarChar(12)
+  senaPct       Decimal?  @db.Decimal(5, 2)
+  senaMonto     Decimal?  @db.Decimal(14, 2)
+  senaVence     DateTime? @db.Date
+  saldoVence    DateTime? @db.Date
+  observaciones String?
+  /// Etapa 2: menú del evento (sin FK todavía).
+  menuId        String?   @db.Uuid
+  createdById   String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes clientes         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  salones  evento_salones[]
+  reservas reservas[]
+  agenda   evento_agenda[]
+
+  @@index([clienteId, fecha], map: "eventos_cliente_fecha_idx")
+  @@map("eventos")
+}
+
+/// Salones del POS (pos_sectores) habilitados para el evento.
+model evento_salones {
+  eventoId String @db.Uuid
+  sectorId String @db.Uuid
+
+  evento eventos @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@id([eventoId, sectorId])
+  @@map("evento_salones")
+}
+
+model reservas {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId        String    @db.Uuid
+  /// Correlativo por empresa.
+  numero           Int
+  eventoId         String?   @db.Uuid
+  titularId        String?   @db.Uuid
+  nombre           String    @db.VarChar(160)
+  contactoNombre   String?   @db.VarChar(120)
+  contactoTelefono String?   @db.VarChar(40)
+  contactoEmail    String?   @db.VarChar(160)
+  fecha            DateTime  @db.Date
+  hora             DateTime? @db.Time(6)
+  /// Salón (pos_sectores).
+  sectorId         String?   @db.Uuid
+  adultos          Int       @default(0)
+  menores          Int       @default(0)
+  bebes            Int       @default(0)
+  liberados        Int       @default(0)
+  /// Precios propios. NULL = los del evento. Liberado NULL = gratis.
+  precioAdulto     Decimal?  @db.Decimal(14, 2)
+  precioMenor      Decimal?  @db.Decimal(14, 2)
+  precioLiberado   Decimal?  @db.Decimal(14, 2)
+  ivaModo          String?   @db.VarChar(10)
+  ivaAlicuota      Decimal?  @db.Decimal(5, 2)
+  descuento        Decimal   @default(0) @db.Decimal(14, 2)
+  descuentoNota    String?   @db.VarChar(200)
+  /// "PRESUPUESTO" | "APROBADO" | "FINALIZADO" | "CANCELADO"
+  estado           String    @default("PRESUPUESTO") @db.VarChar(12)
+  /// Al cancelar: "DEVUELTA" | "RETENIDA"
+  cancelacionSena  String?   @db.VarChar(10)
+  aprobadaAt       DateTime? @db.Timestamptz(3)
+  finalizadaAt     DateTime? @db.Timestamptz(3)
+  canceladaAt      DateTime? @db.Timestamptz(3)
+  /// Clave de evento_catalogos (ORIGEN).
+  origen           String?   @db.VarChar(40)
+  mesaInamovible   Boolean   @default(false)
+  observaciones    String?
+  notaServicio     String?
+  /// Etapa 2.
+  menuId           String?   @db.Uuid
+  createdById      String?   @db.Uuid
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes  clientes            @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  evento    eventos?            @relation(fields: [eventoId], references: [id], onDelete: Restrict)
+  titular   evento_clientes?    @relation(fields: [titularId], references: [id], onDelete: SetNull)
+  regimenes reserva_regimenes[]
+  mesas     reserva_mesas[]
+  cuotas    reserva_cuotas[]
+  pagos     reserva_pagos[]
+  agenda    evento_agenda[]
+
+  @@unique([clienteId, numero], map: "reservas_numero_unico")
+  @@index([clienteId, fecha], map: "reservas_cliente_fecha_idx")
+  @@index([eventoId], map: "reservas_evento_idx")
+  @@index([titularId], map: "reservas_titular_idx")
+  @@index([clienteId, estado], map: "reservas_cliente_estado_idx")
+  @@map("reservas")
+}
+
+/// "CELIACO" | "VEGETARIANO" | "VEGANO" | "SIN_LACTOSA" | "ALERGIA" | "OTRO"
+model reserva_regimenes {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservaId String  @db.Uuid
+  tipo      String  @db.VarChar(12)
+  cantidad  Int     @default(1)
+  nota      String? @db.VarChar(300)
+  /// Etapa 2.
+  menuId    String? @db.Uuid
+
+  reserva reservas @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@index([reservaId], map: "reserva_regimenes_reserva_idx")
+  @@map("reserva_regimenes")
+}
+
+/// Mesas del POS (pos_mesas) asignadas a la reserva.
+model reserva_mesas {
+  reservaId String @db.Uuid
+  mesaId    String @db.Uuid
+
+  reserva reservas @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@id([reservaId, mesaId])
+  @@index([mesaId], map: "reserva_mesas_mesa_idx")
+  @@map("reserva_mesas")
+}
+
+/// Plan de pagos. monto fijo, porcentaje del total, o el resto (ambos NULL).
+model reserva_cuotas {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservaId   String    @db.Uuid
+  concepto    String    @db.VarChar(60)
+  monto       Decimal?  @db.Decimal(14, 2)
+  porcentaje  Decimal?  @db.Decimal(5, 2)
+  vencimiento DateTime? @db.Date
+  orden       Int       @default(0)
+
+  reserva reservas @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@index([reservaId, orden], map: "reserva_cuotas_reserva_idx")
+  @@map("reserva_cuotas")
+}
+
+/// Pagos y devoluciones. No se borran: se anulan.
+model reserva_pagos {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId     String    @db.Uuid
+  reservaId     String    @db.Uuid
+  /// "PAGO" | "DEVOLUCION"
+  tipo          String    @default("PAGO") @db.VarChar(12)
+  fecha         DateTime  @db.Date
+  monto         Decimal   @db.Decimal(14, 2)
+  /// "EFECTIVO" | "TRANSFERENCIA" | "TARJETA" | "MERCADOPAGO" | "OTRO"
+  medio         String    @db.VarChar(14)
+  comprobante   String?   @db.VarChar(120)
+  nota          String?   @db.VarChar(300)
+  usuarioId     String?   @db.Uuid
+  usuarioNombre String?   @db.VarChar(255)
+  anuladoAt     DateTime? @db.Timestamptz(3)
+  anuladoPor    String?   @db.VarChar(255)
+  anuladoMotivo String?   @db.VarChar(300)
+  /// Etapa 4: movimiento de Finanzas.
+  movimientoId  String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes clientes @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  reserva  reservas @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@index([reservaId], map: "reserva_pagos_reserva_idx")
+  @@index([clienteId, fecha], map: "reserva_pagos_cliente_fecha_idx")
+  @@map("reserva_pagos")
+}
+
+/// Rastro automático e inmutable (trigger que rechaza UPDATE). Sin FK a
+/// eventos/reservas a propósito: el rastro sobrevive al borrado.
+model evento_auditoria {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId     String   @db.Uuid
+  eventoId      String?  @db.Uuid
+  reservaId     String?  @db.Uuid
+  accion        String   @db.VarChar(30)
+  descripcion   String
+  antes         Json?
+  despues       Json?
+  usuarioId     String?  @db.Uuid
+  usuarioNombre String?  @db.VarChar(255)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  clientes clientes @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId, createdAt(sort: Desc)], map: "evento_auditoria_evento_idx")
+  @@index([reservaId, createdAt(sort: Desc)], map: "evento_auditoria_reserva_idx")
+  @@map("evento_auditoria")
+}
+
+/// Seguimiento cargado por personas.
+/// tipo: "VISITA" | "DEGUSTACION" | "LLAMADO" | "RECORDATORIO_SALDO" | "REUNION" | "NOVEDAD" | "OTRO"
+/// estado: "PENDIENTE" | "HECHA" | "CANCELADA"
+model evento_agenda {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId         String    @db.Uuid
+  eventoId          String?   @db.Uuid
+  reservaId         String?   @db.Uuid
+  tipo              String    @default("OTRO") @db.VarChar(20)
+  titulo            String    @db.VarChar(200)
+  fechaHora         DateTime  @db.Timestamptz(3)
+  responsableId     String?   @db.Uuid
+  responsableNombre String?   @db.VarChar(255)
+  estado            String    @default("PENDIENTE") @db.VarChar(10)
+  resultado         String?
+  completadaAt      DateTime? @db.Timestamptz(3)
+  createdById       String?   @db.Uuid
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @db.Timestamptz(3)
+
+  clientes clientes  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  evento   eventos?  @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  reserva  reservas? @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, fechaHora], map: "evento_agenda_cliente_fecha_idx")
+  @@index([eventoId], map: "evento_agenda_evento_idx")
+  @@index([reservaId], map: "evento_agenda_reserva_idx")
+  @@map("evento_agenda")
 }

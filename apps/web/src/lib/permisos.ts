@@ -73,6 +73,7 @@ export const MODULO = {
   ITEMS: 'items',
   INFORMES: 'informes',
   POS: 'pos',
+  EVENTOS: 'eventos',
   SISTEMA: 'sistema',
   CONFIGURACION: 'configuracion',
 } as const
@@ -98,6 +99,7 @@ export const MODULOS: ModuloDef[] = [
   { value: MODULO.ITEMS, label: 'Items', hint: 'Líneas de las facturas y su categoría' },
   { value: MODULO.INFORMES, label: 'Informes', hint: 'Compras, cuenta corriente, precios y proyecciones' },
   { value: MODULO.POS, label: 'Punto de venta', hint: 'Catálogo, cajas y venta. En desarrollo.' },
+  { value: MODULO.EVENTOS, label: 'Eventos y reservas', hint: 'Eventos, reservas, cobros de señas y seguimiento. En desarrollo.' },
   { value: MODULO.SISTEMA, label: 'Sistema', hint: 'Procesamiento de documentos y logs' },
   {
     value: MODULO.CONFIGURACION,
@@ -472,6 +474,31 @@ export const SECCIONES: SeccionDef[] = [
     importes: true,
     beta: true,
   },
+
+  // --- Eventos y reservas --------------------------------------------------
+  // Beta mientras se terminan las etapas: no aparece en el menú de nadie que
+  // no la tenga cargada por nombre (ni siquiera de los admin).
+  {
+    value: 'eventos.reservas',
+    modulo: MODULO.EVENTOS,
+    label: 'Eventos y reservas',
+    paginas: ['/eventos'],
+    apis: ['/api/eventos'],
+    importes: true,
+    beta: true,
+  },
+  {
+    // Registrar y anular pagos va aparte: quien toma reservas por teléfono no
+    // necesariamente maneja plata. Con "Ver" se ven los pagos; con "Editar"
+    // se cargan.
+    value: 'eventos.cobros',
+    modulo: MODULO.EVENTOS,
+    label: 'Cobros de eventos',
+    paginas: [],
+    apis: ['/api/eventos/pagos'],
+    importes: true,
+    beta: true,
+  },
   {
     value: 'sistema.procesamiento',
     modulo: MODULO.SISTEMA,
@@ -529,6 +556,8 @@ export const SECCION = {
   INFORMES_COMPRAS: 'informes.compras',
   INFORMES_PROYECCIONES: 'informes.proyecciones',
   POS: 'pos.general',
+  EVENTOS_RESERVAS: 'eventos.reservas',
+  EVENTOS_COBROS: 'eventos.cobros',
   RECETAS_LIBRO: 'recetas.libro',
   SISTEMA_PROCESAMIENTO: 'sistema.procesamiento',
   CONFIGURACION: 'configuracion.general',

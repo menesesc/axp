@@ -1,4 +1,5 @@
 import {
+  CalendarHeart,
   ChefHat,
   CreditCard,
   FileText,
@@ -106,6 +107,20 @@ export const MENU: Modulo[][] = [
         { nombre: 'Categorías y dispositivos', href: '/configuracion/recetario' },
       ],
       prefijos: ['/recetas/'],
+    },
+    {
+      id: 'eventos',
+      nombre: 'Eventos',
+      icono: CalendarHeart,
+      escena: 'generica',
+      subs: [
+        { nombre: 'Calendario', href: '/eventos' },
+        { nombre: 'Lista', href: '/eventos/lista' },
+        { nombre: 'Alertas', href: '/eventos/alertas' },
+        { nombre: 'Clientes', href: '/eventos/clientes' },
+      ],
+      // Las fichas (/eventos/evento/…, /eventos/reserva/…) caen acá.
+      prefijos: ['/eventos/'],
     },
   ],
   [
