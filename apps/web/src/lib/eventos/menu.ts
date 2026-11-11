@@ -13,15 +13,16 @@ import type { IvaModo } from './constantes'
 // Catálogos
 // ---------------------------------------------------------------------------
 
-export type Paso = 'RECEPCION' | 'ENTRADA' | 'PRINCIPAL' | 'POSTRE' | 'BEBIDA' | 'OTRO'
+/** Los pasos son fijos y van en este orden. */
+export type Paso = 'BIENVENIDA' | 'ENTRADA' | 'PRINCIPAL' | 'POSTRE' | 'BEBIDA' | 'EXTRA'
 
 export const PASOS: Array<{ valor: Paso; texto: string }> = [
-  { valor: 'RECEPCION', texto: 'Recepción' },
+  { valor: 'BIENVENIDA', texto: 'Bienvenida' },
   { valor: 'ENTRADA', texto: 'Entrada' },
-  { valor: 'PRINCIPAL', texto: 'Principal' },
+  { valor: 'PRINCIPAL', texto: 'Plato principal' },
   { valor: 'POSTRE', texto: 'Postre' },
   { valor: 'BEBIDA', texto: 'Bebidas' },
-  { valor: 'OTRO', texto: 'Otros' },
+  { valor: 'EXTRA', texto: 'Extras' },
 ]
 
 export const PASO_TEXTO = Object.fromEntries(PASOS.map((p) => [p.valor, p.texto])) as Record<Paso, string>
@@ -54,6 +55,11 @@ export interface ItemMenu {
   personasPorUnidad: number | null
   unidad: string | null
   aplica: Aplica
+  /**
+   * NULL = ítem fijo. Los ítems del mismo paso y grupo son opciones a
+   * elección del cliente ("bife o sorrentinos"); se costean por la más cara.
+   */
+  opcionGrupo: number | null
   /** Lo cargado a mano. En un producto del POS, NULL = su precio vigente. */
   precioManual: number | null
   /** El precio de carta que vale: el manual, o el del POS. NULL = no se sabe. */
@@ -134,16 +140,36 @@ export interface ValorCubierto {
   items: number
 }
 
+const aplicaA = (aplica: Aplica, categoria: 'ADULTOS' | 'MENORES') => aplica === 'TODOS' || aplica === categoria
+
+/** Clave de un grupo de opciones dentro del menú. */
+export const claveGrupo = (i: Pick<ItemMenu, 'paso' | 'opcionGrupo'>) => `${i.paso}|${i.opcionGrupo}`
+
+/** Clave con la que se guarda cuántos eligen una opción en una reserva. */
+export const claveOpcion = (i: { paso: string; nombre: string }) => `${i.paso}|${i.nombre.trim().toLowerCase()}`
+
 /**
  * Valor de carta por cubierto de una categoría, para un grupo de `personas`
  * de esa categoría. Con porciones compartidas el grupo importa: una picada
  * para 4 en un grupo de 6 son 2 picadas, que repartidas dan 1/3 por cabeza.
+ *
+ * Un grupo de opciones vale lo de su opción más cara (y cuesta lo de la más
+ * costosa), con la cuenta de porciones hecha antes en cada opción: se
+ * presupuesta como si todos eligieran la más cara.
  */
 export function valorCubierto(items: ItemMenu[], categoria: 'ADULTOS' | 'MENORES', personas: number): ValorCubierto {
   const v: ValorCubierto = { carta: 0, costo: 0, sinPrecio: 0, sinCosto: 0, items: 0 }
   const n = Math.max(personas, 1)
+  const grupos = new Map<string, ItemMenu[]>()
   for (const it of items) {
-    if (it.aplica !== 'TODOS' && it.aplica !== categoria) continue
+    if (!aplicaA(it.aplica, categoria)) continue
+    if (it.opcionGrupo != null) {
+      const k = claveGrupo(it)
+      const arr = grupos.get(k)
+      if (arr) arr.push(it)
+      else grupos.set(k, [it])
+      continue
+    }
     v.items++
     const u = unidades(it, n)
     if (it.precio == null) v.sinPrecio++
@@ -151,9 +177,40 @@ export function valorCubierto(items: ItemMenu[], categoria: 'ADULTOS' | 'MENORES
     if (it.costo == null || !it.costoCompleto) v.sinCosto++
     if (it.costo != null) v.costo += (it.costo * u) / n
   }
+  for (const opciones of grupos.values()) {
+    v.items++
+    let carta = 0
+    let costo = 0
+    for (const it of opciones) {
+      const u = unidades(it, n)
+      if (it.precio != null) carta = Math.max(carta, (it.precio * u) / n)
+      if (it.costo != null) costo = Math.max(costo, (it.costo * u) / n)
+    }
+    v.carta += carta
+    v.costo += costo
+    if (opciones.some((it) => it.precio == null)) v.sinPrecio++
+    if (opciones.some((it) => it.costo == null || !it.costoCompleto)) v.sinCosto++
+  }
   v.carta = redondear(v.carta)
   v.costo = redondear(v.costo)
   return v
+}
+
+/**
+ * Qué opción de cada grupo fija el valor de carta (la más cara por cubierto)
+ * para una categoría. Para marcarla en el editor ("costea").
+ */
+export function opcionesQueCostean<T extends ItemMenu>(items: T[], categoria: 'ADULTOS' | 'MENORES', personas: number): Set<T> {
+  const n = Math.max(personas, 1)
+  const mejor = new Map<string, { item: T; valor: number }>()
+  for (const it of items) {
+    if (it.opcionGrupo == null || !aplicaA(it.aplica, categoria) || it.precio == null) continue
+    const valor = (it.precio * unidades(it, n)) / n
+    const k = claveGrupo(it)
+    const m = mejor.get(k)
+    if (!m || valor > m.valor) mejor.set(k, { item: it, valor })
+  }
+  return new Set([...mejor.values()].map((m) => m.item))
 }
 
 export interface Comparacion {
@@ -201,9 +258,85 @@ export function margen(precio: number, ivaModo: IvaModo, alicuota: number, costo
   return { precioNeto, costo, margen: m, pct: precioNeto > 0 ? Math.round((m / precioNeto) * 1000) / 10 : null }
 }
 
-/** Unidades de cada ítem para un grupo real (lo que tiene que preparar la cocina). */
-export function cantidadesCocina(items: ItemMenu[], g: { adultos: number; menores: number }) {
-  return items.map((it) => ({ item: it, personas: comensales(it.aplica, g), unidades: unidades(it, comensales(it.aplica, g)) }))
+/** A cuántas personas les toca un grupo de opciones: la unión de a quiénes aplica cada una. */
+function comensalesGrupo(opciones: ItemMenu[], g: { adultos: number; menores: number }) {
+  const a = opciones.some((o) => o.aplica !== 'MENORES')
+  const m = opciones.some((o) => o.aplica !== 'ADULTOS')
+  return (a ? g.adultos : 0) + (m ? g.menores : 0)
+}
+
+export type LineaCocina =
+  | { tipo: 'item'; item: ItemMenu; personas: number; unidades: number }
+  /** Lo de un grupo de opciones que todavía no se sabe qué eligen. */
+  | { tipo: 'aElegir'; paso: Paso; opciones: ItemMenu[]; personas: number }
+
+/**
+ * Lo que tiene que preparar la cocina para una reserva, con las opciones.
+ *
+ * Los ítems fijos, como siempre. En un grupo de opciones, si la reserva
+ * cargó cuántos eligen cada una, cada opción se cuenta con su cantidad; lo
+ * que falte para llegar a las personas del grupo queda "a elegir". Si las
+ * cantidades no suman las personas, avisa.
+ */
+export function cocinaReserva(
+  items: ItemMenu[],
+  g: { adultos: number; menores: number },
+  elegidas?: Map<string, number> | undefined
+): { lineas: LineaCocina[]; avisos: string[] } {
+  const lineas: LineaCocina[] = []
+  const avisos: string[] = []
+  const grupos = new Map<string, ItemMenu[]>()
+  for (const it of items) {
+    if (it.opcionGrupo == null) {
+      const personas = comensales(it.aplica, g)
+      lineas.push({ tipo: 'item', item: it, personas, unidades: unidades(it, personas) })
+      continue
+    }
+    const k = claveGrupo(it)
+    const arr = grupos.get(k)
+    if (arr) arr.push(it)
+    else grupos.set(k, [it])
+  }
+  for (const opciones of grupos.values()) {
+    const personas = comensalesGrupo(opciones, g)
+    let cargadas = 0
+    let hay = false
+    for (const it of opciones) {
+      const n = elegidas?.get(claveOpcion(it))
+      if (n == null) continue
+      hay = true
+      cargadas += n
+      if (n > 0) lineas.push({ tipo: 'item', item: it, personas: n, unidades: unidades(it, n) })
+    }
+    if (hay && cargadas !== personas) {
+      avisos.push(`${PASO_TEXTO[opciones[0]!.paso]}: eligieron ${cargadas} de ${personas} (${opciones.map((o) => o.nombre).join(' o ')})`)
+    }
+    if (personas - cargadas > 0) lineas.push({ tipo: 'aElegir', paso: opciones[0]!.paso, opciones, personas: personas - cargadas })
+  }
+  return { lineas, avisos }
+}
+
+/**
+ * Los ítems de un paso como se leen: cada fijo solo, y cada grupo de
+ * opciones junto, en el lugar de su primera opción.
+ */
+export function bloquesDePaso<T extends Pick<ItemMenu, 'paso' | 'opcionGrupo'>>(items: T[]): Array<{ grupo: number | null; items: T[] }> {
+  const out: Array<{ grupo: number | null; items: T[] }> = []
+  const vistos = new Map<number, { grupo: number | null; items: T[] }>()
+  for (const it of items) {
+    if (it.opcionGrupo == null) {
+      out.push({ grupo: null, items: [it] })
+      continue
+    }
+    const b = vistos.get(it.opcionGrupo)
+    if (b) b.items.push(it)
+    else {
+      const nuevo = { grupo: it.opcionGrupo, items: [it] }
+      vistos.set(it.opcionGrupo, nuevo)
+      out.push(nuevo)
+    }
+  }
+  return out
 }
 
 /** Ítems agrupados por paso, en el orden de los pasos y después el propio. */

@@ -1,10 +1,10 @@
 import { prisma } from '@/lib/prisma'
 import type { AuthUser } from '@/lib/auth'
 import { hoyAR } from '@/lib/fechas'
-import { REGIMEN_TEXTO, calcularPlan, calcularTotal, cuotasDeRegla, type CuotaDef, type Regimen } from './constantes'
+import { REGIMEN_TEXTO, calcularPlan, calcularTotal, cuotasDeRegla, dadaDeBaja, type CuotaDef, type Regimen } from './constantes'
 import { configuracionDe, cuotasDe, eventoBase, listarReservas, nombreDe, reservaFila, reservaPropia, type Tx } from './db'
 import { adicionalesDe, menusDetalle, type MenuDetalle } from './menus'
-import { PASO_TEXTO, cantidadAdicional, itemTexto, modalidadTexto, porPaso, type Adicional } from './menu'
+import { PASO_TEXTO, bloquesDePaso, cantidadAdicional, itemTexto, modalidadTexto, porPaso, type Adicional, type ItemMenu } from './menu'
 import type { PresupuestoDatos } from './presupuesto'
 
 /**
@@ -46,12 +46,36 @@ function menuPresupuesto(m: MenuDetalle | null | undefined): PresupuestoDatos['m
   return {
     nombre: m.nombre,
     descripcion: m.descripcion,
-    pasos: porPaso(m.items).map((g) => ({
-      paso: g.paso,
-      titulo: PASO_TEXTO[g.paso],
-      items: g.items.map((i) => ({ texto: itemTexto(i), descripcion: i.descripcion, aplica: i.aplica, compartido: i.modo === 'COMPARTIDO' })),
-    })),
+    pasos: porPaso(m.items).map((g) => {
+      const bloques = bloquesDePaso(g.items)
+      const soloOpciones = bloques.length === 1 && bloques[0]!.grupo != null
+      return {
+        paso: g.paso,
+        titulo: `${PASO_TEXTO[g.paso]}${soloOpciones ? ' (a elección)' : ''}`,
+        items: bloques.map((b) => {
+          if (b.grupo == null) {
+            const i = b.items[0]!
+            return { texto: itemTexto(i), descripcion: i.descripcion, aplica: i.aplica, compartido: i.modo === 'COMPARTIDO', opciones: null }
+          }
+          const opciones = b.items.map((i) => itemTexto(i))
+          const aplica = b.items.every((i) => i.aplica === b.items[0]!.aplica) ? b.items[0]!.aplica : 'TODOS'
+          const descripciones = b.items.map((i) => i.descripcion).filter(Boolean)
+          return {
+            texto: opciones.join(' o '),
+            descripcion: descripciones.length ? descripciones.join(' · ') : null,
+            aplica,
+            compartido: b.items.some((i) => i.modo === 'COMPARTIDO'),
+            opciones,
+          }
+        }),
+      }
+    }),
   }
+}
+
+/** Los ítems de un menú en texto, con las opciones juntas: "Bife o Sorrentinos". */
+function textosMenu(items: ItemMenu[]) {
+  return porPaso(items).flatMap((g) => bloquesDePaso(g.items).map((b) => b.items.map((i) => itemTexto(i)).join(' o ')))
 }
 
 function horario(desde: string | null, hasta: string | null) {
@@ -167,7 +191,7 @@ export async function presupuestoReserva(clienteId: string, reservaId: string, o
             cantidad: x.cantidad,
             nota: x.nota ?? delEvento.get(x.tipo)?.nota ?? null,
             menu: m?.nombre ?? null,
-            items: m ? m.items.map((i) => itemTexto(i)) : [],
+            items: m ? textosMenu(m.items) : [],
           }
         })
       : null,
@@ -198,7 +222,7 @@ export async function presupuestoEvento(clienteId: string, eventoId: string, o: 
       ? prisma.$queryRaw<Array<{ nombre: string }>>`SELECT nombre FROM pos_sectores WHERE id = ANY(${ev.salonIds}::uuid[]) ORDER BY nombre`
       : Promise.resolve([]),
   ])
-  const activas = reservas.filter((r) => r.estado !== 'CANCELADO')
+  const activas = reservas.filter((r) => !dadaDeBaja(r.estado))
   const personas = activas.reduce(
     (s, r) => ({ adultos: s.adultos + r.adultos, menores: s.menores + r.menores, bebes: s.bebes + r.bebes, liberados: s.liberados + r.liberados }),
     { adultos: 0, menores: 0, bebes: 0, liberados: 0 }
@@ -272,7 +296,7 @@ export async function presupuestoEvento(clienteId: string, eventoId: string, o: 
             cantidad: cantidades.get(tipo) ?? null,
             nota: d?.nota ?? null,
             menu: m?.nombre ?? null,
-            items: m ? m.items.map((i) => itemTexto(i)) : [],
+            items: m ? textosMenu(m.items) : [],
           }
         })
       : null,

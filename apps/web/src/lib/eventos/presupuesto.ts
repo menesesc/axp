@@ -28,8 +28,14 @@ export interface PresupuestoDatos {
     descripcion: string | null
     pasos: Array<{
       paso: Paso
+      /** "Plato principal", o "Plato principal (a elección)" si el paso es sólo un grupo de opciones. */
       titulo: string
-      items: Array<{ texto: string; descripcion: string | null; aplica: Aplica; compartido: boolean }>
+      /**
+       * Un ítem fijo, o un grupo de opciones: `texto` ya viene armado
+       * ("Bife de chorizo o Sorrentinos") y `opciones` trae cada una. Las
+       * versiones anteriores a las opciones no lo tienen.
+       */
+      items: Array<{ texto: string; descripcion: string | null; aplica: Aplica; compartido: boolean; opciones?: string[] | null | undefined }>
     }>
   } | null
   /** NULL = se omitieron (lo normal antes de confirmar). */
@@ -130,8 +136,15 @@ export function textoWhatsApp(p: PresupuestoDatos): string {
     l.push('', `*Menú${p.menu.nombre ? `: ${p.menu.nombre}` : ''}*`)
     if (p.menu.descripcion) l.push(`_${p.menu.descripcion}_`)
     for (const g of p.menu.pasos) {
+      const linea = (i: (typeof g.items)[number]) => `${i.texto}${APLICA_SUFIJO[i.aplica]}${i.descripcion ? ` — ${i.descripcion}` : ''}`
+      // Un paso que es sólo un grupo de opciones va en una línea:
+      // "Plato principal (a elección): Bife de chorizo o Sorrentinos".
+      if (g.items.length === 1 && g.items[0]!.opciones?.length) {
+        l.push(`_${g.titulo}:_ ${linea(g.items[0]!)}`)
+        continue
+      }
       l.push(`_${g.titulo}_`)
-      for (const i of g.items) l.push(`• ${i.texto}${APLICA_SUFIJO[i.aplica]}${i.descripcion ? ` — ${i.descripcion}` : ''}`)
+      for (const i of g.items) l.push(`• ${i.opciones?.length ? 'A elección: ' : ''}${linea(i)}`)
     }
   }
 

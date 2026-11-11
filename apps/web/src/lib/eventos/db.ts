@@ -5,7 +5,6 @@ import {
   CATALOGO_INICIAL,
   parsearMonto,
   type CuotaDef,
-  type EstadoCobro,
   type EstadoReserva,
   type IvaModo,
   type PagoModo,
@@ -201,11 +200,15 @@ export interface ReservaFila {
   liberados: number
   personas: number
   estado: EstadoReserva
+  /** Sigla del estado (PRE, APR, REC, CAN, FIN), la de la vista. */
   sigla: Sigla
-  estadoCobro: EstadoCobro
+  /** Al cancelar con plata cobrada: "DEVUELTA" | "RETENIDA". */
+  cancelacionSena: string | null
   total: number
   cobrado: number
   saldo: number
+  /** cobrado / total × 100. NULL con total cero (no hay nada que cobrar). */
+  porcentajeCobrado: number | null
   origen: string | null
   mesaInamovible: boolean
   titularId: string | null
@@ -223,8 +226,9 @@ const SELECT_RESERVA = Prisma.sql`
          to_char(r.fecha, 'YYYY-MM-DD') AS fecha, to_char(r.hora, 'HH24:MI') AS hora,
          r."sectorId", s.nombre AS salon,
          r.adultos, r.menores, r.bebes, r.liberados, t.personas,
-         r.estado, t.sigla, t."estadoCobro",
+         r.estado, t.sigla, r."cancelacionSena",
          t.total::float8 AS total, t.cobrado::float8 AS cobrado, t.saldo::float8 AS saldo,
+         t."porcentajeCobrado"::float8 AS "porcentajeCobrado",
          r.origen, r."mesaInamovible", r."titularId", c.nombre AS "titularNombre",
          r.observaciones, r."notaServicio",
          COALESCE((SELECT json_agg(json_build_object('tipo', g.tipo, 'cantidad', g.cantidad, 'nota', g.nota) ORDER BY g.tipo)
@@ -246,7 +250,9 @@ export interface FiltrosReservas {
   sinEvento?: boolean | undefined
   desde?: string | null | undefined
   hasta?: string | null | undefined
-  siglas?: Sigla[] | undefined
+  estados?: EstadoReserva[] | undefined
+  /** Sólo las que siguen en pie y deben plata. */
+  conSaldo?: boolean | undefined
   sectorId?: string | null | undefined
   conRegimen?: boolean | undefined
   q?: string | null | undefined
@@ -260,7 +266,8 @@ export async function listarReservas(clienteId: string, f: FiltrosReservas): Pro
   if (f.sinEvento) cond.push(Prisma.sql`r."eventoId" IS NULL`)
   if (f.desde) cond.push(Prisma.sql`r.fecha >= ${f.desde}::date`)
   if (f.hasta) cond.push(Prisma.sql`r.fecha <= ${f.hasta}::date`)
-  if (f.siglas?.length) cond.push(Prisma.sql`t.sigla = ANY(${f.siglas}::text[])`)
+  if (f.estados?.length) cond.push(Prisma.sql`r.estado = ANY(${f.estados}::text[])`)
+  if (f.conSaldo) cond.push(Prisma.sql`t.saldo > 0 AND r.estado NOT IN ('RECHAZADO', 'CANCELADO')`)
   if (f.sectorId) cond.push(Prisma.sql`r."sectorId" = ${f.sectorId}::uuid`)
   if (f.titularId) cond.push(Prisma.sql`r."titularId" = ${f.titularId}::uuid`)
   if (f.conRegimen) cond.push(Prisma.sql`EXISTS (SELECT 1 FROM reserva_regimenes g WHERE g."reservaId" = r.id)`)
@@ -300,6 +307,7 @@ export interface ReservaPropia {
   aprobadaAt: Date | null
   finalizadaAt: Date | null
   canceladaAt: Date | null
+  rechazadaAt: Date | null
   precioAdulto: number
   precioMenor: number
   ivaModo: IvaModo
@@ -322,7 +330,7 @@ export async function reservaPropia(id: string): Promise<ReservaPropia | null> {
            r."precioLiberado"::float8 AS "precioLiberado",
            r."ivaModo" AS "ivaModoPropio", r."ivaAlicuota"::float8 AS "ivaAlicuotaPropia",
            r.descuento::float8 AS descuento, r."descuentoNota", r."cancelacionSena",
-           r."aprobadaAt", r."finalizadaAt", r."canceladaAt",
+           r."aprobadaAt", r."finalizadaAt", r."canceladaAt", r."rechazadaAt",
            t."precioAdulto"::float8 AS "precioAdulto", t."precioMenor"::float8 AS "precioMenor",
            t."ivaModo", t."ivaAlicuota"::float8 AS "ivaAlicuota",
            t.neto::float8 AS neto, t.iva::float8 AS iva,
@@ -462,10 +470,17 @@ export interface EventoResumen extends EventoBase {
   total: number
   cobrado: number
   saldo: number
+  /** Lo cobrado de las reservas en pie sobre su total. NULL si no hay nada presupuestado. */
+  porcentajeCobrado: number | null
+  /** Cuántas reservas hay en cada estado. */
   siglas: Partial<Record<Sigla, number>>
 }
 
-/** Eventos de un rango, con el agregado de sus reservas (sin las canceladas en los totales). */
+/**
+ * Eventos de un rango, con el agregado de sus reservas. Las rechazadas y las
+ * canceladas no suman personas, total ni saldo; lo que se cobró de ellas (una
+ * seña retenida) sí cuenta como cobrado, pero no entra en el % cobrado.
+ */
 export async function listarEventos(
   clienteId: string,
   f: { desde?: string | null | undefined; hasta?: string | null | undefined; q?: string | null | undefined }
@@ -478,16 +493,20 @@ export async function listarEventos(
     SELECT b.*, COALESCE(a.reservas, 0)::int AS reservas, COALESCE(a.personas, 0)::int AS personas,
            COALESCE(a.confirmadas, 0)::int AS confirmadas,
            COALESCE(a.total, 0)::float8 AS total, COALESCE(a.cobrado, 0)::float8 AS cobrado,
-           COALESCE(a.saldo, 0)::float8 AS saldo, COALESCE(sg.siglas, '{}') AS siglas
+           COALESCE(a.saldo, 0)::float8 AS saldo,
+           CASE WHEN a.total > 0 THEN round(a."cobradoEnPie" * 100 / a.total, 1)::float8 END AS "porcentajeCobrado",
+           COALESCE(sg.siglas, '{}') AS siglas
       FROM (${SELECT_EVENTO} WHERE ${Prisma.join(cond, ' AND ')}) b
       LEFT JOIN LATERAL (
-        SELECT count(*) FILTER (WHERE r.estado <> 'CANCELADO') AS reservas,
-               sum(t.personas) FILTER (WHERE r.estado <> 'CANCELADO') AS personas,
+        SELECT count(*) FILTER (WHERE x.en_pie) AS reservas,
+               sum(t.personas) FILTER (WHERE x.en_pie) AS personas,
                sum(t.personas) FILTER (WHERE r.estado IN ('APROBADO', 'FINALIZADO')) AS confirmadas,
-               sum(t.total) FILTER (WHERE r.estado <> 'CANCELADO') AS total,
+               sum(t.total) FILTER (WHERE x.en_pie) AS total,
                sum(t.cobrado) AS cobrado,
-               sum(t.saldo) FILTER (WHERE r.estado <> 'CANCELADO') AS saldo
+               sum(t.cobrado) FILTER (WHERE x.en_pie) AS "cobradoEnPie",
+               sum(t.saldo) FILTER (WHERE x.en_pie) AS saldo
           FROM reservas r JOIN reserva_totales t ON t."reservaId" = r.id
+         CROSS JOIN LATERAL (SELECT r.estado NOT IN ('RECHAZADO', 'CANCELADO') AS en_pie) x
          WHERE r."eventoId" = b.id
       ) a ON true
       LEFT JOIN LATERAL (
@@ -510,7 +529,7 @@ export async function ocupacion(tx: Tx, eventoId: string, excluir: string | null
   const [o] = await tx.$queryRaw<Array<{ n: number }>>`
     SELECT COALESCE(sum(adultos + menores + bebes + liberados), 0)::int AS n
       FROM reservas
-     WHERE "eventoId" = ${eventoId}::uuid AND estado <> 'CANCELADO'
+     WHERE "eventoId" = ${eventoId}::uuid AND estado NOT IN ('RECHAZADO', 'CANCELADO')
        AND (${excluir}::uuid IS NULL OR id <> ${excluir}::uuid)
   `
   return { cupo: e?.cupo ?? null, ocupado: o?.n ?? 0 }

@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
-import { REGIMEN_TEXTO, type Regimen } from '@/lib/eventos/constantes'
+import { REGIMEN_TEXTO, dadaDeBaja, type Regimen } from '@/lib/eventos/constantes'
 import { esUuid, eventoBase, listarReservas } from '@/lib/eventos/db'
-import { adicionalesDe, menuSinImportes, menusDetalle } from '@/lib/eventos/menus'
-import { PASO_TEXTO, cantidadesCocina, porcionTexto, type Paso } from '@/lib/eventos/menu'
+import { adicionalesDe, mapaElegidas, menuSinImportes, menusDetalle, opcionesElegidas } from '@/lib/eventos/menus'
+import { PASOS, PASO_TEXTO, cocinaReserva, porcionTexto, type Paso } from '@/lib/eventos/menu'
 import { versionesDe } from '@/lib/eventos/presupuesto-db'
 
 export const dynamic = 'force-dynamic'
+
+const ORDEN_PASOS = PASOS.map((p) => p.valor)
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -20,6 +22,10 @@ type Ctx = { params: Promise<{ id: string }> }
  * Cocina: cada reserva come de su menú (el propio o el del evento) y las
  * porciones compartidas se cuentan por reserva, porque cada mesa recibe su
  * picada: dos grupos de 3 son 2 picadas para 4, no 2 de 6 personas juntas.
+ *
+ * Opciones a elección: si la reserva cargó cuántos eligen cada una, se
+ * cuentan así; lo que no se sabe sale como "a elegir" con las personas.
+ * Las reservas cuyas cantidades no cierran con sus personas van en `avisos`.
  */
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { clienteId, verImportes, error } = await requireSeccion(SECCION.EVENTOS_RESERVAS)
@@ -40,11 +46,12 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       SELECT r.id, r."menuId",
              COALESCE((SELECT json_agg(json_build_object('tipo', g.tipo, 'menuId', g."menuId"))
                          FROM reserva_regimenes g WHERE g."reservaId" = r.id), '[]') AS regimenes
-        FROM reservas r WHERE r."eventoId" = ${id}::uuid AND r.estado <> 'CANCELADO'
+        FROM reservas r WHERE r."eventoId" = ${id}::uuid AND r.estado NOT IN ('RECHAZADO', 'CANCELADO')
     `,
   ])
-  const activas = reservas.filter((r) => r.estado !== 'CANCELADO')
+  const activas = reservas.filter((r) => !dadaDeBaja(r.estado))
   const menuDe = new Map(propios.map((p) => [p.id, p.menuId]))
+  const elegidas = await opcionesElegidas(activas.map((r) => r.id))
   const menus = await menusDetalle(
     clienteId!,
     [ev.menuId ?? '', ...regEvento.map((g) => g.menuId ?? ''), ...propios.map((p) => p.menuId ?? '')],
@@ -56,7 +63,18 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   }
 
   // Cocina: unidades por menú y por ítem, sumando reserva por reserva.
-  const cocina = new Map<string, { menu: string; propio: boolean; reservas: number; adultos: number; menores: number; items: Map<string, { paso: Paso; texto: string; porcion: string; unidades: number }> }>()
+  const cocina = new Map<
+    string,
+    {
+      menu: string
+      propio: boolean
+      reservas: number
+      adultos: number
+      menores: number
+      items: Map<string, { paso: Paso; texto: string; porcion: string; unidades: number; aElegir: boolean }>
+    }
+  >()
+  const avisos: Array<{ id: string; numero: number; nombre: string; texto: string }> = []
   let sinMenu = 0
   for (const r of activas) {
     const mid = menuDe.get(r.id) ?? ev.menuId
@@ -74,12 +92,23 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     c.reservas++
     c.adultos += g.adultos
     c.menores += g.menores
-    for (const x of cantidadesCocina(menu.items, g)) {
+    const cuenta = cocinaReserva(menu.items, g, mapaElegidas(elegidas.get(r.id)))
+    for (const texto of cuenta.avisos) avisos.push({ id: r.id, numero: r.numero, nombre: r.nombre, texto })
+    for (const x of cuenta.lineas) {
+      if (x.tipo === 'aElegir') {
+        // Sin saber qué eligen: el total de personas del grupo, "a elegir".
+        const nombres = x.opciones.map((o) => o.nombre)
+        const k = `${x.paso}|elegir|${nombres.join('|')}`
+        const it = c.items.get(k)
+        if (it) it.unidades += x.personas
+        else c.items.set(k, { paso: x.paso, texto: nombres.join(' o '), porcion: 'a elegir', unidades: x.personas, aElegir: true })
+        continue
+      }
       if (!x.unidades) continue
       const k = `${x.item.paso}|${x.item.nombre}|${x.item.modo}|${x.item.personasPorUnidad}`
       const it = c.items.get(k)
       if (it) it.unidades += x.unidades
-      else c.items.set(k, { paso: x.item.paso, texto: x.item.nombre, porcion: porcionTexto(x.item), unidades: x.unidades })
+      else c.items.set(k, { paso: x.item.paso, texto: x.item.nombre, porcion: porcionTexto(x.item), unidades: x.unidades, aElegir: false })
     }
   }
 
@@ -110,9 +139,12 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     cocina: {
       reservas: activas.length,
       sinMenu,
+      avisos,
       menus: [...cocina.values()].map((c) => ({
         ...c,
-        items: [...c.items.values()].map((i) => ({ ...i, pasoTexto: PASO_TEXTO[i.paso] })),
+        items: [...c.items.values()]
+          .sort((a, b) => ORDEN_PASOS.indexOf(a.paso) - ORDEN_PASOS.indexOf(b.paso))
+          .map((i) => ({ ...i, pasoTexto: PASO_TEXTO[i.paso] })),
       })),
     },
     versiones: versiones.map((v) => ({ ...v, total: verImportes ? v.total : null })),

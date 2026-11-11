@@ -6,6 +6,9 @@ import { esUuid, limpiarCopiasMenu, numero, texto, type Tx } from './db'
 import {
   APLICA,
   PASOS,
+  bloquesDePaso,
+  claveGrupo,
+  claveOpcion,
   itemTexto,
   modalidadTexto,
   type Adicional,
@@ -132,7 +135,7 @@ export interface MenuDetalle {
   items: ItemMenu[]
 }
 
-const ORDEN_PASO = Prisma.sql`array_position(ARRAY['RECEPCION','ENTRADA','PRINCIPAL','POSTRE','BEBIDA','OTRO']::text[], it.paso::text)`
+const ORDEN_PASO = Prisma.sql`array_position(${PASOS.map((p) => p.valor)}::text[], it.paso::text)`
 
 /**
  * Menús con sus ítems, el precio de carta ya resuelto (el manual o el del
@@ -155,7 +158,7 @@ export async function menusDetalle(clienteId: string, ids: string[], conCosto: b
     Array<Omit<ItemMenu, 'precio' | 'costo' | 'costoCompleto'> & { menuId: string; precioPos: number | null }>
   >`
     SELECT it.id, it."menuId", it.paso, it.orden, it."productoId", it.nombre, it.descripcion, it.modo,
-           it.cantidad::float8 AS cantidad, it."personasPorUnidad", it.unidad, it.aplica,
+           it.cantidad::float8 AS cantidad, it."personasPorUnidad", it.unidad, it.aplica, it."opcionGrupo",
            it."precioCarta"::float8 AS "precioManual", p.precio::float8 AS "precioPos", p.nombre AS "productoNombre"
       FROM evento_menu_items it
       LEFT JOIN pos_productos p ON p.id = it."productoId"
@@ -241,9 +244,9 @@ export async function copiarMenu(
   if (!m) return null
   await tx.$executeRaw`
     INSERT INTO evento_menu_items ("menuId", paso, orden, "productoId", nombre, descripcion, modo, cantidad,
-                                   "personasPorUnidad", unidad, aplica, "precioCarta")
+                                   "personasPorUnidad", unidad, aplica, "precioCarta", "opcionGrupo")
     SELECT ${m.id}::uuid, paso, orden, "productoId", nombre, descripcion, modo, cantidad,
-           "personasPorUnidad", unidad, aplica, "precioCarta"
+           "personasPorUnidad", unidad, aplica, "precioCarta", "opcionGrupo"
       FROM evento_menu_items WHERE "menuId" = ${origenId}::uuid
   `
   return m
@@ -260,9 +263,9 @@ export async function actualizarDesdePlantilla(tx: Tx, clienteId: string, menuId
   await tx.$executeRaw`DELETE FROM evento_menu_items WHERE "menuId" = ${menuId}::uuid`
   await tx.$executeRaw`
     INSERT INTO evento_menu_items ("menuId", paso, orden, "productoId", nombre, descripcion, modo, cantidad,
-                                   "personasPorUnidad", unidad, aplica, "precioCarta")
+                                   "personasPorUnidad", unidad, aplica, "precioCarta", "opcionGrupo")
     SELECT ${menuId}::uuid, paso, orden, "productoId", nombre, descripcion, modo, cantidad,
-           "personasPorUnidad", unidad, aplica, "precioCarta"
+           "personasPorUnidad", unidad, aplica, "precioCarta", "opcionGrupo"
       FROM evento_menu_items WHERE "menuId" = ${m.plantillaId}::uuid
   `
   await tx.$executeRaw`
@@ -290,12 +293,12 @@ export async function guardarItems(tx: Tx, clienteId: string, menuId: string, it
   if (items.length === 0) return
   await tx.$executeRaw`
     INSERT INTO evento_menu_items ("menuId", paso, orden, "productoId", nombre, descripcion, modo, cantidad,
-                                   "personasPorUnidad", unidad, aplica, "precioCarta")
+                                   "personasPorUnidad", unidad, aplica, "precioCarta", "opcionGrupo")
     VALUES ${Prisma.join(
       items.map(
         (i, k) => Prisma.sql`(${menuId}::uuid, ${i.paso}, ${k}, ${i.productoId && validos.has(i.productoId) ? i.productoId : null}::uuid,
           ${i.nombre}, ${i.descripcion}, ${i.modo}, ${i.cantidad}::numeric, ${i.personasPorUnidad}::smallint, ${i.unidad},
-          ${i.aplica}, ${i.precioManual}::numeric)`
+          ${i.aplica}, ${i.precioManual}::numeric, ${i.opcionGrupo}::smallint)`
       )
     )}
   `
@@ -303,6 +306,12 @@ export async function guardarItems(tx: Tx, clienteId: string, menuId: string, it
 
 /** Qué cambió entre dos listas de ítems, en palabras, para la línea de tiempo. */
 export function cambiosItems(antes: ItemMenu[], despues: ItemEntrada[]): string | null {
+  const opciones = (xs: Array<Pick<ItemMenu, 'paso' | 'opcionGrupo' | 'nombre'>>) =>
+    bloquesDePaso(xs)
+      .filter((b) => b.grupo != null)
+      .map((b) => b.items.map((i) => i.nombre).join(' o '))
+      .sort()
+      .join(' | ')
   const clave = (i: { nombre: string; paso: string }) => `${i.paso}|${i.nombre.toLowerCase()}`
   const a = new Map(antes.map((i) => [clave(i), i]))
   const d = new Map(despues.map((i) => [clave(i), i]))
@@ -321,6 +330,9 @@ export function cambiosItems(antes: ItemMenu[], despues: ItemEntrada[]): string 
   if (agregados.length) partes.push(`agregó ${agregados.join(', ')}`)
   if (quitados.length) partes.push(`quitó ${quitados.join(', ')}`)
   if (cambiados.length) partes.push(`cambió ${cambiados.join(', ')}`)
+  const opA = opciones(antes)
+  const opD = opciones(despues)
+  if (opA !== opD) partes.push(opD ? `opciones a elección: ${opD.replace(/ \| /g, '; ')}` : 'sacó las opciones a elección')
   if (!partes.length && antes.map(clave).join() !== despues.map(clave).join()) partes.push('reordenó los ítems')
   return partes.length ? partes.join('; ') : null
 }
@@ -331,7 +343,7 @@ export function cambiosItems(antes: ItemMenu[], despues: ItemEntrada[]): string 
 
 export type ItemEntrada = Pick<
   ItemMenu,
-  'paso' | 'productoId' | 'nombre' | 'descripcion' | 'modo' | 'cantidad' | 'personasPorUnidad' | 'unidad' | 'aplica' | 'precioManual'
+  'paso' | 'productoId' | 'nombre' | 'descripcion' | 'modo' | 'cantidad' | 'personasPorUnidad' | 'unidad' | 'aplica' | 'precioManual' | 'opcionGrupo'
 > & { id?: string | undefined; orden: number }
 
 const PASOS_OK = PASOS.map((p) => p.valor)
@@ -363,9 +375,90 @@ export function leerItems(v: unknown): { items: ItemEntrada[] } | { error: strin
       unidad: texto(raw.unidad, 30),
       aplica: APLICA_OK.includes(raw.aplica as Aplica) ? (raw.aplica as Aplica) : 'TODOS',
       precioManual: numero(raw.precioManual),
+      opcionGrupo: Number.isInteger(raw.opcionGrupo) && (raw.opcionGrupo as number) > 0 ? (raw.opcionGrupo as number) : null,
     })
   }
-  return { items }
+  return { items: normalizarOpciones(items) }
+}
+
+/**
+ * Deja los grupos de opciones prolijos: un grupo con una sola opción pasa a
+ * ser un ítem fijo, y los grupos de cada paso se numeran 1, 2… en el orden
+ * en que aparecen.
+ */
+export function normalizarOpciones<T extends Pick<ItemMenu, 'paso' | 'opcionGrupo'>>(items: T[]): T[] {
+  const cuantos = new Map<string, number>()
+  for (const i of items) if (i.opcionGrupo != null) cuantos.set(claveGrupo(i), (cuantos.get(claveGrupo(i)) ?? 0) + 1)
+  const nuevo = new Map<string, number>()
+  const porPasoN = new Map<string, number>()
+  return items.map((i) => {
+    if (i.opcionGrupo == null || (cuantos.get(claveGrupo(i)) ?? 0) < 2) return { ...i, opcionGrupo: null }
+    const k = claveGrupo(i)
+    let n = nuevo.get(k)
+    if (n == null) {
+      n = (porPasoN.get(i.paso) ?? 0) + 1
+      porPasoN.set(i.paso, n)
+      nuevo.set(k, n)
+    }
+    return { ...i, opcionGrupo: n }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Cuántos eligen cada opción, por reserva
+// ---------------------------------------------------------------------------
+
+export interface OpcionElegida {
+  paso: Paso
+  nombre: string
+  cantidad: number
+}
+
+export async function opcionesElegidas(reservaIds: string[]): Promise<Map<string, OpcionElegida[]>> {
+  const out = new Map<string, OpcionElegida[]>()
+  if (reservaIds.length === 0) return out
+  const filas = await prisma.$queryRaw<Array<OpcionElegida & { reservaId: string }>>`
+    SELECT "reservaId"::text AS "reservaId", paso, nombre, cantidad
+      FROM reserva_menu_opciones WHERE "reservaId" = ANY(${reservaIds}::uuid[])
+     ORDER BY paso, nombre
+  `
+  for (const { reservaId, ...o } of filas) {
+    const arr = out.get(reservaId)
+    if (arr) arr.push(o)
+    else out.set(reservaId, [o])
+  }
+  return out
+}
+
+/** Para `cocinaReserva`: clave de la opción → cuántos la eligen. */
+export const mapaElegidas = (xs: OpcionElegida[] | undefined) => new Map((xs ?? []).map((o) => [claveOpcion(o), o.cantidad]))
+
+/** Reemplaza las cantidades elegidas de una reserva. */
+export async function guardarOpcionesElegidas(tx: Tx, reservaId: string, xs: OpcionElegida[]) {
+  await tx.$executeRaw`DELETE FROM reserva_menu_opciones WHERE "reservaId" = ${reservaId}::uuid`
+  if (xs.length === 0) return
+  await tx.$executeRaw`
+    INSERT INTO reserva_menu_opciones ("reservaId", paso, nombre, cantidad)
+    VALUES ${Prisma.join(xs.map((o) => Prisma.sql`(${reservaId}::uuid, ${o.paso}, ${o.nombre}, ${o.cantidad}::int)`))}
+  `
+}
+
+export function leerOpcionesElegidas(v: unknown): { opciones: OpcionElegida[] } | { error: string } {
+  if (!Array.isArray(v)) return { error: 'Opciones inválidas' }
+  if (v.length > 100) return { error: 'Demasiadas opciones' }
+  const out: OpcionElegida[] = []
+  for (const raw of v as Array<Record<string, unknown>>) {
+    const nombre = texto(raw?.nombre, 200)
+    if (!nombre || !PASOS_OK.includes(raw.paso as Paso)) return { error: 'Opción inválida' }
+    if (raw.cantidad === null || raw.cantidad === undefined || raw.cantidad === '') continue
+    const n = Math.round(Number(raw.cantidad))
+    if (!Number.isFinite(n) || n < 0 || n > 100000) return { error: `Cantidad inválida en ${nombre}` }
+    // Una misma opción dos veces: vale la última.
+    const previa = out.findIndex((o) => o.paso === raw.paso && o.nombre === nombre)
+    if (previa >= 0) out.splice(previa, 1)
+    out.push({ paso: raw.paso as Paso, nombre, cantidad: n })
+  }
+  return { opciones: out }
 }
 
 // ---------------------------------------------------------------------------

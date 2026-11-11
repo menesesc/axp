@@ -8,22 +8,22 @@ import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
-import { LeyendaSiglas, claseSelect, useCatalogos } from '@/components/eventos/comunes'
+import { LeyendaEstados, alternarSigla, claseSelect, useCatalogos } from '@/components/eventos/comunes'
 import { NuevaReservaDialog } from '@/components/eventos/nueva-reserva'
 import { VistaDia, VistaMes, VistaSemana, colorTipo, diasDelMes, inicioSemana, type Entrada } from '@/components/eventos/calendario'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { hoyAR, sumarDias } from '@/lib/fechas'
-import { ORDEN_SIGLAS, fechaCorta, type Sigla } from '@/lib/eventos/constantes'
+import { dadaDeBaja, fechaCorta, type Sigla } from '@/lib/eventos/constantes'
 import type { AgendaFila, EventoResumen, ReservaFila } from '@/lib/eventos/db'
 import { cn } from '@/lib/utils'
 
 type Vista = 'mes' | 'semana' | 'dia'
 
 /**
- * Calendario de eventos y reservas. Los eventos se ven con su color de tipo
- * y la barra de siglas de sus reservas; las reservas sueltas, con el color
- * de su sigla; la agenda pendiente, punteada.
+ * Calendario de eventos y reservas. Los eventos se ven con su color de tipo,
+ * la barra de estados de sus reservas y el % cobrado; las reservas sueltas,
+ * con el color de su estado; la agenda pendiente, punteada.
  */
 export default function CalendarioEventos() {
   const hoy = hoyAR()
@@ -106,7 +106,7 @@ export default function CalendarioEventos() {
         ? `${fechaCorta(desde)} al ${fechaCorta(hasta)}`
         : fechaCorta(ancla, true)
 
-  // Lo que muestra el rango: personas con lugar (sin canceladas).
+  // Lo que muestra el rango: personas con lugar (sin rechazadas ni canceladas).
   const resumen = useMemo(() => {
     let personas = 0
     let eventos = 0
@@ -116,7 +116,7 @@ export default function CalendarioEventos() {
         if (x.clase === 'evento') {
           eventos++
           personas += x.e.personas
-        } else if (x.clase === 'reserva' && x.r.estado !== 'CANCELADO') {
+        } else if (x.clase === 'reserva' && !dadaDeBaja(x.r.estado)) {
           reservas++
           personas += x.r.personas
         }
@@ -197,7 +197,7 @@ export default function CalendarioEventos() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <LeyendaSiglas activas={siglas} onAlternar={(s) => setSiglas((xs) => (xs.includes(s) ? xs.filter((x) => x !== s) : [...xs, s].sort((a, b) => ORDEN_SIGLAS.indexOf(a) - ORDEN_SIGLAS.indexOf(b))))} />
+        <LeyendaEstados activas={siglas} onAlternar={(s) => setSiglas((xs) => alternarSigla(xs, s))} />
         <p className="ax-num text-sm text-[var(--sec)]">
           {resumen.eventos} eventos · {resumen.reservas} reservas sueltas · <b>{resumen.personas}</b> personas
         </p>

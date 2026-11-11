@@ -2,21 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
-import { ESTADO_TEXTO, type EstadoReserva } from '@/lib/eventos/constantes'
+import { ESTADOS, ESTADO_TEXTO, TRANSICIONES, dadaDeBaja, type EstadoReserva } from '@/lib/eventos/constantes'
 import { CupoExcedido, auditar, esUuid, mensajeError, respuestaCupo, texto, verificarCupo } from '@/lib/eventos/db'
 
 export const dynamic = 'force-dynamic'
 
-const ESTADOS: EstadoReserva[] = ['PRESUPUESTO', 'APROBADO', 'FINALIZADO', 'CANCELADO']
+const VALIDOS = ESTADOS.map((e) => e.valor)
 
 /**
- * Cambio de estado manual. El de cobro no se toca acá ni en ningún lado:
- * sale de los pagos.
+ * Cambio de estado manual. El cobro no es un estado: el % cobrado sale de
+ * los pagos.
  *
- * Se permite ir y volver (reabrir un finalizado, reactivar un cancelado)
- * porque en la vida real pasa; queda todo en la línea de tiempo. Al cancelar
- * con plata cobrada hay que decir qué pasa con la seña; si se devuelve, la
- * devolución se registra aparte en Pagos, con su medio y su comprobante.
+ * Los pasos permitidos están en TRANSICIONES: un presupuesto se aprueba o se
+ * rechaza; un rechazado se reabre; un aprobado se cancela o se finaliza; un
+ * cancelado se reactiva y un finalizado se reabre (los dos vuelven a
+ * aprobado). Queda todo en la línea de tiempo. Al cancelar con plata
+ * cobrada hay que decir qué pasa con la seña; si se devuelve, la devolución
+ * se registra aparte en Pagos, con su medio y su comprobante.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user, clienteId, error } = await requireSeccion(SECCION.EVENTOS_RESERVAS, 'edit')
@@ -25,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!esUuid(id)) return NextResponse.json({ error: 'No existe' }, { status: 404 })
   const b = (await request.json().catch(() => null)) as Record<string, unknown> | null
   const estado = b?.estado as EstadoReserva
-  if (!ESTADOS.includes(estado)) return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
+  if (!VALIDOS.includes(estado)) return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
   const cancelacion = b?.cancelacionSena === 'DEVUELTA' || b?.cancelacionSena === 'RETENIDA' ? b.cancelacionSena : null
   const nota = texto(b?.nota, 500)
 
@@ -40,13 +42,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       `
       if (!antes) return { status: 404, error: 'No existe' }
       if (antes.estado === estado) return { status: 400, error: `Ya está en ${ESTADO_TEXTO[estado].toLowerCase()}` }
+      if (!TRANSICIONES[antes.estado].includes(estado)) {
+        return { status: 400, error: `No se puede pasar de ${ESTADO_TEXTO[antes.estado].toLowerCase()} a ${ESTADO_TEXTO[estado].toLowerCase()}` }
+      }
       if (estado === 'CANCELADO' && antes.cobrado > 0 && !cancelacion) {
         return { status: 400, error: 'Tiene plata cobrada: indicá si la seña se devuelve o se retiene', codigo: 'SENA' }
       }
 
-      // Reactivar un cancelado vuelve a ocupar lugar.
+      // Reactivar un cancelado o reabrir un rechazado vuelve a ocupar lugar.
       let exceso: { cupo: number; ocupado: number } | null = null
-      if (antes.estado === 'CANCELADO' && antes.eventoId) {
+      if (dadaDeBaja(antes.estado) && !dadaDeBaja(estado) && antes.eventoId) {
         exceso = await verificarCupo(tx, antes.eventoId, id, antes.personas, b?.forzarCupo === true)
       }
 
@@ -57,6 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                                    WHEN ${estado} = 'PRESUPUESTO' THEN NULL ELSE "aprobadaAt" END,
           "finalizadaAt"    = CASE WHEN ${estado} = 'FINALIZADO' THEN now() ELSE NULL END,
           "canceladaAt"     = CASE WHEN ${estado} = 'CANCELADO' THEN now() ELSE NULL END,
+          "rechazadaAt"     = CASE WHEN ${estado} = 'RECHAZADO' THEN now() ELSE NULL END,
           "cancelacionSena" = CASE WHEN ${estado} = 'CANCELADO' THEN ${cancelacion} ELSE NULL END,
           "updatedAt"       = now()
         WHERE id = ${id}::uuid
@@ -83,7 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           eventoId: antes.eventoId,
           reservaId: id,
           accion: 'cupo_excedido',
-          descripcion: `Se reactivó pasando el cupo con confirmación: había ${exceso.ocupado} de ${exceso.cupo}`,
+          descripcion: `Volvió a ocupar lugar pasando el cupo con confirmación: había ${exceso.ocupado} de ${exceso.cupo}`,
           despues: { ...exceso, personas: antes.personas },
           user,
         })

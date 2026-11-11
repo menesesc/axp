@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { esAdminUsuario, requireSeccion } from '@/lib/auth'
 import { SECCION, cumple, veImportes } from '@/lib/permisos'
 import { hoyAR } from '@/lib/fechas'
-import { REGIMEN_TEXTO, calcularPlan } from '@/lib/eventos/constantes'
+import { REGIMEN_TEXTO, calcularPlan, dadaDeBaja, type EstadoReserva } from '@/lib/eventos/constantes'
 import {
   CupoExcedido,
   agendaDe,
@@ -107,7 +107,7 @@ interface Antes {
   ivaAlicuota: number | null
   descuento: number
   descuentoNota: string | null
-  estado: string
+  estado: EstadoReserva
   origen: string | null
   mesaInamovible: boolean
   observaciones: string | null
@@ -200,7 +200,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
         (d.adultos ?? antes.adultos) + (d.menores ?? antes.menores) + (d.bebes ?? antes.bebes) + (d.liberados ?? antes.liberados)
       if (personas === 0) throw new Error('PERSONAS')
       let exceso: { cupo: number; ocupado: number } | null = null
-      if (eventoId && antes.estado !== 'CANCELADO' && (personas > personasAntes || eventoId !== antes.eventoId)) {
+      if (eventoId && !dadaDeBaja(antes.estado) && (personas > personasAntes || eventoId !== antes.eventoId)) {
         exceso = await verificarCupo(tx, eventoId, id, personas, forzar)
       }
 

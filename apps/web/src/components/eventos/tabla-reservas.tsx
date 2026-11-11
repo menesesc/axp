@@ -5,16 +5,22 @@ import Link from 'next/link'
 import type { Route } from 'next'
 import { Lock, Search, StickyNote } from 'lucide-react'
 import { pesos } from '@/components/dashboard/inicio'
-import { REGIMENES, fechaCorta, type Sigla } from '@/lib/eventos/constantes'
+import { REGIMENES, dadaDeBaja, fechaCorta, porcentajeCobrado, type Sigla } from '@/lib/eventos/constantes'
 import type { ReservaFila } from '@/lib/eventos/db'
 import { cn } from '@/lib/utils'
-import { LeyendaSiglas, SiglaBadge, claseSelect, useCatalogos } from './comunes'
+import { BarraCobro, EstadoBadge, LeyendaEstados, alternarSigla, claseSelect, useCatalogos } from './comunes'
 
 /**
  * Tabla de reservas con sus filtros. Pensada para el 31/12 con cien o más
  * reservas en el mismo turno: todo filtra en el navegador (sin ir al server
  * en cada tecla) y abajo quedan los totales de lo que se está viendo.
+ *
+ * El estado se filtra con los chips de la leyenda (varios a la vez); lo que
+ * falta cobrar, con "Con saldo pendiente", que mira el % cobrado y por eso
+ * funciona también sin ver importes.
  */
+const conSaldoPendiente = (r: ReservaFila) => !dadaDeBaja(r.estado) && (r.porcentajeCobrado ?? 100) < 100
+
 export function TablaReservas({
   reservas,
   verImportes,
@@ -35,6 +41,7 @@ export function TablaReservas({
   const [siglas, setSiglas] = useState<Sigla[]>([])
   const [salon, setSalon] = useState('')
   const [conRegimen, setConRegimen] = useState(false)
+  const [conSaldo, setConSaldo] = useState(false)
 
   const conteo = useMemo(() => {
     const c: Partial<Record<Sigla, number>> = {}
@@ -49,6 +56,7 @@ export function TablaReservas({
         (siglas.length === 0 || siglas.includes(r.sigla)) &&
         (!salon || r.sectorId === salon) &&
         (!conRegimen || r.regimenes.length > 0) &&
+        (!conSaldo || conSaldoPendiente(r)) &&
         (!t ||
           r.nombre.toLowerCase().includes(t) ||
           (r.contactoNombre ?? '').toLowerCase().includes(t) ||
@@ -57,20 +65,22 @@ export function TablaReservas({
           String(r.numero) === t ||
           r.mesas.some((m) => m.toLowerCase() === t))
     )
-  }, [reservas, q, siglas, salon, conRegimen])
+  }, [reservas, q, siglas, salon, conRegimen, conSaldo])
 
   const tot = useMemo(() => {
-    const vivas = filtradas.filter((r) => r.estado !== 'CANCELADO')
+    const vivas = filtradas.filter((r) => !dadaDeBaja(r.estado))
+    const total = vivas.reduce((s, r) => s + r.total, 0)
     return {
       personas: vivas.reduce((s, r) => s + r.personas, 0),
-      total: vivas.reduce((s, r) => s + r.total, 0),
+      total,
       cobrado: filtradas.reduce((s, r) => s + r.cobrado, 0),
       saldo: vivas.reduce((s, r) => s + r.saldo, 0),
+      pct: porcentajeCobrado(total, vivas.reduce((s, r) => s + r.cobrado, 0)),
     }
   }, [filtradas])
 
-  const alternar = (s: Sigla) => setSiglas((xs) => (xs.includes(s) ? xs.filter((x) => x !== s) : [...xs, s]))
-  const filtros = (q ? 1 : 0) + siglas.length + (salon ? 1 : 0) + (conRegimen ? 1 : 0)
+  const alternar = (s: Sigla) => setSiglas((xs) => alternarSigla(xs, s))
+  const filtros = (q ? 1 : 0) + siglas.length + (salon ? 1 : 0) + (conRegimen ? 1 : 0) + (conSaldo ? 1 : 0)
 
   return (
     <div className="space-y-3">
@@ -99,6 +109,10 @@ export function TablaReservas({
           <input type="checkbox" checked={conRegimen} onChange={(e) => setConRegimen(e.target.checked)} />
           Con régimen especial
         </label>
+        <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-900/[0.12] bg-white px-3 text-sm">
+          <input type="checkbox" checked={conSaldo} onChange={(e) => setConSaldo(e.target.checked)} />
+          Con saldo pendiente
+        </label>
         {filtros > 0 && (
           <button
             type="button"
@@ -107,6 +121,7 @@ export function TablaReservas({
               setSiglas([])
               setSalon('')
               setConRegimen(false)
+              setConSaldo(false)
             }}
             className="h-10 rounded-xl px-3 text-sm text-[var(--azul-2)] hover:bg-slate-900/[0.05]"
           >
@@ -115,10 +130,10 @@ export function TablaReservas({
         )}
         <div className="ml-auto flex gap-2">{acciones}</div>
       </div>
-      <LeyendaSiglas conteo={conteo} activas={siglas} onAlternar={alternar} />
+      <LeyendaEstados conteo={conteo} activas={siglas} onAlternar={alternar} />
 
       <div className="ax-card overflow-x-auto p-0">
-        <table className="w-full min-w-[46rem] text-sm">
+        <table className="w-full min-w-[52rem] text-sm">
           <thead>
             <tr className="border-b border-slate-900/[0.08] text-left text-xs uppercase tracking-wide text-[var(--ter)]">
               <th className="px-3 py-2.5 font-medium">#</th>
@@ -129,10 +144,11 @@ export function TablaReservas({
               <th className="px-3 py-2.5 font-medium">Salón / mesa</th>
               <th className="hidden px-3 py-2.5 font-medium lg:table-cell">Origen</th>
               <th className="px-3 py-2.5 font-medium">Estado</th>
+              <th className="px-3 py-2.5 font-medium">Cobrado</th>
               {verImportes && (
                 <>
                   <th className="px-3 py-2.5 text-right font-medium">Total</th>
-                  <th className="hidden px-3 py-2.5 text-right font-medium md:table-cell">Cobrado</th>
+                  <th className="hidden px-3 py-2.5 text-right font-medium md:table-cell">$ cobrado</th>
                   <th className="px-3 py-2.5 text-right font-medium">Saldo</th>
                 </>
               )}
@@ -155,7 +171,7 @@ export function TablaReservas({
               </tr>
             )}
             {filtradas.map((r) => (
-              <tr key={r.id} className={cn('border-b border-slate-900/[0.05] hover:bg-slate-900/[0.025]', r.estado === 'CANCELADO' && 'opacity-55')}>
+              <tr key={r.id} className={cn('border-b border-slate-900/[0.05] hover:bg-slate-900/[0.025]', dadaDeBaja(r.estado) && 'opacity-55')}>
                 <td className="ax-num px-3 py-2 text-[var(--ter)]">{r.numero}</td>
                 <td className="max-w-[16rem] px-3 py-2">
                   <Link href={`/eventos/reserva/${r.id}` as Route} className="font-medium text-slate-900 hover:text-[var(--azul-2)] hover:underline">
@@ -196,13 +212,16 @@ export function TablaReservas({
                 </td>
                 <td className="hidden px-3 py-2 text-xs text-[var(--sec)] lg:table-cell">{nombreOrigen(r.origen)}</td>
                 <td className="px-3 py-2">
-                  <SiglaBadge sigla={r.sigla} />
+                  <EstadoBadge sigla={r.sigla} />
+                </td>
+                <td className="px-3 py-2">
+                  <BarraCobro pct={r.porcentajeCobrado} />
                 </td>
                 {verImportes && (
                   <>
                     <td className="ax-num whitespace-nowrap px-3 py-2 text-right">{pesos(r.total)}</td>
                     <td className="ax-num hidden whitespace-nowrap px-3 py-2 text-right text-[var(--verde)] md:table-cell">{pesos(r.cobrado)}</td>
-                    <td className={cn('ax-num whitespace-nowrap px-3 py-2 text-right', r.saldo > 0 && r.estado !== 'CANCELADO' ? 'font-medium' : 'text-[var(--ter)]')}>
+                    <td className={cn('ax-num whitespace-nowrap px-3 py-2 text-right', r.saldo > 0 && !dadaDeBaja(r.estado) ? 'font-medium' : 'text-[var(--ter)]')}>
                       {pesos(r.saldo)}
                     </td>
                   </>
@@ -219,8 +238,9 @@ export function TablaReservas({
                 </td>
                 <td className="ax-num px-3 py-2.5 text-right">{tot.personas}</td>
                 <td colSpan={4} className="px-3 py-2.5 text-xs font-normal text-[var(--ter)]">
-                  sin contar canceladas
+                  sin contar rechazadas ni canceladas
                 </td>
+                <td className="px-3 py-2.5">{verImportes && <BarraCobro pct={tot.pct} />}</td>
                 {verImportes && (
                   <>
                     <td className="ax-num whitespace-nowrap px-3 py-2.5 text-right">{pesos(tot.total)}</td>

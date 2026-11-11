@@ -10,14 +10,14 @@ import { Header } from '@/components/layout/header'
 import { pesos } from '@/components/dashboard/inicio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { BarraSiglas, useCatalogos } from '@/components/eventos/comunes'
+import { BarraCobro, BarraEstados, useCatalogos } from '@/components/eventos/comunes'
 import { ConfiguracionDialog } from '@/components/eventos/configuracion'
 import { NuevaReservaDialog } from '@/components/eventos/nueva-reserva'
 import { TablaReservas } from '@/components/eventos/tabla-reservas'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { hoyAR, sumarDias } from '@/lib/fechas'
-import { fechaCorta } from '@/lib/eventos/constantes'
+import { fechaCorta, porcentajeCobrado } from '@/lib/eventos/constantes'
 import type { EventoResumen, ReservaFila } from '@/lib/eventos/db'
 import { cn } from '@/lib/utils'
 
@@ -65,6 +65,11 @@ export default function ListaEventos() {
       total: evs.reduce((s, e) => s + e.total, 0),
       cobrado: evs.reduce((s, e) => s + e.cobrado, 0),
       saldo: evs.reduce((s, e) => s + e.saldo, 0),
+      // Lo cobrado de lo que sigue en pie sobre su total: total − saldo.
+      pct: porcentajeCobrado(
+        evs.reduce((s, e) => s + e.total, 0),
+        evs.reduce((s, e) => s + e.total - e.saldo, 0)
+      ),
     }),
     [evs]
   )
@@ -126,10 +131,11 @@ export default function ListaEventos() {
                 <th className="px-3 py-2.5 text-right font-medium">Reservas</th>
                 <th className="px-3 py-2.5 text-right font-medium">Personas</th>
                 <th className="w-40 px-3 py-2.5 font-medium">Estados</th>
+                <th className="px-3 py-2.5 font-medium">Cobrado</th>
                 {verImportes && (
                   <>
                     <th className="px-3 py-2.5 text-right font-medium">Presupuestado</th>
-                    <th className="px-3 py-2.5 text-right font-medium">Cobrado</th>
+                    <th className="px-3 py-2.5 text-right font-medium">$ cobrado</th>
                     <th className="px-3 py-2.5 text-right font-medium">Saldo</th>
                   </>
                 )}
@@ -138,14 +144,14 @@ export default function ListaEventos() {
             <tbody>
               {eventos.isLoading && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6">
+                  <td colSpan={9} className="px-3 py-6">
                     <div className="h-4 animate-pulse rounded bg-slate-900/[0.05]" />
                   </td>
                 </tr>
               )}
               {!eventos.isLoading && evs.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center text-[var(--ter)]">
+                  <td colSpan={9} className="px-3 py-10 text-center text-[var(--ter)]">
                     No hay eventos en el período.
                   </td>
                 </tr>
@@ -176,8 +182,9 @@ export default function ListaEventos() {
                       {e.cupo ? <span className="text-[var(--ter)]">/{e.cupo}</span> : null}
                     </td>
                     <td className="px-3 py-2">
-                      <BarraSiglas siglas={e.siglas} />
+                      <BarraEstados siglas={e.siglas} />
                     </td>
+                    <td className="px-3 py-2">{e.reservas > 0 && <BarraCobro pct={e.porcentajeCobrado} />}</td>
                     {verImportes && (
                       <>
                         <td className="ax-num whitespace-nowrap px-3 py-2 text-right">{pesos(e.total)}</td>
@@ -198,6 +205,7 @@ export default function ListaEventos() {
                   <td className="ax-num px-3 py-2.5 text-right">{tot.reservas}</td>
                   <td className="ax-num px-3 py-2.5 text-right">{tot.personas}</td>
                   <td />
+                  <td className="px-3 py-2.5">{verImportes && <BarraCobro pct={tot.pct} />}</td>
                   {verImportes && (
                     <>
                       <td className="ax-num whitespace-nowrap px-3 py-2.5 text-right">{pesos(tot.total)}</td>

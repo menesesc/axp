@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSeccion } from '@/lib/auth'
 import { SECCION } from '@/lib/permisos'
-import { ORDEN_SIGLAS, REGIMEN_TEXTO, cuotasDeRegla, personasTexto, type Sigla } from '@/lib/eventos/constantes'
+import { ESTADOS, REGIMEN_TEXTO, cuotasDeRegla, personasTexto, type EstadoReserva } from '@/lib/eventos/constantes'
 import {
   CupoExcedido,
   auditar,
@@ -34,9 +34,11 @@ export async function GET(request: NextRequest) {
   const desde = sp.get('desde')
   const hasta = sp.get('hasta')
   const eventoId = sp.get('eventoId')
-  const siglas = (sp.get('siglas') ?? '')
+  // Estados por sigla (PRE, APR…) o por nombre (PRESUPUESTO, APROBADO…).
+  const estados = (sp.get('estados') ?? '')
     .split(',')
-    .filter((s): s is Sigla => (ORDEN_SIGLAS as string[]).includes(s))
+    .map((s) => ESTADOS.find((e) => e.sigla === s || e.valor === s)?.valor)
+    .filter((e): e is EstadoReserva => !!e)
   const titularId = sp.get('titularId')
   const sectorId = sp.get('sectorId')
 
@@ -45,7 +47,8 @@ export async function GET(request: NextRequest) {
     sinEvento: sp.get('sinEvento') === '1',
     desde: esFecha(desde) ? desde : null,
     hasta: esFecha(hasta) ? hasta : null,
-    siglas,
+    estados,
+    conSaldo: sp.get('conSaldo') === '1',
     sectorId: esUuid(sectorId) ? sectorId : null,
     titularId: esUuid(titularId) ? titularId : null,
     conRegimen: sp.get('conRegimen') === '1',

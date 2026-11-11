@@ -7,11 +7,12 @@ import type { ItemCatalogo, SalonPos } from '@/lib/eventos/db'
 import { cn } from '@/lib/utils'
 
 /*
- * Piezas que comparten las pantallas de eventos: la sigla con su color, la
- * barra de siglas de un evento, los catálogos y el manejo del cupo.
+ * Piezas que comparten las pantallas de eventos: el estado con su color, la
+ * barra de estados de un evento, el % cobrado, los catálogos y el manejo del
+ * cupo.
  */
 
-export function SiglaBadge({ sigla, className, conTexto }: { sigla: Sigla; className?: string; conTexto?: boolean }) {
+export function EstadoBadge({ sigla, className, conTexto }: { sigla: Sigla; className?: string; conTexto?: boolean }) {
   const s = SIGLAS[sigla]
   return (
     <span
@@ -24,22 +25,46 @@ export function SiglaBadge({ sigla, className, conTexto }: { sigla: Sigla; class
   )
 }
 
-/** Cuántas reservas hay en cada sigla, como una barra proporcional. */
-export function BarraSiglas({ siglas, className }: { siglas: Partial<Record<Sigla, number>>; className?: string }) {
+/** Cuántas reservas hay en cada estado, como una barra proporcional. */
+export function BarraEstados({ siglas, className }: { siglas: Partial<Record<Sigla, number>>; className?: string }) {
   const total = ORDEN_SIGLAS.reduce((s, k) => s + (siglas[k] ?? 0), 0)
   if (!total) return <div className={cn('h-1.5 rounded-full bg-slate-900/[0.06]', className)} />
   return (
     <div className={cn('flex h-1.5 overflow-hidden rounded-full bg-slate-900/[0.06]', className)}>
       {ORDEN_SIGLAS.map((k) =>
         siglas[k] ? (
-          <span key={k} title={`${k}: ${siglas[k]}`} style={{ width: `${((siglas[k] ?? 0) / total) * 100}%`, background: SIGLAS[k].punto }} />
+          <span key={k} title={`${SIGLAS[k].texto}: ${siglas[k]}`} style={{ width: `${((siglas[k] ?? 0) / total) * 100}%`, background: SIGLAS[k].punto }} />
         ) : null
       )}
     </div>
   )
 }
 
-export function LeyendaSiglas({ conteo, activas, onAlternar }: {
+/** "37 %", "100 %" o "—" si no hay nada que cobrar. */
+export function textoCobrado(pct: number | null | undefined) {
+  if (pct == null) return '—'
+  return `${pct.toLocaleString('es-AR', { maximumFractionDigits: pct < 10 ? 1 : 0 })} %`
+}
+
+/**
+ * % cobrado con una barrita. El color sólo acompaña (nada cobrado, parcial,
+ * completo): el cobro no es un estado. Sin total, "—".
+ */
+export function BarraCobro({ pct, className, denso }: { pct: number | null | undefined; className?: string | undefined; denso?: boolean | undefined }) {
+  if (pct == null) return <span className={cn('text-xs text-[var(--ter)]', className)} title="Sin importe para cobrar">—</span>
+  const color = pct >= 99.95 ? 'bg-emerald-500' : pct > 0 ? 'bg-amber-500' : 'bg-rose-400'
+  return (
+    <span className={cn('inline-flex items-center gap-1.5', className)} title={`Cobrado: ${textoCobrado(pct)}`}>
+      <span className={cn('relative overflow-hidden rounded-full bg-slate-900/[0.08]', denso ? 'h-1 w-8' : 'h-1.5 w-12')}>
+        <span className={cn('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${Math.min(Math.max(pct, 0), 100)}%` }} />
+      </span>
+      <span className={cn('ax-num whitespace-nowrap text-[var(--sec)]', denso ? 'text-[10px]' : 'text-xs')}>{textoCobrado(pct)}</span>
+    </span>
+  )
+}
+
+/** Chips de estado con su sigla; si se pasa `onAlternar`, sirven de filtro (varios a la vez). */
+export function LeyendaEstados({ conteo, activas, onAlternar }: {
   conteo?: Partial<Record<Sigla, number>> | undefined
   activas?: Sigla[] | undefined
   onAlternar?: ((s: Sigla) => void) | undefined
@@ -62,6 +87,7 @@ export function LeyendaSiglas({ conteo, activas, onAlternar }: {
             key={k}
             type="button"
             onClick={() => onAlternar(k)}
+            aria-pressed={activas?.includes(k) ?? false}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition',
               activa ? 'border-slate-900/[0.14] bg-white' : 'border-transparent bg-slate-900/[0.04] opacity-50'
@@ -77,6 +103,11 @@ export function LeyendaSiglas({ conteo, activas, onAlternar }: {
       })}
     </div>
   )
+}
+
+/** Alterna una sigla en la lista de filtros, manteniendo el orden de la leyenda. */
+export function alternarSigla(xs: Sigla[], s: Sigla): Sigla[] {
+  return xs.includes(s) ? xs.filter((x) => x !== s) : [...xs, s].sort((a, b) => ORDEN_SIGLAS.indexOf(a) - ORDEN_SIGLAS.indexOf(b))
 }
 
 export interface Catalogos {

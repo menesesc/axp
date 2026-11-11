@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
  * Pagos de reservas. Van en su propia sección de permisos (eventos.cobros):
  * quien toma reservas no necesariamente maneja plata.
  *
- * El estado de cobro de la reserva (y con él la sigla) sale solo de acá:
+ * El % cobrado de la reserva sale solo de acá (el cobro no es un estado):
  * nadie lo pone a mano. La integración con el flujo de Finanzas es de la
  * etapa 4; por eso el pago ya trae "movimientoId", vacío por ahora.
  */

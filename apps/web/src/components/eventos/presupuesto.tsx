@@ -238,7 +238,19 @@ export function HojaPresupuesto({ p, conLogo }: { p: PresupuestoDatos; conLogo: 
                 <ul className="mt-1 space-y-0.5 text-sm">
                   {g.items.map((i, k) => (
                     <li key={k}>
-                      {i.texto}
+                      {i.opciones?.length ? (
+                        <>
+                          {g.items.length > 1 && <span className="text-slate-500">A elección: </span>}
+                          {i.opciones.map((o, n) => (
+                            <span key={n}>
+                              {n > 0 && <span className="italic text-slate-500"> o </span>}
+                              {o}
+                            </span>
+                          ))}
+                        </>
+                      ) : (
+                        i.texto
+                      )}
                       {i.aplica !== 'TODOS' && <span className="text-slate-500">{APLICA_SUFIJO[i.aplica]}</span>}
                       {i.descripcion && <span className="block text-xs text-slate-500">{i.descripcion}</span>}
                     </li>

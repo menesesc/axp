@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN LATERAL (
         SELECT count(*) AS reservas, to_char(max(r.fecha), 'YYYY-MM-DD') AS "ultimaFecha", sum(t.total) AS total
           FROM reservas r JOIN reserva_totales t ON t."reservaId" = r.id
-         WHERE r."titularId" = c.id AND r.estado <> 'CANCELADO'
+         WHERE r."titularId" = c.id AND r.estado NOT IN ('RECHAZADO', 'CANCELADO')
       ) x ON true
      WHERE c."clienteId" = ${clienteId}::uuid
        AND (${patron}::text IS NULL OR c.nombre ILIKE ${patron} OR c.cuit ILIKE ${patron}

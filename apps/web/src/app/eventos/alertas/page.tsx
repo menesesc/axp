@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { Route } from 'next'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CalendarClock, ChevronRight, CircleDollarSign, Clock, Salad, Users } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ChevronRight, CircleDollarSign, Clock, Salad, Undo2, Users } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { pesos } from '@/components/dashboard/inicio'
@@ -19,6 +19,7 @@ const ICONO: Record<TipoAlerta, typeof AlertTriangle> = {
   regimen_sin_nota: Salad,
   evento_sin_finalizar: AlertTriangle,
   finalizada_con_saldo: CircleDollarSign,
+  devolucion_pendiente: Undo2,
   cupo: Users,
 }
 

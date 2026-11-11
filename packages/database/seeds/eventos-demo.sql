@@ -3,7 +3,8 @@
 -- los KPIs y la lista con volumen de verdad.
 --
 -- NO correr contra producción. Pensado para una base local con
--- manual_eventos.sql aplicada.
+-- manual_eventos.sql, manual_eventos_etapa2.sql y manual_eventos_estados.sql
+-- aplicadas.
 --
 --   psql ... -v cliente=<uuid del cliente> -f eventos-demo.sql
 --
@@ -36,10 +37,11 @@ INSERT INTO evento_salones ("eventoId", "sectorId")
 SELECT :'evento', s.id FROM pos_sectores s WHERE s."clienteId" = :'cliente'
 ON CONFLICT DO NOTHING;
 
--- 120 reservas con estados, orígenes y tamaños variados.
+-- 120 reservas con estados, orígenes y tamaños variados: presupuestadas,
+-- algunas rechazadas, alguna cancelada y el resto aprobadas.
 INSERT INTO reservas ("clienteId", numero, "eventoId", nombre, "contactoNombre", "contactoTelefono",
                       fecha, hora, "sectorId", adultos, menores, bebes, liberados,
-                      estado, "aprobadaAt", origen, observaciones)
+                      estado, "aprobadaAt", "rechazadaAt", "canceladaAt", origen, observaciones)
 SELECT :'cliente',
        COALESCE((SELECT max(numero) FROM reservas WHERE "clienteId" = :'cliente'), 0) + g,
        :'evento',
@@ -49,8 +51,10 @@ SELECT :'cliente',
        :'fecha_evento', '21:30',
        (SELECT s.id FROM pos_sectores s WHERE s."clienteId" = :'cliente' ORDER BY s.orden OFFSET (g % GREATEST((SELECT count(*) FROM pos_sectores WHERE "clienteId" = :'cliente'), 1)) LIMIT 1),
        2 + g % 5, g % 3, CASE WHEN g % 11 = 0 THEN 1 ELSE 0 END, CASE WHEN g % 17 = 0 THEN 1 ELSE 0 END,
-       CASE WHEN g % 10 = 0 THEN 'PRESUPUESTO' WHEN g % 23 = 0 THEN 'CANCELADO' ELSE 'APROBADO' END,
-       CASE WHEN g % 10 = 0 OR g % 23 = 0 THEN NULL ELSE now() - (g || ' hours')::interval END,
+       CASE WHEN g % 10 = 0 THEN 'PRESUPUESTO' WHEN g % 19 = 0 THEN 'RECHAZADO' WHEN g % 23 = 0 THEN 'CANCELADO' ELSE 'APROBADO' END,
+       CASE WHEN g % 10 = 0 OR g % 19 = 0 THEN NULL ELSE now() - (g || ' hours')::interval END,
+       CASE WHEN g % 10 <> 0 AND g % 19 = 0 THEN now() END,
+       CASE WHEN g % 10 <> 0 AND g % 19 <> 0 AND g % 23 = 0 THEN now() END,
        (ARRAY['WHATSAPP','TELEFONO','INSTAGRAM','PRESENCIAL','EMAIL','WEB'])[1 + g % 6],
        CASE WHEN g % 9 = 0 THEN 'Cerca de la ventana si se puede' END
   FROM generate_series(1, 120) g;

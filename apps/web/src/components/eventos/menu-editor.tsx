@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowDown, ArrowUp, PenLine, Search, Trash2, Users } from 'lucide-react'
+import { ArrowDown, ArrowUp, CopyPlus, PenLine, Search, Split, Trash2, Users } from 'lucide-react'
 import { pesos } from '@/components/dashboard/inicio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,8 +11,10 @@ import { parsearMonto, type IvaModo } from '@/lib/eventos/constantes'
 import {
   APLICA,
   PASOS,
+  bloquesDePaso,
   comparar,
   margen,
+  opcionesQueCostean,
   porPaso,
   porcionTexto,
   valorCubierto,
@@ -29,6 +31,10 @@ import { avisarError, claseSelect, enviar } from './comunes'
  * Editor de un menú (plantilla o copia) y el resumen de valor por cubierto.
  * Los dos recalculan en vivo con `lib/eventos/menu.ts`, la misma cuenta que
  * usa el servidor para la cocina y el presupuesto.
+ *
+ * Opciones a elección: "Agregar opción" en un ítem le suma una alternativa
+ * ("Bife de chorizo · o · Sorrentinos"). El grupo se costea por la opción
+ * más cara, que se marca con "costea".
  */
 
 /** Productos activos del POS con precio (y costo, con importes). Cambian poco. */
@@ -58,6 +64,8 @@ interface Fila {
   unidad: string
   aplica: Aplica
   precioManual: string
+  /** NULL = fijo; mismo paso y número = opciones a elección. */
+  opcionGrupo: number | null
   /** Lo que vino del servidor, por si el producto ya no está en la lista. */
   precioOriginal: number | null
   costo: number | null
@@ -82,6 +90,7 @@ function filaDe(i: ItemMenu): Fila {
     unidad: i.unidad ?? '',
     aplica: i.aplica,
     precioManual: i.precioManual != null ? String(i.precioManual) : '',
+    opcionGrupo: i.opcionGrupo ?? null,
     precioOriginal: i.precio,
     costo: i.costo,
     costoCompleto: i.costoCompleto,
@@ -106,6 +115,7 @@ function itemDe(f: Fila, productos: Map<string, ProductoCarta>, orden: number): 
     personasPorUnidad: f.modo === 'COMPARTIDO' ? (n >= 2 ? n : 2) : null,
     unidad: f.unidad.trim() || null,
     aplica: f.aplica,
+    opcionGrupo: f.opcionGrupo,
     precioManual: manual,
     precio: manual ?? prod?.precio ?? (f.productoId ? f.precioOriginal : null),
     costo: prod ? prod.costo : f.costo,
@@ -184,6 +194,7 @@ export function MenuEditor({
         unidad: '',
         aplica: 'TODOS',
         precioManual: '',
+        opcionGrupo: null,
         precioOriginal: null,
         costo: null,
         costoCompleto: false,
@@ -191,7 +202,172 @@ export function MenuEditor({
       },
     ])
 
+  /** Le suma una alternativa al ítem: si era fijo, arma un grupo nuevo con él. */
+  const agregarOpcion = (key: string) =>
+    setFilas((xs) => {
+      const f = xs.find((x) => x.key === key)
+      if (!f) return xs
+      const grupo = f.opcionGrupo ?? Math.max(0, ...xs.filter((x) => x.paso === f.paso).map((x) => x.opcionGrupo ?? 0)) + 1
+      const conGrupo = xs.map((x) => (x.key === key ? { ...x, opcionGrupo: grupo } : x))
+      let ultima = -1
+      conGrupo.forEach((x, i) => {
+        if (x.paso === f.paso && x.opcionGrupo === grupo) ultima = i
+      })
+      const nueva: Fila = {
+        key: nuevaClave(),
+        paso: f.paso,
+        productoId: null,
+        productoNombre: null,
+        nombre: '',
+        descripcion: '',
+        modo: 'PERSONA',
+        cantidad: '1',
+        personasPorUnidad: '',
+        unidad: '',
+        aplica: f.aplica,
+        precioManual: '',
+        opcionGrupo: grupo,
+        precioOriginal: null,
+        costo: null,
+        costoCompleto: false,
+      }
+      return [...conGrupo.slice(0, ultima + 1), nueva, ...conGrupo.slice(ultima + 1)]
+    })
+
   const grupos = porPaso(filas.map((f, i) => ({ ...f, orden: i })))
+  // La opción que fija el valor de cada grupo, para adultos y para menores.
+  const costean = new Set([
+    ...opcionesQueCostean(items, 'ADULTOS', grupo.adultos),
+    ...opcionesQueCostean(items, 'MENORES', grupo.menores),
+  ])
+  const fila = (f: (typeof grupos)[number]['items'][number]) => {
+    const it = itemDe(f, productos, f.orden)
+    const prodActual = f.productoId ? productos.get(f.productoId) : undefined
+    return (
+      <div key={f.key} className="rounded-xl border border-slate-900/[0.08] bg-white p-2.5">
+        <fieldset disabled={!puedeEditar} className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {puedeEditar && (
+              <div className="flex flex-col">
+                <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => mover(f.key, -1)} aria-label="Subir">
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => mover(f.key, 1)} aria-label="Bajar">
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+            <Input
+              value={f.nombre}
+              onChange={(e) => set(f.key, { nombre: e.target.value })}
+              placeholder="Nombre en el presupuesto"
+              className="h-9 min-w-[12rem] flex-1"
+            />
+            <select value={f.paso} onChange={(e) => set(f.key, { paso: e.target.value as Paso, opcionGrupo: null })} className={cn(claseSelect, 'h-9 w-auto')} aria-label="Paso">
+              {PASOS.map((p) => (
+                <option key={p.valor} value={p.valor}>
+                  {p.texto}
+                </option>
+              ))}
+            </select>
+            <select value={f.aplica} onChange={(e) => set(f.key, { aplica: e.target.value as Aplica })} className={cn(claseSelect, 'h-9 w-auto')} aria-label="Para quién">
+              {APLICA.map((a) => (
+                <option key={a.valor} value={a.valor}>
+                  {a.texto}
+                </option>
+              ))}
+            </select>
+            {verImportes && costean.has(items[f.orden]!) && (
+              <span className="ax-chip ax-chip-verde !py-0 text-[11px]" title="Es la opción más cara: con ella se calcula el valor y el costo del grupo">
+                costea
+              </span>
+            )}
+            {puedeEditar && (
+              <Button type="button" variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs" onClick={() => agregarOpcion(f.key)} title="Agregar una alternativa para que elija el cliente">
+                <CopyPlus className="h-3.5 w-3.5" />
+                Agregar opción
+              </Button>
+            )}
+            {puedeEditar && f.opcionGrupo != null && (
+              <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => set(f.key, { opcionGrupo: null })} aria-label="Sacar de la opción" title="Pasar a ítem fijo">
+                <Split className="h-4 w-4" />
+              </Button>
+            )}
+            {puedeEditar && (
+              <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => setFilas((xs) => xs.filter((x) => x.key !== f.key))} aria-label="Quitar">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {puedeEditar && f.opcionGrupo != null && !f.productoId && !f.nombre.trim() && (
+            <BuscadorProducto
+              productos={prod?.productos ?? []}
+              verImportes={verImportes}
+              onElegir={(p) => set(f.key, { productoId: p.id, productoNombre: p.nombre, nombre: p.nombre, precioOriginal: p.precio, costo: p.costo, costoCompleto: p.costoCompleto })}
+            />
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <select
+              value={f.modo}
+              onChange={(e) => set(f.key, { modo: e.target.value as ModoItem, personasPorUnidad: f.personasPorUnidad || '4' })}
+              className={cn(claseSelect, 'h-8 w-auto text-xs')}
+              aria-label="Rendimiento"
+            >
+              <option value="PERSONA">Por persona</option>
+              <option value="COMPARTIDO">Para compartir</option>
+            </select>
+            {f.modo === 'COMPARTIDO' ? (
+              <label className="flex items-center gap-1 text-xs text-[var(--sec)]">
+                <Input value={f.cantidad} onChange={(e) => set(f.key, { cantidad: e.target.value })} inputMode="decimal" className="h-8 w-14 text-xs" aria-label="Unidades" />
+                cada
+                <Input value={f.personasPorUnidad} onChange={(e) => set(f.key, { personasPorUnidad: e.target.value })} inputMode="numeric" className="h-8 w-14 text-xs" aria-label="Personas por unidad" />
+                personas
+              </label>
+            ) : (
+              <label className="flex items-center gap-1 text-xs text-[var(--sec)]">
+                <Input value={f.cantidad} onChange={(e) => set(f.key, { cantidad: e.target.value })} inputMode="decimal" className="h-8 w-16 text-xs" aria-label="Cantidad por persona" title="0,5 = media por persona" />
+                <Input value={f.unidad} onChange={(e) => set(f.key, { unidad: e.target.value })} placeholder="unidad (botella, copa)" className="h-8 w-36 text-xs" />
+                por persona
+              </label>
+            )}
+            <Input
+              value={f.descripcion}
+              onChange={(e) => set(f.key, { descripcion: e.target.value })}
+              placeholder="Detalle (opcional)"
+              className="h-8 min-w-[10rem] flex-1 text-xs"
+            />
+            {verImportes && (
+              <label className="flex items-center gap-1 text-xs text-[var(--sec)]" title="Precio de carta equivalente">
+                Carta
+                <Input
+                  value={f.precioManual}
+                  onChange={(e) => set(f.key, { precioManual: e.target.value })}
+                  inputMode="decimal"
+                  placeholder={prodActual ? String(prodActual.precio) : f.productoId && f.precioOriginal != null ? String(f.precioOriginal) : '$'}
+                  className="h-8 w-24 text-xs"
+                />
+              </label>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--ter)]">
+            {f.productoId ? (
+              <>
+                POS: {prodActual?.nombre ?? f.productoNombre ?? 'producto dado de baja'}
+                {verImportes && prodActual ? ` · ${pesos(prodActual.precio)}` : ''}
+              </>
+            ) : (
+              'Línea a mano'
+            )}
+            {porcionTexto(it) && ` · ${porcionTexto(it)}`}
+            {verImportes && it.costo != null && ` · costo ${pesos(it.costo)}${it.costoCompleto ? '' : ' (parcial)'}`}
+            {verImportes && it.precio == null && <span className="text-[var(--rojo-t)]"> · sin precio de carta</span>}
+          </p>
+        </fieldset>
+      </div>
+    )
+
+  }
+
   const valido = filas.every((f) => f.nombre.trim() && (f.modo === 'PERSONA' || Number(f.personasPorUnidad) >= 2))
 
   return (
@@ -203,109 +379,26 @@ export function MenuEditor({
       {grupos.map((g) => (
         <section key={g.paso} className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--ter)]">{PASOS.find((p) => p.valor === g.paso)?.texto}</h4>
-          {g.items.map((f) => {
-            const it = itemDe(f, productos, f.orden)
-            const prodActual = f.productoId ? productos.get(f.productoId) : undefined
-            return (
-              <div key={f.key} className="rounded-xl border border-slate-900/[0.08] bg-white p-2.5">
-                <fieldset disabled={!puedeEditar} className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {puedeEditar && (
-                      <div className="flex flex-col">
-                        <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => mover(f.key, -1)} aria-label="Subir">
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => mover(f.key, 1)} aria-label="Bajar">
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                    <Input
-                      value={f.nombre}
-                      onChange={(e) => set(f.key, { nombre: e.target.value })}
-                      placeholder="Nombre en el presupuesto"
-                      className="h-9 min-w-[12rem] flex-1"
-                    />
-                    <select value={f.paso} onChange={(e) => set(f.key, { paso: e.target.value as Paso })} className={cn(claseSelect, 'h-9 w-auto')} aria-label="Paso">
-                      {PASOS.map((p) => (
-                        <option key={p.valor} value={p.valor}>
-                          {p.texto}
-                        </option>
-                      ))}
-                    </select>
-                    <select value={f.aplica} onChange={(e) => set(f.key, { aplica: e.target.value as Aplica })} className={cn(claseSelect, 'h-9 w-auto')} aria-label="Para quién">
-                      {APLICA.map((a) => (
-                        <option key={a.valor} value={a.valor}>
-                          {a.texto}
-                        </option>
-                      ))}
-                    </select>
-                    {puedeEditar && (
-                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => setFilas((xs) => xs.filter((x) => x.key !== f.key))} aria-label="Quitar">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+          {bloquesDePaso(g.items).map((b) =>
+            b.grupo == null ? (
+              fila(b.items[0]!)
+            ) : (
+              <div key={`g${b.grupo}`} className="rounded-xl border border-dashed border-sky-300 bg-sky-50/40 p-2">
+                <p className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-sky-800">
+                  A elección · el cliente elige una
+                  <span className="ml-2 font-normal normal-case tracking-normal text-[var(--ter)]">
+                    {b.items.map((x) => x.nombre.trim() || '…').join(' · o · ')}
+                  </span>
+                </p>
+                {b.items.map((x, n) => (
+                  <div key={x.key}>
+                    {n > 0 && <p className="py-0.5 text-center text-xs italic text-sky-700">o</p>}
+                    {fila(x)}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <select
-                      value={f.modo}
-                      onChange={(e) => set(f.key, { modo: e.target.value as ModoItem, personasPorUnidad: f.personasPorUnidad || '4' })}
-                      className={cn(claseSelect, 'h-8 w-auto text-xs')}
-                      aria-label="Rendimiento"
-                    >
-                      <option value="PERSONA">Por persona</option>
-                      <option value="COMPARTIDO">Para compartir</option>
-                    </select>
-                    {f.modo === 'COMPARTIDO' ? (
-                      <label className="flex items-center gap-1 text-xs text-[var(--sec)]">
-                        <Input value={f.cantidad} onChange={(e) => set(f.key, { cantidad: e.target.value })} inputMode="decimal" className="h-8 w-14 text-xs" aria-label="Unidades" />
-                        cada
-                        <Input value={f.personasPorUnidad} onChange={(e) => set(f.key, { personasPorUnidad: e.target.value })} inputMode="numeric" className="h-8 w-14 text-xs" aria-label="Personas por unidad" />
-                        personas
-                      </label>
-                    ) : (
-                      <label className="flex items-center gap-1 text-xs text-[var(--sec)]">
-                        <Input value={f.cantidad} onChange={(e) => set(f.key, { cantidad: e.target.value })} inputMode="decimal" className="h-8 w-16 text-xs" aria-label="Cantidad por persona" title="0,5 = media por persona" />
-                        <Input value={f.unidad} onChange={(e) => set(f.key, { unidad: e.target.value })} placeholder="unidad (botella, copa)" className="h-8 w-36 text-xs" />
-                        por persona
-                      </label>
-                    )}
-                    <Input
-                      value={f.descripcion}
-                      onChange={(e) => set(f.key, { descripcion: e.target.value })}
-                      placeholder="Detalle (opcional)"
-                      className="h-8 min-w-[10rem] flex-1 text-xs"
-                    />
-                    {verImportes && (
-                      <label className="flex items-center gap-1 text-xs text-[var(--sec)]" title="Precio de carta equivalente">
-                        Carta
-                        <Input
-                          value={f.precioManual}
-                          onChange={(e) => set(f.key, { precioManual: e.target.value })}
-                          inputMode="decimal"
-                          placeholder={prodActual ? String(prodActual.precio) : f.productoId && f.precioOriginal != null ? String(f.precioOriginal) : '$'}
-                          className="h-8 w-24 text-xs"
-                        />
-                      </label>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-[var(--ter)]">
-                    {f.productoId ? (
-                      <>
-                        POS: {prodActual?.nombre ?? f.productoNombre ?? 'producto dado de baja'}
-                        {verImportes && prodActual ? ` · ${pesos(prodActual.precio)}` : ''}
-                      </>
-                    ) : (
-                      'Línea a mano'
-                    )}
-                    {porcionTexto(it) && ` · ${porcionTexto(it)}`}
-                    {verImportes && it.costo != null && ` · costo ${pesos(it.costo)}${it.costoCompleto ? '' : ' (parcial)'}`}
-                    {verImportes && it.precio == null && <span className="text-[var(--rojo-t)]"> · sin precio de carta</span>}
-                  </p>
-                </fieldset>
+                ))}
               </div>
             )
-          })}
+          )}
         </section>
       ))}
 

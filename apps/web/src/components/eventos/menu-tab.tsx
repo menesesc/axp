@@ -5,14 +5,14 @@ import Link from 'next/link'
 import type { Route } from 'next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { BookCopy, ChefHat, ChevronDown, ChevronRight, FileText, RefreshCw, Salad, Sparkles, Undo2 } from 'lucide-react'
+import { AlertTriangle, BookCopy, ChefHat, ChevronDown, ChevronRight, FileText, ListChecks, RefreshCw, Salad, Sparkles, Undo2 } from 'lucide-react'
 import { pesos } from '@/components/dashboard/inicio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { REGIMEN_TEXTO, type Regimen } from '@/lib/eventos/constantes'
 import { APLICA_SUFIJO } from '@/lib/eventos/presupuesto'
-import { PASO_TEXTO, itemTexto, porPaso, type Adicional, type Paso } from '@/lib/eventos/menu'
-import type { MenuDetalle, PlantillaFila } from '@/lib/eventos/menus'
+import { PASO_TEXTO, bloquesDePaso, claveOpcion, cocinaReserva, itemTexto, porPaso, type Adicional, type ItemMenu, type Paso } from '@/lib/eventos/menu'
+import type { MenuDetalle, OpcionElegida, PlantillaFila } from '@/lib/eventos/menus'
 import { cn } from '@/lib/utils'
 import { EditorAdicionales } from './adicionales'
 import { avisarError, claseSelect, enviar } from './comunes'
@@ -176,10 +176,16 @@ export function MenuLectura({ menu, className }: { menu: Pick<MenuDetalle, 'item
         <div key={g.paso}>
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ter)]">{PASO_TEXTO[g.paso]}</p>
           <ul className="mt-1 space-y-0.5 text-sm">
-            {g.items.map((i, k) => (
-              <li key={i.id ?? k}>
-                {itemTexto(i)}
-                <span className="text-xs text-[var(--ter)]">{APLICA_SUFIJO[i.aplica]}</span>
+            {bloquesDePaso(g.items).map((b, k) => (
+              <li key={b.items[0]?.id ?? k}>
+                {b.grupo != null && <span className="text-xs text-[var(--ter)]">A elección: </span>}
+                {b.items.map((i, n) => (
+                  <span key={i.id ?? n}>
+                    {n > 0 && <span className="italic text-[var(--ter)]"> o </span>}
+                    {itemTexto(i)}
+                    <span className="text-xs text-[var(--ter)]">{APLICA_SUFIJO[i.aplica]}</span>
+                  </span>
+                ))}
               </li>
             ))}
           </ul>
@@ -295,6 +301,7 @@ interface FichaMenuReserva {
   adicionales: Adicional[]
   totales: { adicionales: number; adicionalesPasajero: number; total: number } | null
   versiones: Version[]
+  elegidas: OpcionElegida[]
   verImportes: boolean
 }
 
@@ -339,6 +346,20 @@ export function MenuReserva({ reservaId, puedeEditar, onCambio }: { reservaId: s
           {data.heredado && <p className="text-xs text-[var(--ter)]">Es el menú del evento: se edita en el evento. Para cambiarlo sólo en esta reserva, “Personalizar”.</p>}
         </div>
       </Seccion>
+
+      {data.menu?.items.some((i) => i.opcionGrupo != null) && (
+        <Seccion titulo="Qué eligen" icono={ListChecks}>
+          <OpcionesReserva
+            key={data.menu.id + data.menu.updatedAt + JSON.stringify(data.elegidas)}
+            reservaId={reservaId}
+            items={data.menu.items}
+            grupo={grupo}
+            elegidas={data.elegidas}
+            puedeEditar={puedeEditar}
+            onCambio={refrescar}
+          />
+        </Seccion>
+      )}
 
       <Seccion titulo="Regímenes especiales" icono={Salad}>
         {data.regimenes.length === 0 ? (
@@ -426,7 +447,16 @@ interface FichaMenuEvento {
   cocina: {
     reservas: number
     sinMenu: number
-    menus: Array<{ menu: string; propio: boolean; reservas: number; adultos: number; menores: number; items: Array<{ paso: Paso; pasoTexto: string; texto: string; porcion: string; unidades: number }> }>
+    /** Reservas cuyas opciones elegidas no suman sus personas. */
+    avisos: Array<{ id: string; numero: number; nombre: string; texto: string }>
+    menus: Array<{
+      menu: string
+      propio: boolean
+      reservas: number
+      adultos: number
+      menores: number
+      items: Array<{ paso: Paso; pasoTexto: string; texto: string; porcion: string; unidades: number; aElegir: boolean }>
+    }>
   }
   versiones: Version[]
   verImportes: boolean
@@ -645,8 +675,24 @@ function Cocina({ cocina }: { cocina: FichaMenuEvento['cocina'] }) {
       <p className="text-xs text-[var(--ter)]">
         Unidades a preparar con las reservas activas. Lo compartido se cuenta por reserva (cada mesa recibe lo suyo). Las cantidades cuentan a todos los
         comensales: quienes tienen un régimen con menú alternativo comen ese menú en lugar de éste (ver Regímenes).
-        {cocina.sinMenu > 0 && ` ${cocina.sinMenu} reserva${cocina.sinMenu === 1 ? '' : 's'} sin menú.`}
+        {cocina.sinMenu > 0 && ` ${cocina.sinMenu} reserva${cocina.sinMenu === 1 ? '' : 's'} sin menú.`} En las opciones a elección, lo que las
+        reservas no cargaron sale como “a elegir”, con las personas.
       </p>
+      {cocina.avisos.length > 0 && (
+        <ul className="space-y-0.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {cocina.avisos.map((a, k) => (
+            <li key={k} className="flex gap-1.5">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                <Link href={`/eventos/reserva/${a.id}` as Route} className="font-medium hover:underline">
+                  #{a.numero} {a.nombre}
+                </Link>
+                : {a.texto}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       {cocina.menus.map((m) => (
         <div key={m.menu + m.propio} className="space-y-1">
           <p className="text-sm font-medium">
@@ -664,15 +710,107 @@ function Cocina({ cocina }: { cocina: FichaMenuEvento['cocina'] }) {
                   <td className="w-28 py-1 text-xs text-[var(--ter)]">{i.pasoTexto}</td>
                   <td className="py-1">
                     {i.texto}
-                    {i.porcion && <span className="text-xs text-[var(--ter)]"> · {i.porcion}</span>}
+                    {i.porcion && <span className={cn('text-xs', i.aElegir ? 'font-medium text-amber-700' : 'text-[var(--ter)]')}> · {i.porcion}</span>}
                   </td>
-                  <td className="ax-num py-1 text-right font-medium">{i.unidades.toLocaleString('es-AR')}</td>
+                  <td className="ax-num py-1 text-right font-medium">
+                    {i.unidades.toLocaleString('es-AR')}
+                    {i.aElegir && <span className="ml-1 text-xs font-normal text-[var(--ter)]">pers.</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ))}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ opciones */
+
+/**
+ * Cuántos eligen cada opción del menú, cuando el cliente confirma ("12 bife
+ * / 8 pasta"). Es opcional: sin cargar, la cocina lo ve "a elegir". Avisa si
+ * no suma las personas del grupo, pero deja guardar igual.
+ */
+function OpcionesReserva({
+  reservaId,
+  items,
+  grupo,
+  elegidas,
+  puedeEditar,
+  onCambio,
+}: {
+  reservaId: string
+  items: ItemMenu[]
+  grupo: { adultos: number; menores: number }
+  elegidas: OpcionElegida[]
+  puedeEditar: boolean
+  onCambio: () => void
+}) {
+  const inicial = Object.fromEntries(elegidas.map((o) => [claveOpcion(o), String(o.cantidad)]))
+  const [v, setV] = useState<Record<string, string>>(inicial)
+  const grupos = porPaso(items).flatMap((g) => bloquesDePaso(g.items).filter((b) => b.grupo != null))
+  const opciones = grupos.flatMap((b) => b.items)
+  const mapa = new Map(
+    opciones
+      .filter((o) => (v[claveOpcion(o)] ?? '').trim() !== '')
+      .map((o) => [claveOpcion(o), Math.max(0, Math.round(Number(v[claveOpcion(o)])) || 0)])
+  )
+  const { avisos } = cocinaReserva(items, grupo, mapa)
+  const guardar = useMutation({
+    mutationFn: () =>
+      enviar(`/api/eventos/reservas/${reservaId}/menu`, 'PUT', {
+        opciones: opciones.map((o) => ({ paso: o.paso, nombre: o.nombre, cantidad: v[claveOpcion(o)] ?? '' })),
+      }),
+    onSuccess: () => {
+      toast.success('Opciones guardadas')
+      onCambio()
+    },
+    onError: avisarError,
+  })
+  const cambiado = JSON.stringify(Object.entries(v).filter(([, x]) => x !== '').sort()) !== JSON.stringify(Object.entries(inicial).sort())
+
+  return (
+    <div className="space-y-3">
+      {grupos.map((b, k) => (
+        <div key={k} className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          <span className="w-32 text-xs text-[var(--ter)]">{PASO_TEXTO[b.items[0]!.paso]}</span>
+          {b.items.map((o, n) => (
+            <label key={o.id ?? n} className="flex items-center gap-1.5">
+              {n > 0 && <span className="text-xs italic text-[var(--ter)]">o</span>}
+              <Input
+                value={v[claveOpcion(o)] ?? ''}
+                onChange={(e) => setV((x) => ({ ...x, [claveOpcion(o)]: e.target.value.replace(/\D/g, '') }))}
+                inputMode="numeric"
+                placeholder="—"
+                disabled={!puedeEditar}
+                className="h-8 w-16 text-right text-xs"
+                aria-label={`Cuántos eligen ${o.nombre}`}
+              />
+              {o.nombre}
+            </label>
+          ))}
+        </div>
+      ))}
+      {avisos.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-amber-700">
+          {avisos.map((a, k) => (
+            <li key={k} className="flex gap-1.5">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              {a}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-[var(--ter)]">Cargalo cuando el cliente confirme. Sin cargar, la cocina lo ve “a elegir”.</p>
+        {puedeEditar && (
+          <Button type="button" size="sm" disabled={!cambiado || guardar.isPending} onClick={() => guardar.mutate()}>
+            {guardar.isPending ? 'Guardando…' : 'Guardar'}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import type { Route } from 'next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, Ban, CheckCircle2, FileText, Lock, Plus, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle2, FileText, Lock, Plus, RotateCcw, Trash2, Undo2, XCircle } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { pesos } from '@/components/dashboard/inicio'
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Campo, SelectSimple, SiglaBadge, avisarError, claseSelect, claseTextarea, enviar, enviarConCupo, useCatalogos } from '@/components/eventos/comunes'
+import { BarraCobro, Campo, EstadoBadge, SelectSimple, avisarError, claseSelect, claseTextarea, enviar, enviarConCupo, useCatalogos } from '@/components/eventos/comunes'
 import { SelectorCliente } from '@/components/eventos/clientes'
 import { LineaTiempo } from '@/components/eventos/linea-tiempo'
 import { MenuReserva } from '@/components/eventos/menu-tab'
@@ -21,8 +21,6 @@ import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { hoyAR } from '@/lib/fechas'
 import {
-  COBRO_TEXTO,
-  ESTADO_TEXTO,
   IVA_MODOS,
   MEDIOS,
   MEDIO_TEXTO,
@@ -172,8 +170,8 @@ export default function FichaReserva({ params }: { params: Promise<{ id: string 
 /* ------------------------------------------------------------ estado */
 
 /**
- * La sigla y los botones para mover el estado manual. El cobro no tiene
- * botón: se mueve solo con los pagos.
+ * El estado y los botones para moverlo. El cobro no es un estado: va al lado
+ * como % cobrado y se mueve solo con los pagos.
  */
 function Estado({ ficha, puedeEditar, onCambio }: { ficha: Ficha; puedeEditar: boolean; onCambio: () => void }) {
   const r = ficha.reserva
@@ -190,23 +188,28 @@ function Estado({ ficha, puedeEditar, onCambio }: { ficha: Ficha; puedeEditar: b
   const ir = (estado: EstadoReserva) => cambiar.mutate({ estado })
 
   const botones: Array<{ texto: string; icono: typeof CheckCircle2; accion: () => void; primario?: boolean }> = []
-  if (r.estado === 'PRESUPUESTO') botones.push({ texto: 'Aprobar', icono: CheckCircle2, accion: () => ir('APROBADO'), primario: true })
+  // Los mismos pasos que valida el server (TRANSICIONES).
+  if (r.estado === 'PRESUPUESTO') {
+    botones.push({ texto: 'Aprobar', icono: CheckCircle2, accion: () => ir('APROBADO'), primario: true })
+    botones.push({ texto: 'Rechazado', icono: XCircle, accion: () => window.confirm('¿El cliente rechazó el presupuesto?') && ir('RECHAZADO') })
+  }
+  if (r.estado === 'RECHAZADO') botones.push({ texto: 'Reabrir presupuesto', icono: Undo2, accion: () => ir('PRESUPUESTO') })
   if (r.estado === 'APROBADO') {
     botones.push({ texto: 'Finalizar', icono: CheckCircle2, accion: () => ir('FINALIZADO'), primario: true })
-    botones.push({ texto: 'Volver a presupuesto', icono: Undo2, accion: () => ir('PRESUPUESTO') })
+    // Sin importes no se sabe si hay plata: el % cobrado alcanza para preguntar.
+    const hayCobro = r.cobrado > 0 || (r.porcentajeCobrado ?? 0) > 0
+    botones.push({ texto: 'Cancelar', icono: Ban, accion: () => (hayCobro ? setCancelar(true) : window.confirm('¿Cancelar la reserva?') && ir('CANCELADO')) })
   }
   if (r.estado === 'FINALIZADO') botones.push({ texto: 'Reabrir', icono: Undo2, accion: () => ir('APROBADO') })
-  if (r.estado === 'CANCELADO') botones.push({ texto: 'Reactivar', icono: RotateCcw, accion: () => ir('PRESUPUESTO') })
-  if (r.estado !== 'CANCELADO' && r.estado !== 'FINALIZADO') {
-    botones.push({ texto: 'Cancelar', icono: Ban, accion: () => (r.cobrado > 0 ? setCancelar(true) : window.confirm('¿Cancelar la reserva?') && ir('CANCELADO')) })
-  }
+  if (r.estado === 'CANCELADO') botones.push({ texto: 'Reactivar', icono: RotateCcw, accion: () => ir('APROBADO') })
 
   return (
     <div className="ax-card flex flex-wrap items-center gap-4 p-4">
-      <SiglaBadge sigla={r.sigla} conTexto className="text-sm" />
-      <div className="text-sm text-[var(--sec)]">
-        {ESTADO_TEXTO[r.estado]} · {COBRO_TEXTO[r.estadoCobro].toLowerCase()}
-        {ficha.propia.cancelacionSena && ` · seña ${ficha.propia.cancelacionSena === 'DEVUELTA' ? 'devuelta' : 'retenida'}`}
+      <EstadoBadge sigla={r.sigla} conTexto className="text-sm" />
+      <div className="flex items-center gap-2 text-sm text-[var(--sec)]">
+        <span className="text-xs text-[var(--ter)]">Cobrado</span>
+        <BarraCobro pct={r.porcentajeCobrado} />
+        {ficha.propia.cancelacionSena && <span>· seña {ficha.propia.cancelacionSena === 'RETENIDA' ? 'retenida' : r.cobrado > 0 || (r.porcentajeCobrado ?? 0) > 0 ? 'a devolver' : 'devuelta'}</span>}
       </div>
       {ficha.verImportes && (
         <div className="ax-num flex gap-4 text-sm">

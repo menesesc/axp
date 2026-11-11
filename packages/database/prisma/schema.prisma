@@ -1211,12 +1211,12 @@ model receta_favoritas {
 
 // =====================================================
 // EVENTOS Y RESERVAS (etapa 1)
-// Migración: migrations/manual_eventos.sql
+// Migración: migrations/manual_eventos.sql (+ _etapa2, _estados, _opciones)
 //
 // EVENTO = función con condiciones compartidas (fin de año 31/12 noche).
 // RESERVA = grupo de personas; cuelga de un evento o va sola.
-// El estado de cobro y la sigla (PRE/ASC/ACP/ACT/FCP/FCT/CAN) no se guardan:
-// salen de la vista `reserva_totales`, que no se modela acá. Las tablas del
+// El estado es manual (sigla PRE/APR/REC/CAN/FIN); el cobro no es un estado:
+// el % cobrado sale de la vista `reserva_totales`, que no se modela acá. Las tablas del
 // POS (pos_sectores, pos_mesas) tampoco están en este schema, así que
 // "sectorId" y "mesaId" van como columnas sueltas (en la base sí tienen FK).
 // La app lee y escribe todo esto con SQL crudo (ver lib/eventos/db.ts).
@@ -1362,13 +1362,14 @@ model reservas {
   ivaAlicuota      Decimal?  @db.Decimal(5, 2)
   descuento        Decimal   @default(0) @db.Decimal(14, 2)
   descuentoNota    String?   @db.VarChar(200)
-  /// "PRESUPUESTO" | "APROBADO" | "FINALIZADO" | "CANCELADO"
+  /// "PRESUPUESTO" | "APROBADO" | "RECHAZADO" | "CANCELADO" | "FINALIZADO". El cobro no es un estado.
   estado           String    @default("PRESUPUESTO") @db.VarChar(12)
   /// Al cancelar: "DEVUELTA" | "RETENIDA"
   cancelacionSena  String?   @db.VarChar(10)
   aprobadaAt       DateTime? @db.Timestamptz(3)
   finalizadaAt     DateTime? @db.Timestamptz(3)
   canceladaAt      DateTime? @db.Timestamptz(3)
+  rechazadaAt      DateTime? @db.Timestamptz(3)
   /// Clave de evento_catalogos (ORIGEN).
   origen           String?   @db.VarChar(40)
   mesaInamovible   Boolean   @default(false)
@@ -1384,6 +1385,7 @@ model reservas {
   evento       eventos?              @relation(fields: [eventoId], references: [id], onDelete: Restrict)
   titular      evento_clientes?      @relation(fields: [titularId], references: [id], onDelete: SetNull)
   regimenes    reserva_regimenes[]
+  opcionesMenu reserva_menu_opciones[]
   mesas        reserva_mesas[]
   cuotas       reserva_cuotas[]
   pagos        reserva_pagos[]
@@ -1416,6 +1418,20 @@ model reserva_regimenes {
 
   @@index([reservaId], map: "reserva_regimenes_reserva_idx")
   @@map("reserva_regimenes")
+}
+
+/// Cuántas personas de la reserva eligen cada opción del menú (por paso y nombre).
+model reserva_menu_opciones {
+  reservaId String   @db.Uuid
+  paso      String   @db.VarChar(12)
+  nombre    String   @db.VarChar(200)
+  cantidad  Int
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  reserva reservas @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@id([reservaId, paso, nombre])
+  @@map("reserva_menu_opciones")
 }
 
 /// Mesas del POS (pos_mesas) asignadas a la reserva.
@@ -1572,7 +1588,7 @@ model evento_menus {
 model evento_menu_items {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   menuId            String   @db.Uuid
-  /// "RECEPCION" | "ENTRADA" | "PRINCIPAL" | "POSTRE" | "BEBIDA" | "OTRO"
+  /// "BIENVENIDA" | "ENTRADA" | "PRINCIPAL" | "POSTRE" | "BEBIDA" | "EXTRA"
   paso              String   @default("PRINCIPAL") @db.VarChar(12)
   orden             Int      @default(0)
   /// pos_productos (fuera de este schema).
@@ -1588,6 +1604,8 @@ model evento_menu_items {
   aplica            String   @default("TODOS") @db.VarChar(8)
   /// NULL en un producto del POS = su precio vigente.
   precioCarta       Decimal? @db.Decimal(14, 2)
+  /// NULL = fijo. Mismo paso y grupo = opciones a elección (se costea la más cara).
+  opcionGrupo       Int?     @db.SmallInt
 
   menu evento_menus @relation(fields: [menuId], references: [id], onDelete: Cascade)
 

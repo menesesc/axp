@@ -21,9 +21,12 @@ export async function alertasDe(clienteId: string, verImportes: boolean): Promis
 
   // Lo vivo: de los últimos seis meses en adelante. Las finalizadas con saldo
   // se buscan aparte, sin límite de fecha: una deuda no prescribe en la lista.
-  const [vivas, finalizadas, agenda, eventos] = await Promise.all([
-    listarReservas(clienteId, { desde: sumarDias(hoy, -180), siglas: ['PRE', 'ASC', 'ACP', 'ACT'] }),
-    listarReservas(clienteId, { siglas: ['FCP'] }),
+  // Lo rechazado y lo cancelado no avisa nada, salvo que haya plata para
+  // devolver.
+  const [vivas, finalizadas, bajas, agenda, eventos] = await Promise.all([
+    listarReservas(clienteId, { desde: sumarDias(hoy, -180), estados: ['PRESUPUESTO', 'APROBADO'] }),
+    listarReservas(clienteId, { estados: ['FINALIZADO'], conSaldo: true }),
+    listarReservas(clienteId, { estados: ['RECHAZADO', 'CANCELADO'] }),
     agendaDe(clienteId, { soloPendientes: true, hasta: hoy }),
     listarEventos(clienteId, { desde: hoy, hasta: sumarDias(hoy, 120) }),
   ])
@@ -59,7 +62,7 @@ export async function alertasDe(clienteId: string, verImportes: boolean): Promis
           tipo: 'evento_sin_finalizar',
           gravedad: 'media',
           titulo: etiqueta(r),
-          detalle: `Fue el ${fechaCorta(r.fecha)} y sigue en ${r.estado === 'PRESUPUESTO' ? 'presupuesto' : 'aprobado'}`,
+          detalle: `Fue el ${fechaCorta(r.fecha)} y sigue ${r.estado === 'PRESUPUESTO' ? 'presupuestada' : 'aprobada'}`,
           fecha: r.fecha,
           href: hrefReserva(r),
           monto: null,
@@ -138,7 +141,7 @@ export async function alertasDe(clienteId: string, verImportes: boolean): Promis
   for (const r of finalizadas) {
     if (r.saldo <= 0) continue
     out.push({
-      id: `fcp-${r.id}`,
+      id: `saldo-${r.id}`,
       tipo: 'finalizada_con_saldo',
       gravedad: 'alta',
       titulo: etiqueta(r),
@@ -146,6 +149,26 @@ export async function alertasDe(clienteId: string, verImportes: boolean): Promis
       fecha: r.fecha,
       href: hrefReserva(r),
       monto: m(r.saldo),
+    })
+  }
+
+  // Rechazada con plata cobrada, o cancelada con la seña a devolver: mientras
+  // lo cobrado no vuelva a cero (la devolución se carga en Pagos), avisa.
+  for (const r of bajas) {
+    if (r.cobrado <= 0) continue
+    if (r.estado === 'CANCELADO' && r.cancelacionSena !== 'DEVUELTA') continue
+    out.push({
+      id: `devolver-${r.id}`,
+      tipo: 'devolucion_pendiente',
+      gravedad: 'media',
+      titulo: etiqueta(r),
+      detalle:
+        `${r.estado === 'RECHAZADO' ? 'Rechazada' : 'Cancelada con la seña a devolver'}` +
+        `${verImportes ? ` · quedan ${pesos(r.cobrado)} para devolver` : ' · queda plata para devolver'}` +
+        (r.contactoTelefono ? ` · ${r.contactoTelefono}` : ''),
+      fecha: r.fecha,
+      href: hrefReserva(r),
+      monto: m(r.cobrado),
     })
   }
 

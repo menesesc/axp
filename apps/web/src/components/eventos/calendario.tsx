@@ -3,16 +3,16 @@
 import Link from 'next/link'
 import type { Route } from 'next'
 import { CalendarClock, Lock, Users } from 'lucide-react'
-import { SIGLAS, type Sigla } from '@/lib/eventos/constantes'
+import { SIGLAS, dadaDeBaja } from '@/lib/eventos/constantes'
 import type { AgendaFila, EventoResumen, ReservaFila } from '@/lib/eventos/db'
 import { sumarDias } from '@/lib/fechas'
 import { cn } from '@/lib/utils'
-import { BarraSiglas } from './comunes'
+import { BarraCobro, BarraEstados, textoCobrado } from './comunes'
 
 /*
  * Las piezas del calendario de eventos. Una "entrada" es cualquier cosa que
- * ocupa un lugar en un día: un evento (con el agregado de sus reservas), una
- * reserva suelta (coloreada por su sigla) o un pendiente de agenda (con
+ * ocupa un lugar en un día: un evento (con la mezcla de estados de sus
+ * reservas y el % cobrado), una reserva suelta (coloreada por su estado) o un pendiente de agenda (con
  * borde punteado, para que no se confunda con algo que ocupa el salón).
  */
 
@@ -57,7 +57,7 @@ export function ChipEntrada({ x, colorDe, denso }: { x: Entrada; colorDe: (tipo:
         href={`/eventos/evento/${e.id}` as Route}
         className={cn('block rounded-lg border border-slate-900/[0.1] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:border-slate-900/[0.25]', denso ? 'px-1.5 py-1' : 'p-2.5')}
         style={{ borderLeft: `3px solid ${colorDe(e.tipo)}` }}
-        title={`${e.nombre} · ${e.personas}${e.cupo ? `/${e.cupo}` : ''} personas · ${e.reservas} reservas`}
+        title={`${e.nombre} · ${e.personas}${e.cupo ? `/${e.cupo}` : ''} personas · ${e.reservas} reservas · cobrado ${textoCobrado(e.porcentajeCobrado)}`}
       >
         <div className={cn('flex items-center gap-1', denso ? 'text-[11px]' : 'text-sm')}>
           {e.horaInicio && <span className="ax-num text-[var(--ter)]">{e.horaInicio}</span>}
@@ -70,19 +70,20 @@ export function ChipEntrada({ x, colorDe, denso }: { x: Entrada; colorDe: (tipo:
             {e.cupo ? `/${e.cupo}` : ''}
           </span>
           {!denso && <span>· {e.reservas} reservas</span>}
+          {e.reservas > 0 && <BarraCobro pct={e.porcentajeCobrado} className="ml-auto" denso={denso} />}
         </div>
-        <BarraSiglas siglas={e.siglas} className={denso ? 'mt-1 h-1' : 'mt-2'} />
+        <BarraEstados siglas={e.siglas} className={denso ? 'mt-1 h-1' : 'mt-2'} />
       </Link>
     )
   }
   if (x.clase === 'reserva') {
     const r = x.r
-    const s = SIGLAS[r.sigla as Sigla]
+    const s = SIGLAS[r.sigla]
     return (
       <Link
         href={`/eventos/reserva/${r.id}` as Route}
         className={cn('block rounded-lg border', s.fondo, s.borde, denso ? 'px-1.5 py-0.5' : 'p-2.5')}
-        title={`${r.nombre} · ${r.personas} personas · ${s.texto}`}
+        title={`${r.nombre} · ${r.personas} personas · ${s.texto} · cobrado ${textoCobrado(r.porcentajeCobrado)}`}
       >
         <div className={cn('flex items-center gap-1', denso ? 'text-[11px]' : 'text-sm', s.color)}>
           {r.hora && <span className="ax-num opacity-70">{r.hora}</span>}
@@ -99,6 +100,7 @@ export function ChipEntrada({ x, colorDe, denso }: { x: Entrada; colorDe: (tipo:
                 {r.mesas.join(', ')}
               </span>
             )}
+            {!dadaDeBaja(r.estado) && <BarraCobro pct={r.porcentajeCobrado} className="ml-auto" denso />}
           </div>
         )}
       </Link>
@@ -157,7 +159,7 @@ export function VistaMes({
         {dias.map((d) => {
           const xs = porDia.get(d) ?? []
           const fuera = !d.startsWith(mes)
-          const personas = xs.reduce((s, x) => s + (x.clase === 'evento' ? x.e.personas : x.clase === 'reserva' && x.r.estado !== 'CANCELADO' ? x.r.personas : 0), 0)
+          const personas = xs.reduce((s, x) => s + (x.clase === 'evento' ? x.e.personas : x.clase === 'reserva' && !dadaDeBaja(x.r.estado) ? x.r.personas : 0), 0)
           return (
             <div key={d} className={cn('min-h-[5.5rem] border-b border-r border-slate-900/[0.06] p-1 sm:min-h-[8rem] sm:p-1.5', fuera && 'bg-slate-900/[0.02]')}>
               <button type="button" onClick={() => onDia(d)} className="mb-1 flex w-full items-center justify-between text-left">

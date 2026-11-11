@@ -13,7 +13,7 @@ import { Kpi, millones, pesos } from '@/components/dashboard/inicio'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BarraSiglas, Campo, avisarError, enviar, useCatalogos } from '@/components/eventos/comunes'
+import { BarraCobro, BarraEstados, Campo, avisarError, enviar, textoCobrado, useCatalogos } from '@/components/eventos/comunes'
 import { EventoForm, cuerpoDe, formDe, type FormEvento } from '@/components/eventos/evento-form'
 import { LineaTiempo } from '@/components/eventos/linea-tiempo'
 import { MenuEvento } from '@/components/eventos/menu-tab'
@@ -21,7 +21,7 @@ import { NuevaReservaDialog, ReservaRapida } from '@/components/eventos/nueva-re
 import { TablaReservas } from '@/components/eventos/tabla-reservas'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
-import { REGIMEN_TEXTO, fechaCorta, type Regimen } from '@/lib/eventos/constantes'
+import { ORDEN_SIGLAS, REGIMEN_TEXTO, SIGLAS, fechaCorta, type Regimen } from '@/lib/eventos/constantes'
 import type { AgendaFila, AuditoriaFila, EventoBase, ReservaFila } from '@/lib/eventos/db'
 import type { KpisEvento } from '@/lib/eventos/resumen'
 
@@ -200,7 +200,7 @@ function Evento({ id }: { id: string }) {
         <Kpi
           etiqueta="Reservas"
           valor={String(k?.reservas ?? 0)}
-          nota={k ? `${k.canceladas} canceladas` : undefined}
+          nota={k ? `${k.bajas} rechazada${k.bajas === 1 ? '' : 's'} o cancelada${k.bajas === 1 ? '' : 's'}, aparte` : undefined}
           icono={CalendarDays}
           cargando={isLoading}
         />
@@ -223,23 +223,43 @@ function Evento({ id }: { id: string }) {
           icono={AlertTriangle}
           cargando={isLoading}
         />
-        {verImportes ? (
-          <Kpi
-            etiqueta="Cobrado"
-            valor={millones(k?.cobrado ?? 0)}
-            nota={k ? `de ${millones(k.total)} · faltan ${millones(k.saldo)}${k.vencidas ? ` · ${k.vencidas} con seña vencida (${pesos(k.montoVencido)})` : ''}` : undefined}
-            tono={k?.vencidas ? 'rojo' : 'verde'}
-            icono={Wallet}
-            cargando={isLoading}
-          />
-        ) : (
-          <Kpi etiqueta="Señas vencidas" valor={String(k?.vencidas ?? 0)} nota="reservas con una cuota vencida" tono={k?.vencidas ? 'rojo' : 'verde'} icono={Wallet} cargando={isLoading} />
-        )}
+        <Kpi
+          etiqueta="Cobrado"
+          valor={textoCobrado(k?.porcentajeCobrado)}
+          nota={
+            k
+              ? [
+                  verImportes ? `${millones(k.cobrado)} de ${millones(k.total)} presupuestado · saldo ${millones(k.saldo)}` : null,
+                  k.vencidas ? `${k.vencidas} con seña vencida${verImportes ? ` (${pesos(k.montoVencido)})` : ''}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'de lo presupuestado'
+              : undefined
+          }
+          tono={k?.vencidas ? 'rojo' : 'verde'}
+          icono={Wallet}
+          cargando={isLoading}
+        />
       </div>
 
       {k && (
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          <BarraSiglas siglas={k.siglas} className="w-full sm:w-64" />
+          <div className="w-full space-y-1.5 sm:w-64">
+            <BarraEstados siglas={Object.fromEntries(Object.entries(k.porEstado).map(([s, e]) => [s, e.reservas]))} />
+            <BarraCobro pct={k.porcentajeCobrado} className="w-full [&>span:first-child]:flex-1" />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {ORDEN_SIGLAS.filter((s) => k.porEstado[s]).map((s) => (
+              <span key={s} className="inline-flex items-center gap-1.5 rounded-full border border-slate-900/[0.08] bg-white px-2.5 py-1 text-xs" title={SIGLAS[s].texto}>
+                <span className="h-2 w-2 rounded-full" style={{ background: SIGLAS[s].punto }} />
+                <span className="font-mono font-semibold">{s}</span>
+                <span className="hidden text-[var(--ter)] sm:inline">{SIGLAS[s].texto}</span>
+                <span className="ax-num text-[var(--sec)]">
+                  {k.porEstado[s]!.reservas} · {k.porEstado[s]!.personas}p
+                </span>
+              </span>
+            ))}
+          </div>
           {Object.entries(k.regimenes).length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-sm">
               <Salad className="h-4 w-4 text-[var(--ambar-2)]" />

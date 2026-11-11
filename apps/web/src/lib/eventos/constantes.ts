@@ -13,57 +13,75 @@
 // Estados y siglas
 // ---------------------------------------------------------------------------
 
-export type EstadoReserva = 'PRESUPUESTO' | 'APROBADO' | 'FINALIZADO' | 'CANCELADO'
-export type EstadoCobro = 'SIN' | 'PARCIAL' | 'TOTAL'
-export type Sigla = 'PRE' | 'ASC' | 'ACP' | 'ACT' | 'FCP' | 'FCT' | 'CAN'
+export type EstadoReserva = 'PRESUPUESTO' | 'APROBADO' | 'RECHAZADO' | 'CANCELADO' | 'FINALIZADO'
+export type Sigla = 'PRE' | 'APR' | 'REC' | 'CAN' | 'FIN'
 
-export const ESTADOS: Array<{ valor: EstadoReserva; texto: string }> = [
-  { valor: 'PRESUPUESTO', texto: 'Presupuesto' },
-  { valor: 'APROBADO', texto: 'Aprobado' },
-  { valor: 'FINALIZADO', texto: 'Finalizado' },
-  { valor: 'CANCELADO', texto: 'Cancelado' },
+/**
+ * El estado es sólo lo que decide una persona. El cobro NO es un estado: se
+ * muestra aparte como % cobrado, que sale de los pagos.
+ *
+ *   PRE  Presupuestado  se mandó el presupuesto, falta la respuesta
+ *   APR  Aprobado       el cliente aceptó
+ *   REC  Rechazado      el cliente no aceptó el presupuesto
+ *   CAN  Cancelado      estaba aprobada y se cayó
+ *   FIN  Finalizado     ya pasó
+ *
+ * La sigla es la misma que devuelve la vista `reserva_totales`.
+ */
+export const ESTADOS: Array<{ valor: EstadoReserva; sigla: Sigla; texto: string }> = [
+  { valor: 'PRESUPUESTO', sigla: 'PRE', texto: 'Presupuestado' },
+  { valor: 'APROBADO', sigla: 'APR', texto: 'Aprobado' },
+  { valor: 'RECHAZADO', sigla: 'REC', texto: 'Rechazado' },
+  { valor: 'CANCELADO', sigla: 'CAN', texto: 'Cancelado' },
+  { valor: 'FINALIZADO', sigla: 'FIN', texto: 'Finalizado' },
 ]
 
-export const ESTADO_TEXTO: Record<EstadoReserva, string> = {
-  PRESUPUESTO: 'Presupuesto',
-  APROBADO: 'Aprobado',
-  FINALIZADO: 'Finalizado',
-  CANCELADO: 'Cancelado',
+export const ESTADO_TEXTO = Object.fromEntries(ESTADOS.map((e) => [e.valor, e.texto])) as Record<EstadoReserva, string>
+export const SIGLA_DE = Object.fromEntries(ESTADOS.map((e) => [e.valor, e.sigla])) as Record<EstadoReserva, Sigla>
+export const ESTADO_DE = Object.fromEntries(ESTADOS.map((e) => [e.sigla, e.valor])) as Record<Sigla, EstadoReserva>
+
+/** Un color por estado. Rechazado y cancelado, apagados: ya no cuentan. */
+export const SIGLAS: Record<Sigla, { texto: string; color: string; fondo: string; borde: string; punto: string }> = {
+  PRE: { texto: 'Presupuestado', color: 'text-amber-800', fondo: 'bg-amber-50', borde: 'border-amber-300', punto: '#f59e0b' },
+  APR: { texto: 'Aprobado', color: 'text-emerald-800', fondo: 'bg-emerald-50', borde: 'border-emerald-300', punto: '#10b981' },
+  REC: { texto: 'Rechazado', color: 'text-rose-700', fondo: 'bg-rose-50/60', borde: 'border-rose-200', punto: '#fda4af' },
+  CAN: { texto: 'Cancelado', color: 'text-slate-500 line-through', fondo: 'bg-slate-50', borde: 'border-slate-200', punto: '#cbd5e1' },
+  FIN: { texto: 'Finalizado', color: 'text-sky-800', fondo: 'bg-sky-50', borde: 'border-sky-300', punto: '#0ea5e9' },
 }
 
-export const COBRO_TEXTO: Record<EstadoCobro, string> = {
-  SIN: 'Sin cobro',
-  PARCIAL: 'Cobro parcial',
-  TOTAL: 'Cobro total',
+export const ORDEN_SIGLAS: Sigla[] = ['PRE', 'APR', 'REC', 'CAN', 'FIN']
+
+/**
+ * Estados que quedaron afuera: no ocupan cupo ni suman a lo presupuestado ni
+ * generan avisos (salvo plata para devolver).
+ */
+export const ESTADOS_BAJA: EstadoReserva[] = ['RECHAZADO', 'CANCELADO']
+export const dadaDeBaja = (estado: EstadoReserva) => ESTADOS_BAJA.includes(estado)
+
+/** Estados que ocupan lugar en el cupo. */
+export const OCUPAN_CUPO: EstadoReserva[] = ['PRESUPUESTO', 'APROBADO', 'FINALIZADO']
+
+/**
+ * Pasos permitidos entre estados. Se puede volver atrás (reabrir un
+ * rechazado o un finalizado, reactivar un cancelado) porque en la vida real
+ * pasa; queda todo en la línea de tiempo.
+ */
+export const TRANSICIONES: Record<EstadoReserva, EstadoReserva[]> = {
+  PRESUPUESTO: ['APROBADO', 'RECHAZADO'],
+  RECHAZADO: ['PRESUPUESTO'],
+  APROBADO: ['CANCELADO', 'FINALIZADO'],
+  CANCELADO: ['APROBADO'],
+  FINALIZADO: ['APROBADO'],
 }
 
 /**
- * La sigla junta el estado manual con el de cobro, que sale de los pagos.
- * Los colores van de frío (presupuesto) a verde (todo cobrado); el ámbar
- * marca plata pendiente en algo que ya está confirmado.
+ * % cobrado (cobrado / total). Con total cero no hay nada que cobrar: null,
+ * que en pantalla es "—". Puede pasar de 100 si se cobró de más.
  */
-export const SIGLAS: Record<Sigla, { texto: string; color: string; fondo: string; borde: string; punto: string }> = {
-  PRE: { texto: 'Presupuesto', color: 'text-slate-700', fondo: 'bg-slate-100', borde: 'border-slate-300', punto: '#94a3b8' },
-  ASC: { texto: 'Aprobado sin cobro', color: 'text-rose-800', fondo: 'bg-rose-50', borde: 'border-rose-300', punto: '#f43f5e' },
-  ACP: { texto: 'Aprobado, cobro parcial', color: 'text-amber-800', fondo: 'bg-amber-50', borde: 'border-amber-300', punto: '#f59e0b' },
-  ACT: { texto: 'Aprobado, cobro total', color: 'text-emerald-800', fondo: 'bg-emerald-50', borde: 'border-emerald-300', punto: '#10b981' },
-  FCP: { texto: 'Finalizado, cobro parcial', color: 'text-orange-800', fondo: 'bg-orange-50', borde: 'border-orange-300', punto: '#ea580c' },
-  FCT: { texto: 'Finalizado, cobro total', color: 'text-sky-800', fondo: 'bg-sky-50', borde: 'border-sky-300', punto: '#0ea5e9' },
-  CAN: { texto: 'Cancelado', color: 'text-slate-500 line-through', fondo: 'bg-slate-50', borde: 'border-slate-200', punto: '#cbd5e1' },
+export function porcentajeCobrado(total: number, cobrado: number): number | null {
+  if (!(total > 0)) return null
+  return Math.round((cobrado / total) * 1000) / 10
 }
-
-export const ORDEN_SIGLAS: Sigla[] = ['PRE', 'ASC', 'ACP', 'ACT', 'FCP', 'FCT', 'CAN']
-
-/** Misma regla que la vista `reserva_totales`, para previsualizar en pantalla. */
-export function siglaDe(estado: EstadoReserva, cobro: EstadoCobro): Sigla {
-  if (estado === 'CANCELADO') return 'CAN'
-  if (estado === 'PRESUPUESTO') return 'PRE'
-  if (estado === 'APROBADO') return cobro === 'TOTAL' ? 'ACT' : cobro === 'PARCIAL' ? 'ACP' : 'ASC'
-  return cobro === 'TOTAL' ? 'FCT' : 'FCP'
-}
-
-/** Estados que ocupan lugar en el cupo: todo lo que no se canceló. */
-export const OCUPAN_CUPO: EstadoReserva[] = ['PRESUPUESTO', 'APROBADO', 'FINALIZADO']
 
 // ---------------------------------------------------------------------------
 // Catálogos fijos
@@ -345,6 +363,7 @@ export type TipoAlerta =
   | 'regimen_sin_nota'
   | 'evento_sin_finalizar'
   | 'finalizada_con_saldo'
+  | 'devolucion_pendiente'
   | 'cupo'
 
 export interface Alerta {
@@ -367,5 +386,6 @@ export const TIPOS_ALERTA: Record<TipoAlerta, string> = {
   regimen_sin_nota: 'Régimen sin indicación',
   evento_sin_finalizar: 'Pasado sin finalizar',
   finalizada_con_saldo: 'Finalizada con saldo',
+  devolucion_pendiente: 'Plata para devolver',
   cupo: 'Cupo casi lleno',
 }
