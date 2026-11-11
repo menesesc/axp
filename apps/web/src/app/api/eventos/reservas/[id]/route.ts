@@ -59,7 +59,20 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (!verImportes) {
     return NextResponse.json({
       reserva: { ...reserva, total: 0, cobrado: 0, saldo: 0 },
-      propia: propia && { ...propia, precioAdultoPropio: null, precioMenorPropio: null, precioLiberado: null, descuento: 0, precioAdulto: 0, precioMenor: 0, neto: 0, iva: 0 },
+      propia: propia && {
+        ...propia,
+        precioAdultoPropio: null,
+        precioMenorPropio: null,
+        precioLiberado: null,
+        descuento: 0,
+        precioAdulto: 0,
+        precioMenor: 0,
+        neto: 0,
+        iva: 0,
+        adicionales: 0,
+        adicionalesPasajero: 0,
+        adicionalesLineas: [],
+      },
       plan: plan.map((c) => ({ ...c, monto: null, importe: 0, imputado: 0, pendiente: 0 })),
       pagos: [],
       auditoria,

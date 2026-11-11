@@ -28,11 +28,16 @@ export async function alertasDe(clienteId: string, verImportes: boolean): Promis
     listarEventos(clienteId, { desde: hoy, hasta: sumarDias(hoy, 120) }),
   ])
   const cuotas = await cuotasDe(vivas.map((r) => r.id))
+  // Los días se cuentan desde el último presupuesto generado (v1, v2…) y, si
+  // nunca se generó, desde que se cargó la reserva: mandar una versión nueva
+  // es volver a esperar respuesta.
   const creadas = await prisma.$queryRaw<Array<{ id: string; dias: number }>>`
-    SELECT id, (current_date - "createdAt"::date)::int AS dias
-      FROM reservas
-     WHERE "clienteId" = ${clienteId}::uuid AND estado = 'PRESUPUESTO'
-       AND id = ANY(${vivas.filter((r) => r.estado === 'PRESUPUESTO').map((r) => r.id)}::uuid[])
+    SELECT r.id,
+           (current_date - COALESCE((SELECT max(p."createdAt") FROM evento_presupuestos p WHERE p."reservaId" = r.id),
+                                    r."createdAt")::date)::int AS dias
+      FROM reservas r
+     WHERE r."clienteId" = ${clienteId}::uuid AND r.estado = 'PRESUPUESTO'
+       AND r.id = ANY(${vivas.filter((r) => r.estado === 'PRESUPUESTO').map((r) => r.id)}::uuid[])
   `
   const diasDe = new Map(creadas.map((c) => [c.id, c.dias]))
   const out: Alerta[] = []

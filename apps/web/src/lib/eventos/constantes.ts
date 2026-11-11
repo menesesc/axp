@@ -273,8 +273,11 @@ export function calcularTotal(r: {
   descuento: number
   ivaModo: IvaModo
   ivaAlicuota: number
+  /** Adicionales que paga el titular (los de cada pasajero no suman). */
+  adicionales?: number | undefined
 }) {
-  const neto = Math.max(r.adultos * r.precioAdulto + r.menores * r.precioMenor + r.liberados * r.precioLiberado - r.descuento, 0)
+  const base = r.adultos * r.precioAdulto + r.menores * r.precioMenor + r.liberados * r.precioLiberado
+  const neto = Math.max(base + (r.adicionales ?? 0) - r.descuento, 0)
   const a = r.ivaAlicuota / 100
   const iva = r.ivaModo === 'MAS_IVA' ? neto * a : r.ivaModo === 'INCLUIDO' ? neto - neto / (1 + a) : 0
   const total = r.ivaModo === 'MAS_IVA' ? neto + iva : neto

@@ -81,7 +81,14 @@ export function LeyendaSiglas({ conteo, activas, onAlternar }: {
 
 export interface Catalogos {
   catalogos: ItemCatalogo[]
-  configuracion: { diasPresupuesto: number; diasAvisoVencimiento: number; avisoCupoPct: number }
+  configuracion: {
+    diasPresupuesto: number
+    diasAvisoVencimiento: number
+    avisoCupoPct: number
+    nombreCasa: string | null
+    presupuestoPie: string | null
+    presupuestoValidezDias: number | null
+  }
   salones: SalonPos[]
   usuarios: Array<{ id: string; nombre: string }>
 }

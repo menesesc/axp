@@ -99,6 +99,11 @@ export interface ConfigEventos {
   diasPresupuesto: number
   diasAvisoVencimiento: number
   avisoCupoPct: number
+  /** Cómo se presenta la casa en el presupuesto. NULL = la razón social. */
+  nombreCasa: string | null
+  /** Lo que va al pie de todos los presupuestos. */
+  presupuestoPie: string | null
+  presupuestoValidezDias: number | null
 }
 
 /** Se crea en la primera lectura, como la configuración del POS. */
@@ -106,7 +111,8 @@ export async function configuracionDe(clienteId: string): Promise<ConfigEventos>
   const [c] = await prisma.$queryRaw<ConfigEventos[]>`
     INSERT INTO evento_configuracion ("clienteId") VALUES (${clienteId}::uuid)
     ON CONFLICT ("clienteId") DO UPDATE SET "clienteId" = EXCLUDED."clienteId"
-    RETURNING "diasPresupuesto", "diasAvisoVencimiento", "avisoCupoPct"
+    RETURNING "diasPresupuesto", "diasAvisoVencimiento", "avisoCupoPct",
+              "nombreCasa", "presupuestoPie", "presupuestoValidezDias"
   `
   return c!
 }
@@ -301,6 +307,12 @@ export interface ReservaPropia {
   neto: number
   iva: number
   mesaIds: string[]
+  /** Adicionales del titular (suman) y de cada pasajero (informativos), con la cuenta de la vista. */
+  adicionales: number
+  adicionalesPasajero: number
+  /** Las líneas que aplican (propias y del evento), para recalcular el total mientras se editan las personas. */
+  adicionalesLineas: Array<{ modalidad: 'PERSONA' | 'FIJO'; aplica: 'TODOS' | 'ADULTOS' | 'MENORES'; cantidad: number | null; precioUnitario: number; paga: 'TITULAR' | 'PASAJERO' }>
+  menuId: string | null
 }
 
 export async function reservaPropia(id: string): Promise<ReservaPropia | null> {
@@ -314,7 +326,13 @@ export async function reservaPropia(id: string): Promise<ReservaPropia | null> {
            t."precioAdulto"::float8 AS "precioAdulto", t."precioMenor"::float8 AS "precioMenor",
            t."ivaModo", t."ivaAlicuota"::float8 AS "ivaAlicuota",
            t.neto::float8 AS neto, t.iva::float8 AS iva,
-           COALESCE((SELECT array_agg(rm."mesaId"::text) FROM reserva_mesas rm WHERE rm."reservaId" = r.id), '{}') AS "mesaIds"
+           COALESCE((SELECT array_agg(rm."mesaId"::text) FROM reserva_mesas rm WHERE rm."reservaId" = r.id), '{}') AS "mesaIds",
+           t.adicionales::float8 AS adicionales, t."adicionalesPasajero"::float8 AS "adicionalesPasajero",
+           COALESCE((SELECT json_agg(json_build_object('modalidad', a.modalidad, 'aplica', a.aplica, 'cantidad', a.cantidad::float8,
+                                                       'precioUnitario', a."precioUnitario"::float8, 'paga', a.paga))
+                       FROM evento_adicionales a
+                      WHERE a."reservaId" = r.id OR (r."eventoId" IS NOT NULL AND a."eventoId" = r."eventoId")), '[]') AS "adicionalesLineas",
+           r."menuId"
       FROM reservas r JOIN reserva_totales t ON t."reservaId" = r.id
      WHERE r.id = ${id}::uuid
   `
@@ -411,6 +429,8 @@ export interface EventoBase {
   saldoVence: string | null
   observaciones: string | null
   salonIds: string[]
+  /** Menú del evento (copia). Lo heredan las reservas sin menú propio. */
+  menuId: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -424,7 +444,7 @@ const SELECT_EVENTO = Prisma.sql`
          to_char(e."senaVence", 'YYYY-MM-DD') AS "senaVence", to_char(e."saldoVence", 'YYYY-MM-DD') AS "saldoVence",
          e.observaciones,
          COALESCE((SELECT array_agg(es."sectorId"::text) FROM evento_salones es WHERE es."eventoId" = e.id), '{}') AS "salonIds",
-         e."createdAt", e."updatedAt"
+         e."menuId", e."createdAt", e."updatedAt"
     FROM eventos e
 `
 
@@ -657,16 +677,46 @@ export function respuestaCupo(e: CupoExcedido) {
   return { error: e.message, codigo: 'CUPO', cupo: e.cupo, ocupado: e.ocupado, pedido: e.pedido }
 }
 
+/**
+ * Reemplaza los regímenes. El menú alternativo de cada tipo se conserva: la
+ * pantalla de personas manda cantidades y notas, y no tiene por qué saber
+ * que el celíaco ya tenía su menú armado. Si un tipo desaparece, su copia
+ * del menú se borra.
+ */
 export async function guardarRegimenes(
   tx: Tx,
   reservaId: string,
   regimenes: Array<{ tipo: string; cantidad: number; nota: string | null }>
 ) {
+  const previos = await tx.$queryRaw<Array<{ tipo: string; menuId: string | null }>>`
+    SELECT tipo, "menuId" FROM reserva_regimenes WHERE "reservaId" = ${reservaId}::uuid AND "menuId" IS NOT NULL
+  `
+  const menuDe = new Map(previos.map((p) => [p.tipo, p.menuId]))
   await tx.$executeRaw`DELETE FROM reserva_regimenes WHERE "reservaId" = ${reservaId}::uuid`
-  if (regimenes.length === 0) return
+  if (regimenes.length > 0) {
+    await tx.$executeRaw`
+      INSERT INTO reserva_regimenes ("reservaId", tipo, cantidad, nota, "menuId")
+      VALUES ${Prisma.join(
+        regimenes.map((g) => Prisma.sql`(${reservaId}::uuid, ${g.tipo}, ${g.cantidad}::int, ${g.nota}, ${menuDe.get(g.tipo) ?? null}::uuid)`)
+      )}
+    `
+  }
+  if (previos.length) await limpiarCopiasMenu(tx, { reservaId })
+}
+
+/**
+ * Borra las copias de menú de un evento o una reserva que ya nadie usa (se
+ * cambió el menú, se quitó un régimen). Las plantillas no se tocan nunca.
+ */
+export async function limpiarCopiasMenu(tx: Tx, dueno: { eventoId?: string | null | undefined; reservaId?: string | null | undefined }) {
   await tx.$executeRaw`
-    INSERT INTO reserva_regimenes ("reservaId", tipo, cantidad, nota)
-    VALUES ${Prisma.join(regimenes.map((g) => Prisma.sql`(${reservaId}::uuid, ${g.tipo}, ${g.cantidad}::int, ${g.nota})`))}
+    DELETE FROM evento_menus m
+     WHERE NOT m.plantilla
+       AND (m."eventoId" = ${dueno.eventoId ?? null}::uuid OR m."reservaId" = ${dueno.reservaId ?? null}::uuid)
+       AND NOT EXISTS (SELECT 1 FROM eventos e WHERE e."menuId" = m.id)
+       AND NOT EXISTS (SELECT 1 FROM reservas r WHERE r."menuId" = m.id)
+       AND NOT EXISTS (SELECT 1 FROM reserva_regimenes g WHERE g."menuId" = m.id)
+       AND NOT EXISTS (SELECT 1 FROM evento_regimen_menus g WHERE g."menuId" = m.id)
   `
 }
 

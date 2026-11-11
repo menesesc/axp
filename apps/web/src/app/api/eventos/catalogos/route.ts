@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Renombrar, colorear o desactivar un ítem; o cambiar los umbrales de las alertas. */
+/** Renombrar, colorear o desactivar un ítem; cambiar los umbrales de las alertas o los datos del presupuesto. */
 export async function PATCH(request: NextRequest) {
   const { clienteId, error } = await requireSeccion(SECCION.EVENTOS_RESERVAS, 'edit')
   if (error) return error
@@ -75,6 +75,26 @@ export async function PATCH(request: NextRequest) {
           "diasAvisoVencimiento" = ${Number.isFinite(aviso) && aviso >= 0 ? aviso : 3}::smallint,
           "avisoCupoPct"         = ${cupo || 90}::smallint,
           "updatedAt"            = now()
+        WHERE "clienteId" = ${clienteId}::uuid
+      `
+      return NextResponse.json({ ok: true })
+    } catch (e) {
+      return NextResponse.json({ error: mensajeError(e) }, { status: 400 })
+    }
+  }
+
+  // Cómo se presenta la casa en el presupuesto: nombre, pie y validez.
+  if (b.presupuesto && typeof b.presupuesto === 'object') {
+    const c = b.presupuesto as Record<string, unknown>
+    const validez = entero(c.validezDias)
+    await configuracionDe(clienteId!)
+    try {
+      await prisma.$executeRaw`
+        UPDATE evento_configuracion SET
+          "nombreCasa"             = ${texto(c.nombreCasa, 120)},
+          "presupuestoPie"         = ${texto(c.pie, 4000)},
+          "presupuestoValidezDias" = ${validez > 0 ? Math.min(validez, 365) : null}::smallint,
+          "updatedAt"              = now()
         WHERE "clienteId" = ${clienteId}::uuid
       `
       return NextResponse.json({ ok: true })

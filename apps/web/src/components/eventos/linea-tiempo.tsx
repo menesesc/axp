@@ -64,7 +64,7 @@ export function LineaTiempo({
     if (vista !== 'agenda') {
       for (const a of auditoria) {
         if (a.accion === 'agenda') continue // ya se ve en la propia agenda
-        if (eventoId && !reservaId && a.reservaId && !detalleReservas && !['creada', 'estado', 'pago', 'pago_anulado', 'cupo_excedido'].includes(a.accion)) continue
+        if (eventoId && !reservaId && a.reservaId && !detalleReservas && !['creada', 'estado', 'pago', 'pago_anulado', 'cupo_excedido', 'presupuesto'].includes(a.accion)) continue
         xs.push({ clase: 'auditoria', cuando: +new Date(a.createdAt), a })
       }
     }

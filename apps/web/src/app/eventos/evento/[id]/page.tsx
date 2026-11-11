@@ -6,7 +6,7 @@ import type { Route } from 'next'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangle, ArrowLeft, CalendarDays, Plus, Salad, Trash2, Users, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CalendarDays, FileText, Plus, Salad, Trash2, Users, Wallet } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Kpi, millones, pesos } from '@/components/dashboard/inicio'
@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BarraSiglas, Campo, avisarError, enviar, useCatalogos } from '@/components/eventos/comunes'
 import { EventoForm, cuerpoDe, formDe, type FormEvento } from '@/components/eventos/evento-form'
 import { LineaTiempo } from '@/components/eventos/linea-tiempo'
+import { MenuEvento } from '@/components/eventos/menu-tab'
 import { NuevaReservaDialog, ReservaRapida } from '@/components/eventos/nueva-reserva'
 import { TablaReservas } from '@/components/eventos/tabla-reservas'
 import { useUser } from '@/hooks/use-user'
@@ -179,6 +180,12 @@ function Evento({ id }: { id: string }) {
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
+            <Button variant="outline" asChild className="gap-1.5">
+              <Link href={`/eventos/evento/${id}/presupuesto` as Route}>
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Presupuesto</span>
+              </Link>
+            </Button>
             {puedeEditar && (
               <Button className="gap-1.5" onClick={() => setNueva(true)}>
                 <Plus className="h-4 w-4" />
@@ -250,6 +257,7 @@ function Evento({ id }: { id: string }) {
         <TabsList>
           <TabsTrigger value="reservas">Reservas{data ? ` (${data.reservas.length})` : ''}</TabsTrigger>
           <TabsTrigger value="condiciones">Condiciones</TabsTrigger>
+          <TabsTrigger value="menu">Menú · cocina</TabsTrigger>
           <TabsTrigger value="timeline">Línea de tiempo</TabsTrigger>
         </TabsList>
 
@@ -279,6 +287,10 @@ function Evento({ id }: { id: string }) {
               </Button>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="menu" className="mt-4">
+          <MenuEvento eventoId={id} puedeEditar={puedeEditar} onCambio={refrescar} />
         </TabsContent>
 
         <TabsContent value="timeline" className="mt-4">

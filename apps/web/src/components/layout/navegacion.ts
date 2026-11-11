@@ -118,6 +118,7 @@ export const MENU: Modulo[][] = [
         { nombre: 'Lista', href: '/eventos/lista' },
         { nombre: 'Alertas', href: '/eventos/alertas' },
         { nombre: 'Clientes', href: '/eventos/clientes' },
+        { nombre: 'Menús', href: '/eventos/menus' },
       ],
       // Las fichas (/eventos/evento/…, /eventos/reserva/…) caen acá.
       prefijos: ['/eventos/'],

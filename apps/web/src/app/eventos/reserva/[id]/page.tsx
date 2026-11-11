@@ -5,7 +5,7 @@ import Link from 'next/link'
 import type { Route } from 'next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, Ban, CheckCircle2, Lock, Plus, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle2, FileText, Lock, Plus, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { pesos } from '@/components/dashboard/inicio'
@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Campo, SelectSimple, SiglaBadge, avisarError, claseSelect, claseTextarea, enviar, enviarConCupo, useCatalogos } from '@/components/eventos/comunes'
 import { SelectorCliente } from '@/components/eventos/clientes'
 import { LineaTiempo } from '@/components/eventos/linea-tiempo'
+import { MenuReserva } from '@/components/eventos/menu-tab'
 import { useUser } from '@/hooks/use-user'
 import { SECCION } from '@/lib/permisos'
 import { hoyAR } from '@/lib/fechas'
@@ -35,6 +36,7 @@ import {
   type MedioPago,
   type Regimen,
 } from '@/lib/eventos/constantes'
+import { sumaAdicionales } from '@/lib/eventos/menu'
 import type { AgendaFila, AuditoriaFila, EventoBase, PagoFila, ReservaFila, ReservaPropia } from '@/lib/eventos/db'
 import { cn } from '@/lib/utils'
 
@@ -98,12 +100,20 @@ export default function FichaReserva({ params }: { params: Promise<{ id: string 
             : undefined
         }
         actions={
-          <Button variant="ghost" asChild>
-            <Link href={(r?.eventoId ? `/eventos/evento/${r.eventoId}` : '/eventos/lista') as Route}>
-              <ArrowLeft className="h-4 w-4" />
-              {r?.eventoNombre ? <span className="hidden sm:inline">{r.eventoNombre}</span> : null}
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" asChild>
+              <Link href={(r?.eventoId ? `/eventos/evento/${r.eventoId}` : '/eventos/lista') as Route}>
+                <ArrowLeft className="h-4 w-4" />
+                {r?.eventoNombre ? <span className="hidden sm:inline">{r.eventoNombre}</span> : null}
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="gap-1.5">
+              <Link href={`/eventos/reserva/${id}/presupuesto` as Route}>
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Presupuesto</span>
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -117,10 +127,11 @@ export default function FichaReserva({ params }: { params: Promise<{ id: string 
             <TabsList>
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="personas">Personas{r.regimenes.length ? ' · regímenes' : ''}</TabsTrigger>
+              <TabsTrigger value="menu">Menú · adicionales</TabsTrigger>
               {data.verCobros && <TabsTrigger value="pagos">Pagos</TabsTrigger>}
               <TabsTrigger value="timeline">Línea de tiempo</TabsTrigger>
               <TabsTrigger value="proximamente" className="text-[var(--ter)]">
-                Menú · Salón · Personal
+                Salón · Personal
               </TabsTrigger>
             </TabsList>
             <TabsContent value="general" className="mt-4">
@@ -128,6 +139,9 @@ export default function FichaReserva({ params }: { params: Promise<{ id: string 
             </TabsContent>
             <TabsContent value="personas" className="mt-4">
               <Personas ficha={data} puedeEditar={puedeEditar} onCambio={refrescar} />
+            </TabsContent>
+            <TabsContent value="menu" className="mt-4">
+              <MenuReserva reservaId={id} puedeEditar={puedeEditar} onCambio={refrescar} />
             </TabsContent>
             {data.verCobros && (
               <TabsContent value="pagos" className="mt-4">
@@ -143,7 +157,6 @@ export default function FichaReserva({ params }: { params: Promise<{ id: string 
               <div className="ax-card max-w-2xl p-6 text-sm text-[var(--sec)]">
                 <p className="ax-card-titulo mb-2">Próximamente</p>
                 <ul className="list-disc space-y-1 pl-5">
-                  <li>Menú del evento y menús por régimen, bebidas y adicionales (con quién los paga).</li>
                   <li>Plano del salón con las mesas asignadas, respetando las inamovibles.</li>
                   <li>Personal asignado y hoja de servicio.</li>
                 </ul>
@@ -452,6 +465,11 @@ function Personas({ ficha, puedeEditar, onCambio }: { ficha: Ficha; puedeEditar:
     descuento: num(f.descuento) ?? 0,
     ivaModo: f.ivaModo || base.ivaModo,
     ivaAlicuota: num(f.ivaAlicuota) ?? base.ivaAlicuota,
+    // Los adicionales por persona acompañan a la cantidad que se está tipeando.
+    adicionales: sumaAdicionales(
+      p.adicionalesLineas.map((a, i) => ({ ...a, descripcion: '', nota: null, orden: i })),
+      { adultos: num(f.adultos) ?? 0, menores: num(f.menores) ?? 0 }
+    ).titular,
   })
 
   const guardar = useMutation({
@@ -552,6 +570,7 @@ function Personas({ ficha, puedeEditar, onCambio }: { ficha: Ficha; puedeEditar:
             </Campo>
             <div className="ax-num flex flex-wrap gap-x-5 gap-y-1 text-sm sm:col-span-4">
               <span>Neto {pesos(vista.neto)}</span>
+              {p.adicionalesLineas.length > 0 && <span className="text-[var(--sec)]">incluye adicionales (pestaña Menú)</span>}
               {vista.iva > 0 && <span className="text-[var(--sec)]">IVA {pesos(vista.iva)}</span>}
               <span className="font-semibold">Total {pesos(vista.total)}</span>
               {cambiado && <span className="text-xs text-[var(--ter)]">(antes {pesos(r.total)})</span>}
@@ -597,7 +616,7 @@ function Personas({ ficha, puedeEditar, onCambio }: { ficha: Ficha; puedeEditar:
               </Button>
             </div>
           ))}
-          <p className="text-xs text-[var(--ter)]">El menú de cada régimen se arma en la próxima etapa; por ahora, cantidades y notas.</p>
+          <p className="text-xs text-[var(--ter)]">Qué come cada régimen (menú alternativo) se elige en la pestaña Menú.</p>
         </div>
 
         {puedeEditar && (

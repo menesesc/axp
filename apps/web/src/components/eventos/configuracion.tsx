@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { ItemCatalogo } from '@/lib/eventos/db'
 import { cn } from '@/lib/utils'
-import { Campo, avisarError, enviar, useCatalogos } from './comunes'
+import { Campo, avisarError, claseTextarea, enviar, useCatalogos } from './comunes'
 
 /**
  * Lo que cada casa ajusta: de dónde llegan las reservas, qué tipos de evento
@@ -19,14 +19,28 @@ export function ConfiguracionDialog({ abierto, onCerrar }: { abierto: boolean; o
   const qc = useQueryClient()
   const { origenes, tipos, configuracion } = useCatalogos()
   const [cfg, setCfg] = useState({ diasPresupuesto: '7', diasAvisoVencimiento: '3', avisoCupoPct: '90' })
+  const [presu, setPresu] = useState({ nombreCasa: '', pie: '', validezDias: '' })
   useEffect(() => {
-    if (configuracion)
-      setCfg({
-        diasPresupuesto: String(configuracion.diasPresupuesto),
-        diasAvisoVencimiento: String(configuracion.diasAvisoVencimiento),
-        avisoCupoPct: String(configuracion.avisoCupoPct),
-      })
+    if (!configuracion) return
+    setCfg({
+      diasPresupuesto: String(configuracion.diasPresupuesto),
+      diasAvisoVencimiento: String(configuracion.diasAvisoVencimiento),
+      avisoCupoPct: String(configuracion.avisoCupoPct),
+    })
+    setPresu({
+      nombreCasa: configuracion.nombreCasa ?? '',
+      pie: configuracion.presupuestoPie ?? '',
+      validezDias: configuracion.presupuestoValidezDias ? String(configuracion.presupuestoValidezDias) : '',
+    })
   }, [configuracion])
+  const guardarPresu = useMutation({
+    mutationFn: () => enviar('/api/eventos/catalogos', 'PATCH', { presupuesto: presu }),
+    onSuccess: () => {
+      toast.success('Datos del presupuesto guardados')
+      refrescar()
+    },
+    onError: avisarError,
+  })
 
   const refrescar = () => qc.invalidateQueries({ queryKey: ['eventos-catalogos'] })
   const guardarCfg = useMutation({
@@ -42,7 +56,7 @@ export function ConfiguracionDialog({ abierto, onCerrar }: { abierto: boolean; o
     <Dialog open={abierto} onOpenChange={(v) => !v && onCerrar()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Eventos: orígenes, tipos y avisos</DialogTitle>
+          <DialogTitle>Eventos: orígenes, tipos, avisos y presupuesto</DialogTitle>
         </DialogHeader>
         <div className="grid gap-5 sm:grid-cols-2">
           <Lista titulo="Orígenes de reserva" lista="ORIGEN" items={origenes} onCambio={refrescar} />
@@ -68,6 +82,29 @@ export function ConfiguracionDialog({ abierto, onCerrar }: { abierto: boolean; o
           <Button type="submit" className="self-start sm:mt-5" disabled={guardarCfg.isPending}>
             Guardar
           </Button>
+        </form>
+        <form
+          className="grid gap-3 rounded-xl bg-slate-900/[0.03] p-3 sm:grid-cols-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            guardarPresu.mutate()
+          }}
+        >
+          <p className="text-sm font-medium sm:col-span-4">Presupuesto</p>
+          <Campo etiqueta="Nombre de la casa" className="sm:col-span-3" ayuda="Cómo se presenta en el encabezado. Vacío = la razón social. El logo es el de Configuración → Empresa.">
+            <Input value={presu.nombreCasa} onChange={(e) => setPresu((x) => ({ ...x, nombreCasa: e.target.value }))} />
+          </Campo>
+          <Campo etiqueta="Validez" ayuda="días (vacío = no se dice)">
+            <Input value={presu.validezDias} onChange={(e) => setPresu((x) => ({ ...x, validezDias: e.target.value }))} inputMode="numeric" />
+          </Campo>
+          <Campo etiqueta="Pie de todos los presupuestos" className="sm:col-span-4" ayuda="Formas de pago, qué incluye, política de cancelación…">
+            <textarea value={presu.pie} onChange={(e) => setPresu((x) => ({ ...x, pie: e.target.value }))} className={claseTextarea} />
+          </Campo>
+          <div className="flex justify-end sm:col-span-4">
+            <Button type="submit" disabled={guardarPresu.isPending}>
+              Guardar
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
