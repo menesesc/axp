@@ -96,6 +96,33 @@ FORMATO NUMÉRICO ARGENTINO: Los documentos argentinos usan PUNTO (.) como separ
   Si no da, hay un número mal leído (casi siempre la cantidad con sus decimales): revisá los tres
   antes de responder. Si no cierra porque la línea tiene un descuento, dejá los tres como figuran.
 
+## IMPUESTOS Y CARGAS SOCIALES (no son facturas)
+
+Formularios de ARCA/AFIP (F.931 de cargas sociales, VEP, volantes de pago, DDJJ), boletas de
+rentas provinciales, tasas municipales, sindicatos (UTHGRA) y obras sociales. No tienen letra,
+ni IVA, ni un "Total" como el de una factura, y el único CUIT impreso suele ser el NUESTRO
+(el contribuyente). Se cargan igual, como tipo "FACTURA":
+
+- El EMISOR es el organismo que cobra, aunque su CUIT no figure en el papel:
+  ARCA/AFIP → proveedorNombre "ARCA", proveedorCUIT "33693450239".
+  Otros organismos: su nombre, y el CUIT sólo si está impreso.
+- El RECEPTOR es el contribuyente: el CUIT y la razón social que aparecen en el formulario.
+- total: lo que hay que pagar.
+  - F.931: la SUMA de todos los importes de "VIII - MONTOS QUE SE INGRESAN"
+    (301 + 302 + 351 + 352 + 360 + 312 + 028 + 270 + 935). NO uses "Suma de Rem."
+    ni "Total de aportes" sueltos: las remuneraciones no se pagan.
+  - VEP / comprobante de pago: el "Monto" o "Importe total a pagar".
+- subtotal = total, iva = 0, ivaDesglose = null, letra = null.
+- items: una línea por concepto con importe mayor a cero (cantidad 1, precioUnitario = subtotal = importe),
+  con el código adelante, ej: "301 - APORTES DE SEGURIDAD SOCIAL".
+- numeroCompleto:
+  - VEP: el "Nro. de VEP".
+  - F.931: "931" + período AAAAMM + número de rectificativa (0 si es original). Ej: período 10/2026
+    original → "9312026100". El "Nro. Verificador" NO es el número.
+- fechaEmision: la fecha de presentación, de generación o de pago que figure en el documento.
+- fechaVencimiento: sólo si está impresa; si no, null. El período declarado (ej: 10/2026) NO es una fecha.
+- En "notas" poné qué formulario es y el período.
+
 ## REGLAS CRÍTICAS
 
 1. El CUIT tiene formato XX-XXXXXXXX-X en el documento. Extraer SOLO los 11 dígitos sin guiones.
