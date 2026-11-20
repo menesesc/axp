@@ -96,3 +96,37 @@ export async function fetchInboundPdfAttachments(
   }
   return out
 }
+
+/**
+ * Trae un email recibido completo: GET /emails/receiving/{id}.
+ * A diferencia del webhook (solo metadata), incluye `html`, `text` y `headers`
+ * (objeto { nombre-en-minúscula: valor }), además de to/cc/received_for.
+ * Lo usamos para el código de confirmación de reenvío de Gmail y para buscar la
+ * casilla en Delivered-To / X-Forwarded-To cuando el To es el original.
+ */
+export async function fetchReceivedEmail(emailId: string): Promise<{
+  id?: string
+  from?: string
+  to?: unknown
+  cc?: unknown
+  received_for?: unknown
+  subject?: string
+  html?: string | null
+  text?: string | null
+  headers?: unknown
+}> {
+  const key = await resendApiKey()
+  const res = await fetch(`${RESEND_API_BASE}/emails/receiving/${encodeURIComponent(emailId)}`, {
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Resend get received email failed: ${res.status} ${text.slice(0, 200)}`)
+  }
+  const body = (await res.json()) as Record<string, unknown>
+  // Por si alguna versión lo envuelve en { data }
+  return ((body.data && typeof body.data === 'object' ? body.data : body) as Awaited<ReturnType<typeof fetchReceivedEmail>>)
+}

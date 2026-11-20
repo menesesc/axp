@@ -19,6 +19,9 @@ model clientes {
   /// Logo PNG de la empresa en R2. Encabezado del recetario.
   logoKey                    String?                      @db.VarChar(500)
   r2Prefix                   String                       @db.VarChar(50)
+  /// Casilla de recepción de facturas: <casillaEmail>@axp.com.ar. Slug en
+  /// minúsculas, único. El webhook inbound resuelve la empresa por destinatario.
+  casillaEmail               String?                      @unique @db.VarChar(40)
   activo                     Boolean                      @default(true)
   createdAt                  DateTime                     @default(now()) @db.Timestamptz(3)
   updatedAt                  DateTime                     @db.Timestamptz(3)
@@ -56,6 +59,7 @@ model clientes {
   eventoMenus           evento_menus[]
   eventoAdicionales     evento_adicionales[]
   eventoPresupuestos    evento_presupuestos[]
+  emailRecibidos        email_recibidos[]
 }
 
 model documento_items {
@@ -291,6 +295,28 @@ model usuarios {
   @@index([rol])
   recetaNotas     receta_notas[]
   recetaFavoritas receta_favoritas[]
+}
+
+/// Emails que entraron por el webhook de Resend inbound (ver
+/// manual_email_casillas.sql). resultado: PROCESADO, SIN_ADJUNTO, DUPLICADO,
+/// NO_RESUELTO, MAXIREST, CONFIRMACION_GMAIL, ERROR.
+model email_recibidos {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId    String?   @db.Uuid
+  fecha        DateTime  @default(now()) @db.Timestamptz(3)
+  remitente    String    @default("") @db.VarChar(320)
+  destinatario String    @default("") @db.Text
+  asunto       String    @default("") @db.Text
+  /// Único cuando no es null (índice parcial en SQL).
+  emailId      String?   @db.VarChar(100)
+  resultado    String    @db.VarChar(30)
+  detalle      String?   @db.Text
+  adjuntos     Int       @default(0)
+  extra        Json      @default("{}")
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  clientes     clientes? @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, fecha(sort: Desc)])
 }
 
 model processing_logs {

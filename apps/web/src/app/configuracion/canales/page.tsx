@@ -6,31 +6,21 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { useUser } from '@/hooks/use-user'
 import { toast } from 'sonner'
 import {
-  Mail,
   MessageCircle,
   FolderSync,
-  Copy,
-  Check,
   Loader2,
-  AlertCircle,
-  ExternalLink,
   FileText,
   RotateCcw,
   Save,
-  Users,
 } from 'lucide-react'
+import { EmailCasillaCard, type EmailCasilla, type EmailRecibido } from './email-casilla-card'
 
 interface CanalConfig {
-  email: {
-    habilitado: boolean
-    direccion: string
-    alias: string[]
-  }
+  email: EmailCasilla
   whatsapp: {
     habilitado: boolean
     numero: string | null
@@ -40,13 +30,6 @@ interface CanalConfig {
     habilitado: boolean
     ruta: string
   }
-}
-
-interface Usuario {
-  id: string
-  email: string
-  nombre: string
-  activo: boolean
 }
 
 interface EmailTemplate {
@@ -73,14 +56,13 @@ const TEMPLATE_LABELS: Record<string, { title: string; description: string; vari
 export default function CanalesPage() {
   const { clienteId, isAdmin } = useUser()
   const queryClient = useQueryClient()
-  const [copiedEmail, setCopiedEmail] = useState(false)
 
   // Templates editing state
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null)
   const [editAsunto, setEditAsunto] = useState('')
   const [editCuerpo, setEditCuerpo] = useState('')
 
-  const { data, isLoading } = useQuery<{ canales: CanalConfig }>({
+  const { data, isLoading } = useQuery<{ canales: CanalConfig; emails: EmailRecibido[] }>({
     queryKey: ['canales', clienteId],
     queryFn: async () => {
       const res = await fetch('/api/configuracion/canales')
@@ -90,18 +72,6 @@ export default function CanalesPage() {
     enabled: !!clienteId && isAdmin,
   })
 
-  const { data: usuariosData } = useQuery<{ usuarios: Usuario[] }>({
-    queryKey: ['usuarios', clienteId],
-    queryFn: async () => {
-      const res = await fetch('/api/configuracion/usuarios')
-      if (!res.ok) throw new Error('Failed to fetch usuarios')
-      return res.json()
-    },
-    enabled: !!clienteId && isAdmin,
-  })
-
-  const emailsAutorizados = (usuariosData?.usuarios || []).filter((u) => u.activo && u.email)
-
   const { data: templatesData, isLoading: templatesLoading } = useQuery<{ templates: EmailTemplate[] }>({
     queryKey: ['email-templates', clienteId],
     queryFn: async () => {
@@ -110,25 +80,6 @@ export default function CanalesPage() {
       return res.json()
     },
     enabled: !!clienteId && isAdmin,
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: async (updates: Partial<CanalConfig>) => {
-      const res = await fetch('/api/configuracion/canales', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      })
-      if (!res.ok) throw new Error('Failed to update')
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['canales'] })
-      toast.success('Configuración actualizada')
-    },
-    onError: () => {
-      toast.error('Error al actualizar')
-    },
   })
 
   const saveTemplateMutation = useMutation({
@@ -171,12 +122,6 @@ export default function CanalesPage() {
     },
   })
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedEmail(true)
-    setTimeout(() => setCopiedEmail(false), 2000)
-  }
-
   const startEditing = (template: EmailTemplate) => {
     setEditingTemplate(template.tipo)
     setEditAsunto(template.asunto)
@@ -211,84 +156,7 @@ export default function CanalesPage() {
         ) : (
           <div className="space-y-4">
             {/* Email */}
-            <div className="bg-white border rounded-lg p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <Mail className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Email</h3>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      Recibe documentos enviados a tu casilla dedicada
-                    </p>
-                  </div>
-                </div>
-                <Switch
-                  checked={canales?.email.habilitado || false}
-                  onCheckedChange={(checked) =>
-                    updateMutation.mutate({ email: { ...canales?.email!, habilitado: checked } })
-                  }
-                />
-              </div>
-
-              {canales?.email.habilitado && (
-                <div className="mt-4 pt-4 border-t space-y-3">
-                  <div>
-                    <label className="block text-xs text-slate-500 uppercase tracking-wider mb-1">
-                      Dirección de recepción
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 px-3 py-2 bg-slate-100 rounded text-sm font-mono">
-                        {canales.email.direccion}
-                      </code>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(canales.email.direccion)}
-                      >
-                        {copiedEmail ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Reenviá las facturas que recibas de tus proveedores a esta dirección para procesarlas automáticamente.
-                    </p>
-                  </div>
-
-                  <div className="mt-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-4 w-4 text-slate-500" />
-                      <label className="text-xs text-slate-500 uppercase tracking-wider">
-                        Emails autorizados para reenvío
-                      </label>
-                    </div>
-                    {emailsAutorizados.length > 0 ? (
-                      <div className="space-y-1">
-                        {emailsAutorizados.map((u) => (
-                          <div
-                            key={u.id}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded text-sm"
-                          >
-                            <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                            <span className="font-mono text-slate-700">{u.email}</span>
-                            <span className="text-slate-400">—</span>
-                            <span className="text-slate-500">{u.nombre}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-500 italic">No hay usuarios activos con email</p>
-                    )}
-                    <p className="text-xs text-slate-500 mt-2">
-                      Solo se procesan emails reenviados desde estas direcciones. Para agregar más, andá a{' '}
-                      <a href="/configuracion/usuarios" className="text-blue-600 hover:underline">
-                        Configuración &gt; Usuarios
-                      </a>.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+            <EmailCasillaCard email={canales?.email} recibidos={data?.emails ?? []} />
 
             {/* WhatsApp */}
             <div className="bg-white border rounded-lg p-6">
@@ -304,55 +172,10 @@ export default function CanalesPage() {
                     </p>
                   </div>
                 </div>
-                <Switch
-                  checked={canales?.whatsapp.habilitado || false}
-                  onCheckedChange={(checked) =>
-                    updateMutation.mutate({ whatsapp: { ...canales?.whatsapp!, habilitado: checked } })
-                  }
-                />
+                <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
+                  Próximamente
+                </span>
               </div>
-
-              {canales?.whatsapp.habilitado && (
-                <div className="mt-4 pt-4 border-t space-y-3">
-                  {canales.whatsapp.numero ? (
-                    <div>
-                      <label className="block text-xs text-slate-500 uppercase tracking-wider mb-1">
-                        Número de WhatsApp
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 px-3 py-2 bg-slate-100 rounded text-sm font-mono">
-                          {canales.whatsapp.numero}
-                        </code>
-                        <Button variant="outline" size="sm" asChild>
-                          <a
-                            href={`https://wa.me/${canales.whatsapp.numero.replace(/\D/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                      <p className="text-sm text-slate-600">
-                        El canal de WhatsApp está siendo configurado. Te notificaremos cuando esté listo.
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                    <div className="text-sm text-amber-800">
-                      <p className="font-medium">Remitentes autorizados</p>
-                      <p className="text-amber-700 mt-0.5">
-                        Solo se procesarán mensajes de remitentes autorizados según la configuración de Usuarios.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* SFTP */}
