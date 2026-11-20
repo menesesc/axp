@@ -615,6 +615,16 @@ async function processOCRFile(file: InboxFile): Promise<void> {
       estadoRevision = 'PENDIENTE';
       logger.warn(`⚠️  Forcing PENDIENTE due to receptor CUIT mismatch`);
     }
+
+    // Proveedor que no está cargado: aunque el OCR lea bien el CUIT, la factura
+    // no puede quedar confirmada sin proveedor. Confirmada no aparece entre las
+    // pendientes y nadie se entera de que llegó (pasa con las que entran solas
+    // por mail). Queda pendiente hasta que se cree o se asigne el proveedor.
+    if (!proveedorId && estadoRevision === 'CONFIRMADO') {
+      estadoRevision = 'PENDIENTE';
+      if (!adjustedMissingFields.includes('proveedor')) adjustedMissingFields.push('proveedor');
+      logger.warn(`⚠️  Forcing PENDIENTE: proveedor no cargado`);
+    }
     logger.info(`📋 Estado de revisión: ${estadoRevision}`);
     
     const documento = await prisma.documentos.create({
