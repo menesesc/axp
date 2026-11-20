@@ -1,14 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Bricolage_Grotesque } from 'next/font/google'
+import { display } from '@/fonts'
 import { Landing } from '@/components/landing/landing'
-
-// Tipografía de títulos de la familia Southbit (southbit.dev).
-const display = Bricolage_Grotesque({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-display',
-  display: 'swap',
-})
 
 const descripcion =
   'AXP carga solas las facturas de tus proveedores, te avisa cuando un precio sube y te muestra cuánto ganás con cada plato. Ventas, stock por depósito, pedidos y pagos en un solo lugar.'

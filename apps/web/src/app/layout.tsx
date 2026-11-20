@@ -1,12 +1,8 @@
 import './globals.css';
 import '@/styles/axp.css';
 import type { Metadata } from 'next';
-import { Bricolage_Grotesque, Inter } from 'next/font/google';
+import { display, inter } from '@/fonts';
 import { Providers } from '@/components/providers';
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
-// Títulos de la app y de la landing.
-const display = Bricolage_Grotesque({ subsets: ['latin'], variable: '--font-display', weight: ['500', '600', '700'] });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://axp.com.ar'),

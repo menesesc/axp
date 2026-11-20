@@ -1,4 +1,4 @@
-import { Nunito_Sans } from 'next/font/google'
+import { recetario } from '@/fonts'
 
 /**
  * El recetario usa su propia tipografía.
@@ -12,16 +12,6 @@ import { Nunito_Sans } from 'next/font/google'
  * Va acotada a esta sección a propósito: cambiar la fuente de toda la app
  * sería otra discusión.
  */
-const recetario = Nunito_Sans({
-  subsets: ['latin'],
-  weight: ['400', '600', '700', '800'],
-  display: 'swap',
-  // Next no tiene métricas de fallback para esta familia y avisa en cada
-  // build. El ajuste automático anti-salto no aplica; damos el fallback a mano.
-  adjustFontFallback: false,
-  fallback: ['ui-sans-serif', 'system-ui', 'sans-serif'],
-})
-
 export default function RecetasLayout({ children }: { children: React.ReactNode }) {
   return <div className={recetario.className}>{children}</div>
 }
