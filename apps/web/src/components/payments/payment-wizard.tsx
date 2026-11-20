@@ -169,6 +169,22 @@ export function PaymentWizard({ clienteId, editMode }: PaymentWizardProps) {
   const totalOrden = selectedDocsList.reduce((sum, d) => sum + (d.total || 0), 0)
   const totalMetodos = methods.reduce((sum, m) => sum + m.monto, 0)
 
+  // Con una sola transferencia, el monto acompaña a las facturas: si se saca o
+  // se agrega una, la transferencia se corrige sola. Antes quedaba con el monto
+  // anterior, el borrador se guardaba igual y en "A transferir" no se podía
+  // elegir. Sólo reacciona a cambios de la selección (no al cargar la orden),
+  // así no pisa un monto que se haya puesto a mano a propósito.
+  const totalPrevio = useRef<number | null>(null)
+  useEffect(() => {
+    if (!docsData) return
+    const previo = totalPrevio.current
+    totalPrevio.current = totalOrden
+    if (previo === null || previo === totalOrden) return
+    setMethods((ms) =>
+      ms.length === 1 && ms[0]!.tipo === 'TRANSFERENCIA' ? [{ ...ms[0]!, monto: totalOrden }] : ms
+    )
+  }, [docsData, totalOrden])
+
   // Mutation para crear/actualizar la orden
   const createMutation = useMutation({
     mutationFn: async (data: {

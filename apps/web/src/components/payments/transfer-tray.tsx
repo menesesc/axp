@@ -20,7 +20,11 @@ interface Borrador {
   proveedor: { id: string; razonSocial: string; cuit: string | null; cbu: string | null }
   documentos: Array<{ id: string; tipo: string; letra: string | null; numeroCompleto: string | null; montoAplicado: number }>
   problemas: string[]
+  totalMetodos: number
+  ajustable: boolean
 }
+
+const NO_SUMAN = 'Formas de pago no suman el total'
 
 /**
  * Bandeja "A transferir": los borradores listos para el banco. Se eligen los
@@ -85,6 +89,19 @@ export function TransferTray({ canEdit }: { canEdit: boolean }) {
       setConfirmDelete(null)
       refrescar()
       toast.success('Borrador eliminado')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const ajustar = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/pagos/${id}/ajustar`, { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || 'No se pudo ajustar')
+    },
+    onSuccess: () => {
+      refrescar()
+      toast.success('Transferencia ajustada al total de las facturas')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -166,9 +183,23 @@ export function TransferTray({ canEdit }: { canEdit: boolean }) {
                         .map((p) => (
                           <span key={p} className="inline-flex items-center gap-1 text-[11px] text-amber-700">
                             <AlertTriangle className="h-3 w-3" />
-                            {p}
+                            {/* Con los dos montos a la vista se entiende qué pasó: casi
+                                siempre es una factura que se sacó de la orden. */}
+                            {p === NO_SUMAN
+                              ? `La transferencia es de ${formatCurrency(b.totalMetodos)} y las facturas suman ${formatCurrency(b.montoTotal)}`
+                              : p}
                           </span>
                         ))}
+                      {canEdit && b.ajustable && (
+                        <button
+                          type="button"
+                          onClick={() => ajustar.mutate(b.id)}
+                          disabled={ajustar.isPending}
+                          className="text-[11px] font-medium text-blue-600 hover:underline disabled:opacity-50"
+                        >
+                          Ajustar al total
+                        </button>
+                      )}
                     </div>
                   </div>
                   <span className="text-sm font-semibold tabular-nums text-slate-900">{formatCurrency(b.montoTotal)}</span>

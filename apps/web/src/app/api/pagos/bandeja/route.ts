@@ -68,6 +68,13 @@ export async function GET() {
           montoAplicado: Number(pd.montoAplicado),
         })),
         problemas,
+        totalMetodos,
+        // Una sola transferencia que no cierra: se arregla con "Ajustar al total".
+        ajustable:
+          Math.abs(totalMetodos - montoTotal) > 0.01 &&
+          montoTotal > 0 &&
+          p.pago_metodos.length === 1 &&
+          p.pago_metodos[0]!.tipo === 'TRANSFERENCIA',
       }
     }),
   })
